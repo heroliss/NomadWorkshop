@@ -25,6 +25,10 @@ namespace Game.NomadWorkshop.Editor
         public const string ModelPath = AssetRoot + "/" + AssetId + ".fbx";
         public const string ManifestPath = AssetRoot + "/" + AssetId + ".manifest.json";
         public const string TextureFolder = AssetRoot + "/Textures";
+        public const string EvidenceFolder = AssetRoot + "/Evidence";
+        /// <summary>供人工审查的 Blender 六视图证据；不是运行时贴图或自动美术批准。</summary>
+        public const string ContactSheetPath =
+            EvidenceFolder + "/" + AssetId + "_contact_sheet.png";
         public const string MaterialFolder = AssetRoot + "/Materials";
         public const string PrefabFolder = AssetRoot + "/Prefabs";
         public const string PrefabPath = PrefabFolder + "/" + AssetId + ".prefab";
@@ -33,8 +37,8 @@ namespace Game.NomadWorkshop.Editor
 
         private const string BlenderScriptPath =
             "Tools/ArtPipeline/Blender/blender_textured_prop.py";
-        private const int SupportedManifestSchemaVersion = 2;
-        private const string SupportedHarnessVersion = "0.3.0";
+        private const int SupportedManifestSchemaVersion = 3;
+        private const string SupportedHarnessVersion = "0.4.0";
         private const float BoundsToleranceMeters = 0.008f;
         private const float MaxRuntimeVertexExpansion = 4f;
 
@@ -49,10 +53,12 @@ namespace Game.NomadWorkshop.Editor
 
             BlenderManifest manifest = LoadManifest();
             ValidateManifest(manifest);
+            EnsureFolder(EvidenceFolder);
             EnsureFolder(MaterialFolder);
             EnsureFolder(PrefabFolder);
             EnsureFolder(PreviewFolder);
 
+            ConfigureEvidenceImporter(manifest);
             ConfigureTextureImporters(manifest);
             IReadOnlyDictionary<string, Material> materials = CreateOrUpdateMaterials(manifest);
             ApplyModelImportPolicy(materials);
@@ -74,6 +80,7 @@ namespace Game.NomadWorkshop.Editor
             var issues = new List<string>();
 
             bool sourceHashesMatch = AuditSourceHashes(manifest, issues);
+            bool evidenceImporterMatches = AuditEvidenceImporter(manifest, issues);
             bool textureImportersMatch = AuditTextureImporters(manifest, issues);
             bool modelImporterMatches = AuditModelImporter(manifest, issues);
             ModelAudit modelAudit = AuditModel(manifest, issues);
@@ -94,6 +101,7 @@ namespace Game.NomadWorkshop.Editor
                                   AuditPreviewScene(rendererIndex, issues);
             return new NomadTexturedPropAssetAudit(
                 sourceHashesMatch,
+                evidenceImporterMatches,
                 textureImportersMatch,
                 modelImporterMatches,
                 modelAudit.HierarchyMatches,
@@ -110,8 +118,38 @@ namespace Game.NomadWorkshop.Editor
                 modelAudit.ExpectedBoundsSize,
                 modelAudit.BoundsSize,
                 modelAudit.MaterialAssetPaths,
+                manifest.geometry.quality.topology.nonManifoldEdgeCount,
+                manifest.geometry.quality.uv.degenerateUvTriangleCount,
+                manifest.geometry.quality.uv.areaWeightedTexelDensityPxPerMeter,
                 "manual_review_required：导入、通道和场景契约可自动验证；构图、材质可信度与风格一致性仍需看图判断。",
                 issues);
+        }
+
+        private static void ConfigureEvidenceImporter(BlenderManifest manifest)
+        {
+            if (AssetImporter.GetAtPath(ContactSheetPath) is not TextureImporter importer)
+                throw new InvalidOperationException($"没有找到 Contact Sheet：{ContactSheetPath}");
+
+            importer.textureType = TextureImporterType.Default;
+            importer.textureShape = TextureImporterShape.Texture2D;
+            importer.spriteImportMode = SpriteImportMode.None;
+            importer.sRGBTexture = true;
+            importer.alphaSource = TextureImporterAlphaSource.None;
+            importer.alphaIsTransparency = false;
+            importer.isReadable = false;
+            importer.mipmapEnabled = false;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.filterMode = FilterMode.Bilinear;
+            importer.anisoLevel = 1;
+            importer.npotScale = TextureImporterNPOTScale.None;
+            importer.maxTextureSize = Mathf.NextPowerOfTwo(Mathf.Max(
+                manifest.visualEvidence.contactSheet.width,
+                manifest.visualEvidence.contactSheet.height));
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.crunchedCompression = false;
+            importer.streamingMipmaps = false;
+            importer.flipGreenChannel = false;
+            importer.SaveAndReimport();
         }
 
         private static void ConfigureTextureImporters(BlenderManifest manifest)
@@ -427,6 +465,19 @@ namespace Game.NomadWorkshop.Editor
                 issues.Add("Unity 内 FBX 与 manifest 的字节证据不一致。");
             }
 
+            BlenderFile contactSheetFile = FindManifestFile(
+                manifest, manifest.visualEvidence.contactSheet.file);
+            string contactSheetPath = ToAbsoluteProjectPath(ContactSheetPath);
+            if (contactSheetFile == null || !File.Exists(contactSheetPath) ||
+                !HashAndLengthMatch(
+                    contactSheetPath,
+                    contactSheetFile.sha256,
+                    contactSheetFile.bytes))
+            {
+                matches = false;
+                issues.Add("Unity 内 Contact Sheet 与 manifest 的字节证据不一致。");
+            }
+
             foreach (TextureBinding binding in EnumerateTextureBindings(manifest))
             {
                 BlenderTexture texture = binding.Texture;
@@ -442,6 +493,41 @@ namespace Game.NomadWorkshop.Editor
                 matches = false;
                 issues.Add($"贴图字节证据不一致：{texture.file}");
             }
+            return matches;
+        }
+
+        private static bool AuditEvidenceImporter(
+            BlenderManifest manifest,
+            ICollection<string> issues)
+        {
+            TextureImporter importer = AssetImporter.GetAtPath(ContactSheetPath) as TextureImporter;
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(ContactSheetPath);
+            BlenderContactSheet contactSheet = manifest.visualEvidence.contactSheet;
+            int expectedMaxSize = Mathf.NextPowerOfTwo(Mathf.Max(
+                contactSheet.width,
+                contactSheet.height));
+            bool matches = importer != null && texture != null &&
+                           importer.textureType == TextureImporterType.Default &&
+                           importer.textureShape == TextureImporterShape.Texture2D &&
+                           importer.spriteImportMode == SpriteImportMode.None &&
+                           importer.sRGBTexture &&
+                           importer.alphaSource == TextureImporterAlphaSource.None &&
+                           !importer.alphaIsTransparency &&
+                           !importer.isReadable &&
+                           !importer.mipmapEnabled &&
+                           importer.wrapMode == TextureWrapMode.Clamp &&
+                           importer.filterMode == FilterMode.Bilinear &&
+                           importer.anisoLevel == 1 &&
+                           importer.npotScale == TextureImporterNPOTScale.None &&
+                           importer.maxTextureSize == expectedMaxSize &&
+                           importer.textureCompression == TextureImporterCompression.Uncompressed &&
+                           !importer.crunchedCompression &&
+                           !importer.streamingMipmaps &&
+                           !importer.flipGreenChannel &&
+                           texture.width == contactSheet.width &&
+                           texture.height == contactSheet.height;
+            if (!matches)
+                issues.Add($"Contact Sheet 的导入策略或尺寸不符合证据契约：{ContactSheetPath}");
             return matches;
         }
 
@@ -891,10 +977,111 @@ namespace Game.NomadWorkshop.Editor
                 manifest.geometry.vertexCount <= 0 || manifest.geometry.triangleCount <= 0 ||
                 manifest.geometry.objects == null || manifest.geometry.objects.Length != 3 ||
                 manifest.geometry.boundsMeters?.size == null ||
-                manifest.geometry.boundsMeters.size.Length != 3)
+                manifest.geometry.boundsMeters.size.Length != 3 ||
+                manifest.geometry.fbxRoundTrip == null ||
+                manifest.geometry.fbxRoundTrip.meshObjectCount !=
+                manifest.geometry.meshObjectCount ||
+                manifest.geometry.fbxRoundTrip.materialSlotCount !=
+                manifest.geometry.materialSlotCount ||
+                manifest.geometry.fbxRoundTrip.vertexCount != manifest.geometry.vertexCount ||
+                manifest.geometry.fbxRoundTrip.triangleCount !=
+                manifest.geometry.triangleCount ||
+                manifest.geometry.fbxRoundTrip.degenerateTriangleCount != 0)
                 throw new InvalidOperationException("manifest 几何与按材质合并契约不成立。");
+
+            ValidateQuality(
+                manifest.geometry.quality,
+                manifest.geometry.meshObjectCount,
+                manifest.textureContract.width,
+                "Blender 源几何");
+            ValidateQuality(
+                manifest.geometry.fbxRoundTrip.quality,
+                manifest.geometry.meshObjectCount,
+                manifest.textureContract.width,
+                "FBX 回读几何");
+            if (Mathf.Abs(
+                    manifest.geometry.quality.uv.areaWeightedTexelDensityPxPerMeter -
+                    manifest.geometry.fbxRoundTrip.quality.uv
+                        .areaWeightedTexelDensityPxPerMeter) > 0.01f)
+                throw new InvalidOperationException("源几何与 FBX 回读的有效平铺纹素密度不一致。");
+
+            string[] expectedPanels =
+            {
+                "hero", "front", "side", "top", "wireframe", "uv-checker",
+            };
+            BlenderContactSheet contactSheet = manifest.visualEvidence?.contactSheet;
+            if (contactSheet == null ||
+                contactSheet.file != AssetId + "_contact_sheet.png" ||
+                contactSheet.width != 1536 || contactSheet.height != 1024 ||
+                contactSheet.columns != 3 || contactSheet.rows != 2 ||
+                contactSheet.panels == null ||
+                !contactSheet.panels.SequenceEqual(expectedPanels, StringComparer.Ordinal) ||
+                !contactSheet.manualReviewRequired)
+                throw new InvalidOperationException("manifest Contact Sheet 的布局或人工复核边界不成立。");
+
+            if (manifest.acceptance == null ||
+                !manifest.acceptance.previewRendered ||
+                !manifest.acceptance.contactSheetRendered ||
+                !manifest.acceptance.fbxExported ||
+                !manifest.acceptance.fbxRoundTripVerified ||
+                !manifest.acceptance.blendSaved ||
+                !manifest.acceptance.meshMergedByMaterial ||
+                !manifest.acceptance.textureSetComplete ||
+                !manifest.acceptance.sourceTopologyAndUvVerified ||
+                !manifest.acceptance.fbxTopologyAndUvVerified ||
+                !manifest.acceptance.manualReviewStillRequired)
+                throw new InvalidOperationException("manifest 的 Blender Harness 验收证据不完整。");
             if (manifest.files == null || manifest.files.Length == 0)
                 throw new InvalidOperationException("manifest 缺少文件哈希证据。");
+            BlenderFile contactSheetFile = FindManifestFile(manifest, contactSheet.file);
+            if (contactSheetFile == null || contactSheetFile.bytes <= 0 ||
+                contactSheetFile.sha256?.Length != 64)
+                throw new InvalidOperationException("manifest 缺少 Contact Sheet 文件哈希证据。");
+        }
+
+        private static void ValidateQuality(
+            BlenderQuality quality,
+            int expectedMeshCount,
+            int expectedTextureResolution,
+            string scope)
+        {
+            BlenderTopologyQuality topology = quality?.topology;
+            BlenderUvQuality uv = quality?.uv;
+            bool valid = topology != null &&
+                         topology.looseVertexCount == 0 &&
+                         topology.looseEdgeCount == 0 &&
+                         topology.boundaryEdgeCount == 0 &&
+                         topology.nonManifoldEdgeCount == 0 &&
+                         uv != null &&
+                         uv.policy == "overlap-and-repeat-allowed" &&
+                         uv.textureResolution == expectedTextureResolution &&
+                         uv.allMeshesHaveActiveUv &&
+                         uv.degenerateUvTriangleCount == 0 &&
+                         uv.outOfUnitRangeLoopCount == 0 &&
+                         uv.surfaceAreaSquareMeters > 0f &&
+                         uv.uvAreaSum > 0f &&
+                         uv.effectiveUvAreaSum > 0f &&
+                         uv.areaWeightedTexelDensityPxPerMeter > 0f &&
+                         uv.method ==
+                         "sqrt(sum(uvArea*tilingArea)*resolution^2/sum(surfaceArea))" &&
+                         quality.meshes != null && quality.meshes.Length == expectedMeshCount &&
+                         quality.meshes.All(mesh =>
+                             !string.IsNullOrWhiteSpace(mesh.@object) &&
+                             !string.IsNullOrWhiteSpace(mesh.material) &&
+                             mesh.tiling != null && mesh.tiling.Length == 2 &&
+                             mesh.looseVertexCount == 0 &&
+                             mesh.looseEdgeCount == 0 &&
+                             mesh.boundaryEdgeCount == 0 &&
+                             mesh.nonManifoldEdgeCount == 0 &&
+                             !string.IsNullOrWhiteSpace(mesh.activeUvLayer) &&
+                             mesh.surfaceAreaSquareMeters > 0f &&
+                             mesh.uvAreaSum > 0f &&
+                             mesh.effectiveUvAreaSum > 0f &&
+                             mesh.degenerateUvTriangleCount == 0 &&
+                             mesh.outOfUnitRangeLoopCount == 0 &&
+                             mesh.areaWeightedTexelDensityPxPerMeter > 0f);
+            if (!valid)
+                throw new InvalidOperationException($"{scope}的拓扑、UV 或有效平铺纹素密度证据不成立。");
         }
 
         private static void ValidateTexture(
@@ -1032,7 +1219,7 @@ namespace Game.NomadWorkshop.Editor
             Directory.CreateDirectory(outputFolder);
             var report = new UnityImportReport
             {
-                schemaVersion = 2,
+                schemaVersion = 3,
                 status = audit.Passed ? "passed" : "failed",
                 assetId = AssetId,
                 unityVersion = Application.unityVersion,
@@ -1041,6 +1228,7 @@ namespace Game.NomadWorkshop.Editor
                 manifestPath = ManifestPath,
                 prefabPath = PrefabPath,
                 previewScenePath = PreviewScenePath,
+                contactSheetPath = ContactSheetPath,
                 meshObjectCount = audit.MeshObjectCount,
                 materialSlotCount = audit.MaterialSlotCount,
                 textureCount = audit.TextureCount,
@@ -1049,6 +1237,9 @@ namespace Game.NomadWorkshop.Editor
                 triangleCount = audit.TriangleCount,
                 expectedBoundsSize = audit.ExpectedBoundsSize,
                 actualBoundsSize = audit.ActualBoundsSize,
+                nonManifoldEdgeCount = audit.NonManifoldEdgeCount,
+                degenerateUvTriangleCount = audit.DegenerateUvTriangleCount,
+                effectiveTexelDensityPxPerMeter = audit.EffectiveTexelDensityPxPerMeter,
                 materialAssetPaths = audit.MaterialAssetPaths.ToArray(),
                 renderingVerdict = audit.RenderingVerdict,
                 issues = audit.Issues.ToArray(),
@@ -1091,6 +1282,8 @@ namespace Game.NomadWorkshop.Editor
             public BlenderTextureContract textureContract = new();
             public BlenderMaterial[] materials = Array.Empty<BlenderMaterial>();
             public BlenderGeometry geometry = new();
+            public BlenderVisualEvidence visualEvidence = new();
+            public BlenderAcceptance acceptance = new();
             public BlenderFile[] files = Array.Empty<BlenderFile>();
         }
 
@@ -1170,6 +1363,103 @@ namespace Game.NomadWorkshop.Editor
             public int triangleCount;
             public BlenderBounds boundsMeters = new();
             public string[] objects = Array.Empty<string>();
+            public BlenderQuality quality = new();
+            public BlenderFbxRoundTrip fbxRoundTrip = new();
+        }
+
+        [Serializable]
+        private sealed class BlenderFbxRoundTrip
+        {
+            public int meshObjectCount;
+            public int materialSlotCount;
+            public int vertexCount;
+            public int triangleCount;
+            public int degenerateTriangleCount;
+            public BlenderQuality quality = new();
+        }
+
+        [Serializable]
+        private sealed class BlenderQuality
+        {
+            public BlenderTopologyQuality topology = new();
+            public BlenderUvQuality uv = new();
+            public BlenderMeshQuality[] meshes = Array.Empty<BlenderMeshQuality>();
+        }
+
+        [Serializable]
+        private sealed class BlenderTopologyQuality
+        {
+            public int looseVertexCount;
+            public int looseEdgeCount;
+            public int boundaryEdgeCount;
+            public int nonManifoldEdgeCount;
+        }
+
+        [Serializable]
+        private sealed class BlenderUvQuality
+        {
+            public string policy = string.Empty;
+            public int textureResolution;
+            public bool allMeshesHaveActiveUv;
+            public int degenerateUvTriangleCount;
+            public int outOfUnitRangeLoopCount;
+            public float surfaceAreaSquareMeters;
+            public float uvAreaSum;
+            public float effectiveUvAreaSum;
+            public float areaWeightedTexelDensityPxPerMeter;
+            public string method = string.Empty;
+        }
+
+        [Serializable]
+        private sealed class BlenderMeshQuality
+        {
+            public string @object = string.Empty;
+            public string material = string.Empty;
+            public float[] tiling = Array.Empty<float>();
+            public int looseVertexCount;
+            public int looseEdgeCount;
+            public int boundaryEdgeCount;
+            public int nonManifoldEdgeCount;
+            public string activeUvLayer = string.Empty;
+            public float surfaceAreaSquareMeters;
+            public float uvAreaSum;
+            public float effectiveUvAreaSum;
+            public int degenerateUvTriangleCount;
+            public int outOfUnitRangeLoopCount;
+            public float areaWeightedTexelDensityPxPerMeter;
+        }
+
+        [Serializable]
+        private sealed class BlenderVisualEvidence
+        {
+            public BlenderContactSheet contactSheet = new();
+        }
+
+        [Serializable]
+        private sealed class BlenderContactSheet
+        {
+            public string file = string.Empty;
+            public int width;
+            public int height;
+            public int columns;
+            public int rows;
+            public string[] panels = Array.Empty<string>();
+            public bool manualReviewRequired;
+        }
+
+        [Serializable]
+        private sealed class BlenderAcceptance
+        {
+            public bool previewRendered;
+            public bool contactSheetRendered;
+            public bool fbxExported;
+            public bool fbxRoundTripVerified;
+            public bool blendSaved;
+            public bool meshMergedByMaterial;
+            public bool textureSetComplete;
+            public bool sourceTopologyAndUvVerified;
+            public bool fbxTopologyAndUvVerified;
+            public bool manualReviewStillRequired;
         }
 
         [Serializable]
@@ -1198,6 +1488,7 @@ namespace Game.NomadWorkshop.Editor
             public string manifestPath = string.Empty;
             public string prefabPath = string.Empty;
             public string previewScenePath = string.Empty;
+            public string contactSheetPath = string.Empty;
             public int meshObjectCount;
             public int materialSlotCount;
             public int textureCount;
@@ -1206,6 +1497,9 @@ namespace Game.NomadWorkshop.Editor
             public int triangleCount;
             public Vector3 expectedBoundsSize;
             public Vector3 actualBoundsSize;
+            public int nonManifoldEdgeCount;
+            public int degenerateUvTriangleCount;
+            public float effectiveTexelDensityPxPerMeter;
             public string[] materialAssetPaths = Array.Empty<string>();
             public string renderingVerdict = string.Empty;
             public string[] issues = Array.Empty<string>();
@@ -1271,6 +1565,7 @@ namespace Game.NomadWorkshop.Editor
     {
         internal NomadTexturedPropAssetAudit(
             bool sourceHashesMatch,
+            bool evidenceImporterContractMatches,
             bool textureImporterContractMatches,
             bool modelImporterContractMatches,
             bool sourceHierarchyMatches,
@@ -1287,10 +1582,14 @@ namespace Game.NomadWorkshop.Editor
             Vector3 expectedBoundsSize,
             Vector3 actualBoundsSize,
             IReadOnlyList<string> materialAssetPaths,
+            int nonManifoldEdgeCount,
+            int degenerateUvTriangleCount,
+            float effectiveTexelDensityPxPerMeter,
             string renderingVerdict,
             IReadOnlyList<string> issues)
         {
             SourceHashesMatch = sourceHashesMatch;
+            EvidenceImporterContractMatches = evidenceImporterContractMatches;
             TextureImporterContractMatches = textureImporterContractMatches;
             ModelImporterContractMatches = modelImporterContractMatches;
             SourceHierarchyMatches = sourceHierarchyMatches;
@@ -1307,11 +1606,16 @@ namespace Game.NomadWorkshop.Editor
             ExpectedBoundsSize = expectedBoundsSize;
             ActualBoundsSize = actualBoundsSize;
             MaterialAssetPaths = materialAssetPaths;
+            NonManifoldEdgeCount = nonManifoldEdgeCount;
+            DegenerateUvTriangleCount = degenerateUvTriangleCount;
+            EffectiveTexelDensityPxPerMeter = effectiveTexelDensityPxPerMeter;
             RenderingVerdict = renderingVerdict;
             Issues = issues;
         }
 
         public bool SourceHashesMatch { get; }
+        /// <summary>Contact Sheet 的字节、尺寸和非运行时导入策略是否满足约定。</summary>
+        public bool EvidenceImporterContractMatches { get; }
         public bool TextureImporterContractMatches { get; }
         public bool ModelImporterContractMatches { get; }
         public bool SourceHierarchyMatches { get; }
@@ -1328,11 +1632,18 @@ namespace Game.NomadWorkshop.Editor
         public Vector3 ExpectedBoundsSize { get; }
         public Vector3 ActualBoundsSize { get; }
         public IReadOnlyList<string> MaterialAssetPaths { get; }
+        /// <summary>Blender 源 Mesh 的非流形边数；当前封闭静态道具契约要求为零。</summary>
+        public int NonManifoldEdgeCount { get; }
+        /// <summary>有表面积但 UV 面积退化为零的来源三角形数量。</summary>
+        public int DegenerateUvTriangleCount { get; }
+        /// <summary>包含共享 UV 和材质平铺的面积加权有效密度，不等于唯一纹理内存预算。</summary>
+        public float EffectiveTexelDensityPxPerMeter { get; }
         public string RenderingVerdict { get; }
         public IReadOnlyList<string> Issues { get; }
 
         public bool Passed =>
-            SourceHashesMatch && TextureImporterContractMatches &&
+            SourceHashesMatch && EvidenceImporterContractMatches &&
+            TextureImporterContractMatches &&
             ModelImporterContractMatches && SourceHierarchyMatches && GeometryMatches &&
             MaterialContractMatches && PrefabContractMatches &&
             PreviewSceneContractMatches && Issues.Count == 0;
@@ -1345,6 +1656,10 @@ namespace Game.NomadWorkshop.Editor
                    $"{VertexCount} Runtime Vertex ({SourceVertexCount} Source) / " +
                    $"{TriangleCount} Triangle\n" +
                    $"贴图：{TextureCount}，Bounds：实际 {ActualBoundsSize}，预期 {ExpectedBoundsSize}\n" +
+                   $"源质量：{NonManifoldEdgeCount} Non-manifold Edge / " +
+                   $"{DegenerateUvTriangleCount} Degenerate UV Triangle / " +
+                   $"{EffectiveTexelDensityPxPerMeter:F3} px/m 有效平铺纹素密度\n" +
+                   $"Contact Sheet：{NomadTexturedPropAssetPipeline.ContactSheetPath}（仍需人工看图）\n" +
                    $"材质：{string.Join(", ", MaterialAssetPaths)}\n" +
                    $"渲染结论：{RenderingVerdict}\n" +
                    $"问题：\n  - {issues}";

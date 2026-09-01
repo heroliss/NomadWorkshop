@@ -22,6 +22,7 @@ namespace Game.NomadWorkshop.Editor.Tests
             NomadTexturedPropAssetAudit audit = NomadTexturedPropAssetPipeline.Audit();
 
             Assert.IsTrue(audit.SourceHashesMatch, audit.ToMultilineString());
+            Assert.IsTrue(audit.EvidenceImporterContractMatches, audit.ToMultilineString());
             Assert.IsTrue(audit.TextureImporterContractMatches, audit.ToMultilineString());
             Assert.IsTrue(audit.ModelImporterContractMatches, audit.ToMultilineString());
             Assert.IsTrue(audit.SourceHierarchyMatches, audit.ToMultilineString());
@@ -41,6 +42,12 @@ namespace Game.NomadWorkshop.Editor.Tests
             Assert.That(audit.ActualBoundsSize.x, Is.EqualTo(1.46f).Within(0.008f));
             Assert.That(audit.ActualBoundsSize.y, Is.EqualTo(1.475f).Within(0.008f));
             Assert.That(audit.ActualBoundsSize.z, Is.EqualTo(0.895f).Within(0.008f));
+            Assert.AreEqual(0, audit.NonManifoldEdgeCount);
+            Assert.AreEqual(0, audit.DegenerateUvTriangleCount);
+            Assert.That(
+                audit.EffectiveTexelDensityPxPerMeter,
+                Is.EqualTo(1001.091f).Within(0.01f),
+                "这里固定的是允许重叠 UV 与材质平铺后的面积加权有效密度，不代表唯一贴图内存预算。");
 
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
                 NomadTexturedPropAssetPipeline.PrefabPath);
@@ -49,6 +56,26 @@ namespace Game.NomadWorkshop.Editor.Tests
                 .Count(filter => filter.sharedMesh != null));
             Assert.AreEqual(1, prefab.GetComponentsInChildren<BoxCollider>(true).Length);
             Assert.AreEqual(0, prefab.GetComponentsInChildren<MeshCollider>(true).Length);
+        }
+
+        [Test]
+        public void ContactSheetPreservesSixViewManualReviewEvidence()
+        {
+            TextureImporter importer = Importer(NomadTexturedPropAssetPipeline.ContactSheetPath);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                NomadTexturedPropAssetPipeline.ContactSheetPath);
+
+            Assert.IsNotNull(texture);
+            Assert.AreEqual(1536, texture.width);
+            Assert.AreEqual(1024, texture.height);
+            Assert.AreEqual(TextureImporterType.Default, importer.textureType);
+            Assert.AreEqual(SpriteImportMode.None, importer.spriteImportMode);
+            Assert.IsTrue(importer.sRGBTexture);
+            Assert.IsFalse(importer.mipmapEnabled);
+            Assert.AreEqual(TextureWrapMode.Clamp, importer.wrapMode);
+            Assert.AreEqual(FilterMode.Bilinear, importer.filterMode);
+            Assert.AreEqual(TextureImporterCompression.Uncompressed, importer.textureCompression);
+            Assert.IsFalse(importer.isReadable);
         }
 
         [Test]

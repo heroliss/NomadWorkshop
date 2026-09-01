@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 2,
-  "harnessVersion": "0.3.0",
+  "schemaVersion": 3,
+  "harnessVersion": "0.4.0",
   "status": "passed",
   "asset": {
     "id": "NW_WaterRecycler_01",
@@ -13,8 +13,8 @@
     "blenderVersion": "5.2.1 LTS",
     "blenderVersionCycle": "release",
     "pythonVersion": "3.13.13",
-    "generatedAtUtc": "2026-09-01T12:43:38.036707+00:00",
-    "sourceScriptSha256": "c960bae50fec8c10bdb6a846ff54464afd51bfc2a93cbe2241c4703c1e3c045d"
+    "generatedAtUtc": "2026-09-01T13:22:33.700751+00:00",
+    "sourceScriptSha256": "0ea631e59915dc727e831689328d14ebdd928e235e1dcc36d8d1601b1323863c"
   },
   "coordinateContract": {
     "authoringUnits": "meters",
@@ -223,6 +223,115 @@
       "NW_WaterRecycler_01_Hardware",
       "NW_WaterRecycler_01_Accent"
     ],
+    "quality": {
+      "topology": {
+        "looseVertexCount": 0,
+        "looseEdgeCount": 0,
+        "boundaryEdgeCount": 0,
+        "nonManifoldEdgeCount": 0
+      },
+      "uv": {
+        "policy": "overlap-and-repeat-allowed",
+        "textureResolution": 512,
+        "allMeshesHaveActiveUv": true,
+        "degenerateUvTriangleCount": 0,
+        "outOfUnitRangeLoopCount": 0,
+        "surfaceAreaSquareMeters": 13.814501,
+        "uvAreaSum": 19.315681,
+        "effectiveUvAreaSum": 52.813242,
+        "areaWeightedTexelDensityPxPerMeter": 1001.091,
+        "method": "sqrt(sum(uvArea*tilingArea)*resolution^2/sum(surfaceArea))"
+      },
+      "meshes": [
+        {
+          "object": "NW_WaterRecycler_01_Painted",
+          "material": "M_WornTeal",
+          "tiling": [
+            1.35,
+            1.35
+          ],
+          "looseVertexCount": 0,
+          "looseEdgeCount": 0,
+          "boundaryEdgeCount": 0,
+          "nonManifoldEdgeCount": 0,
+          "activeUvLayer": "UVMap",
+          "surfaceAreaSquareMeters": 5.541187,
+          "uvAreaSum": 2.103972,
+          "effectiveUvAreaSum": 3.834489,
+          "degenerateUvTriangleCount": 0,
+          "outOfUnitRangeLoopCount": 0,
+          "uvBounds": {
+            "min": [
+              0.0,
+              0.0
+            ],
+            "max": [
+              1.0,
+              1.0
+            ]
+          },
+          "areaWeightedTexelDensityPxPerMeter": 425.914
+        },
+        {
+          "object": "NW_WaterRecycler_01_Hardware",
+          "material": "M_DarkMetal",
+          "tiling": [
+            1.8,
+            1.8
+          ],
+          "looseVertexCount": 0,
+          "looseEdgeCount": 0,
+          "boundaryEdgeCount": 0,
+          "nonManifoldEdgeCount": 0,
+          "activeUvLayer": "UVMap",
+          "surfaceAreaSquareMeters": 7.646649,
+          "uvAreaSum": 10.355966,
+          "effectiveUvAreaSum": 33.553331,
+          "degenerateUvTriangleCount": 0,
+          "outOfUnitRangeLoopCount": 0,
+          "uvBounds": {
+            "min": [
+              -0.0,
+              0.0
+            ],
+            "max": [
+              1.0,
+              1.0
+            ]
+          },
+          "areaWeightedTexelDensityPxPerMeter": 1072.512
+        },
+        {
+          "object": "NW_WaterRecycler_01_Accent",
+          "material": "M_SafetyOrange",
+          "tiling": [
+            1.5,
+            1.5
+          ],
+          "looseVertexCount": 0,
+          "looseEdgeCount": 0,
+          "boundaryEdgeCount": 0,
+          "nonManifoldEdgeCount": 0,
+          "activeUvLayer": "UVMap",
+          "surfaceAreaSquareMeters": 0.626665,
+          "uvAreaSum": 6.855743,
+          "effectiveUvAreaSum": 15.425422,
+          "degenerateUvTriangleCount": 0,
+          "outOfUnitRangeLoopCount": 0,
+          "uvBounds": {
+            "min": [
+              -0.0,
+              0.0
+            ],
+            "max": [
+              1.0,
+              1.0
+            ]
+          },
+          "areaWeightedTexelDensityPxPerMeter": 2540.216
+        }
+      ]
+    },
     "sourceTriangleCount": 7772,
     "fbxRoundTrip": {
       "meshObjectCount": 3,
@@ -231,33 +340,168 @@
       "polygonCount": 3674,
       "triangleCount": 7772,
       "degenerateTriangleCount": 0,
-      "nonDegenerateTriangleCount": 7772
+      "nonDegenerateTriangleCount": 7772,
+      "quality": {
+        "topology": {
+          "looseVertexCount": 0,
+          "looseEdgeCount": 0,
+          "boundaryEdgeCount": 0,
+          "nonManifoldEdgeCount": 0
+        },
+        "uv": {
+          "policy": "overlap-and-repeat-allowed",
+          "textureResolution": 512,
+          "allMeshesHaveActiveUv": true,
+          "degenerateUvTriangleCount": 0,
+          "outOfUnitRangeLoopCount": 0,
+          "surfaceAreaSquareMeters": 13.814501,
+          "uvAreaSum": 19.315681,
+          "effectiveUvAreaSum": 52.813242,
+          "areaWeightedTexelDensityPxPerMeter": 1001.091,
+          "method": "sqrt(sum(uvArea*tilingArea)*resolution^2/sum(surfaceArea))"
+        },
+        "meshes": [
+          {
+            "object": "NW_WaterRecycler_01_Accent.001",
+            "material": "M_SafetyOrange.001",
+            "tiling": [
+              1.5,
+              1.5
+            ],
+            "looseVertexCount": 0,
+            "looseEdgeCount": 0,
+            "boundaryEdgeCount": 0,
+            "nonManifoldEdgeCount": 0,
+            "activeUvLayer": "UVMap",
+            "surfaceAreaSquareMeters": 0.626665,
+            "uvAreaSum": 6.855743,
+            "effectiveUvAreaSum": 15.425422,
+            "degenerateUvTriangleCount": 0,
+            "outOfUnitRangeLoopCount": 0,
+            "uvBounds": {
+              "min": [
+                -0.0,
+                0.0
+              ],
+              "max": [
+                1.0,
+                1.0
+              ]
+            },
+            "areaWeightedTexelDensityPxPerMeter": 2540.216
+          },
+          {
+            "object": "NW_WaterRecycler_01_Hardware.001",
+            "material": "M_DarkMetal.001",
+            "tiling": [
+              1.8,
+              1.8
+            ],
+            "looseVertexCount": 0,
+            "looseEdgeCount": 0,
+            "boundaryEdgeCount": 0,
+            "nonManifoldEdgeCount": 0,
+            "activeUvLayer": "UVMap",
+            "surfaceAreaSquareMeters": 7.646649,
+            "uvAreaSum": 10.355966,
+            "effectiveUvAreaSum": 33.553331,
+            "degenerateUvTriangleCount": 0,
+            "outOfUnitRangeLoopCount": 0,
+            "uvBounds": {
+              "min": [
+                -0.0,
+                0.0
+              ],
+              "max": [
+                1.0,
+                1.0
+              ]
+            },
+            "areaWeightedTexelDensityPxPerMeter": 1072.512
+          },
+          {
+            "object": "NW_WaterRecycler_01_Painted.001",
+            "material": "M_WornTeal.001",
+            "tiling": [
+              1.35,
+              1.35
+            ],
+            "looseVertexCount": 0,
+            "looseEdgeCount": 0,
+            "boundaryEdgeCount": 0,
+            "nonManifoldEdgeCount": 0,
+            "activeUvLayer": "UVMap",
+            "surfaceAreaSquareMeters": 5.541187,
+            "uvAreaSum": 2.103972,
+            "effectiveUvAreaSum": 3.834489,
+            "degenerateUvTriangleCount": 0,
+            "outOfUnitRangeLoopCount": 0,
+            "uvBounds": {
+              "min": [
+                0.0,
+                0.0
+              ],
+              "max": [
+                1.0,
+                1.0
+              ]
+            },
+            "areaWeightedTexelDensityPxPerMeter": 425.914
+          }
+        ]
+      }
+    }
+  },
+  "visualEvidence": {
+    "contactSheet": {
+      "file": "NW_WaterRecycler_01_contact_sheet.png",
+      "width": 1536,
+      "height": 1024,
+      "columns": 3,
+      "rows": 2,
+      "panels": [
+        "hero",
+        "front",
+        "side",
+        "top",
+        "wireframe",
+        "uv-checker"
+      ],
+      "manualReviewRequired": true
     }
   },
   "acceptance": {
     "previewRendered": true,
+    "contactSheetRendered": true,
     "fbxExported": true,
     "fbxRoundTripVerified": true,
     "blendSaved": true,
     "meshMergedByMaterial": true,
     "textureSetComplete": true,
+    "sourceTopologyAndUvVerified": true,
+    "fbxTopologyAndUvVerified": true,
     "manualReviewStillRequired": true
   },
   "files": [
     {
       "name": "NW_WaterRecycler_01.blend",
-      "bytes": 196420,
-      "sha256": "7496aca95305a98c7ce6d777419d55b7805ebf44fb74e9fd3e988a58cf5425dc"
+      "bytes": 196390,
+      "sha256": "6632e5f885554ce63d52b3c318a801cec858cf0a97d8c885423a6a76f5f871b8"
     },
     {
       "name": "NW_WaterRecycler_01.fbx",
       "bytes": 173564,
-      "sha256": "42fb4545961a375e7286fc2293771012cfb461758d129f8bb7ec91a50cd2035d"
+      "sha256": "42ab8d168bdfd24cc13550596e39e28c9352211e8c92569cf263ff861fd48b12"
     },
     {
       "name": "NW_WaterRecycler_01_preview.png",
       "bytes": 513958,
-      "sha256": "5e688dce72ad25a6e6b953d833f4022b0a1adc0813e7bfb1f5013e41052228dd"
+      "sha256": "60a7b01cd85d57806a87156d3a6a94ee3ad10ed80f7c8e6939625718c0de1efb"
+    },
+    {
+      "name": "NW_WaterRecycler_01_contact_sheet.png",
+      "bytes": 2071121,
+      "sha256": "a9fb6db1f6fa155153cb9a0afa21cc064bf9c3d576f53c0b48d3c01fb98c113e"
     },
     {
       "name": "T_NW_WaterRecycler_01_WornTeal_BaseColor.png",
