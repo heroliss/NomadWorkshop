@@ -91,4 +91,4 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步不再扩张动作数量或继续装饰棚拍。用同一 Asset Brief 对本地 TripoSR、少量云服务和一个 Mesh-specific PBR 工具做受控盲测，让所有候选强制经过现有 Contact Sheet、拓扑 / UV、权利和 Unity 导入 Harness；胜负按“生成 + 清理 + Unity 验收”的总成本判断。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，建立首份平台性能 / 纹理预算，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。第一个外部 AI Mesh 走通前不急于固化 `blender-asset-pipeline` Project Skill，手部 IK 也只在真实接触误差证明有必要后加入。
+下一步不再扩张动作数量或继续装饰棚拍。按[首轮 AI Mesh 盲测协议](../../../docs/nomad-workshop-ai-mesh-blind-test.md)，用同一 Asset Brief 对本地 TripoSR、Stable Fast 3D 和最多一个云服务做受控比较，让所有候选强制经过现有 Contact Sheet、拓扑 / UV、权利和 Unity 导入 Harness；胜负按“生成 + 清理 + Unity 验收”的总成本判断。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，建立首份平台性能 / 纹理预算，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。第一个外部 AI Mesh 走通前不急于固化 `blender-asset-pipeline` Project Skill，手部 IK 也只在真实接触误差证明有必要后加入。
