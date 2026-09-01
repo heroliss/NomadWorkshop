@@ -85,6 +85,28 @@ namespace Game.NomadWorkshop.Editor
                 issues);
         }
 
+        /// <summary>
+        /// 返回已经验证为唯一、且不会替换默认 Renderer2D 的次级 3D Renderer 索引。
+        /// 其他游戏本地预览场景可复用这个入口，避免各自猜测共享列表中的整数位置。
+        /// </summary>
+        public static int GetSecondaryRendererIndexOrThrow()
+        {
+            UniversalRenderPipelineAsset pipeline =
+                AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(PipelineAssetPath);
+            UniversalRendererData rendererData =
+                AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererDataPath);
+            var issues = new List<string>();
+            if (!AuditPipelineAsset(pipeline, issues))
+                throw new InvalidOperationException(string.Join(Environment.NewLine, issues));
+
+            RendererListAudit rendererList = AuditRendererList(pipeline, rendererData, issues);
+            if (!rendererList.DefaultRendererPreserved ||
+                !rendererList.SecondaryRendererRegistered ||
+                rendererList.SecondaryRendererIndex < 0)
+                throw new InvalidOperationException(string.Join(Environment.NewLine, issues));
+            return rendererList.SecondaryRendererIndex;
+        }
+
         private static UniversalRendererData CreateOrUpdateRendererData()
         {
             UniversalRendererData rendererData =

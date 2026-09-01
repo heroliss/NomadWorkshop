@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 2,
+  "harnessVersion": "0.3.0",
+  "status": "passed",
+  "asset": {
+    "id": "NW_WaterRecycler_01",
+    "displayName": "废土水循环设施",
+    "purpose": "Second-geometry, textured and material-merged Blender-to-Unity probe",
+    "sourceKind": "procedural-bpy-and-deterministic-png",
+    "intendedUse": "Pipeline validation and Foundation Prototype candidate; not approved production art"
+  },
+  "toolchain": {
+    "blenderVersion": "5.2.1 LTS",
+    "blenderVersionCycle": "release",
+    "pythonVersion": "3.13.13",
+    "generatedAtUtc": "2026-09-01T12:43:38.036707+00:00",
+    "sourceScriptSha256": "c960bae50fec8c10bdb6a846ff54464afd51bfc2a93cbe2241c4703c1e3c045d"
+  },
+  "coordinateContract": {
+    "authoringUnits": "meters",
+    "blenderUpAxis": "+Z",
+    "fbxForwardAxis": "-Z",
+    "fbxUpAxis": "+Y",
+    "fbxSpaceTransformBaked": true,
+    "rootTransform": "identity"
+  },
+  "textureContract": {
+    "width": 512,
+    "height": 512,
+    "fileFormat": "PNG RGBA8",
+    "normalConvention": "OpenGL tangent-space (+Y)",
+    "metallicSmoothnessPacking": "R=metallic, A=smoothness",
+    "occlusionPacking": "G=occlusion",
+    "tileable": true,
+    "deterministicSeededPixels": true
+  },
+  "materials": [
+    {
+      "name": "M_WornTeal",
+      "shader": "Universal Render Pipeline/Lit",
+      "textureTiling": [
+        1.35,
+        1.35
+      ],
+      "normalScale": 0.48,
+      "occlusionStrength": 0.78,
+      "fallback": {
+        "metallic": 0.02,
+        "smoothness": 0.3
+      },
+      "textures": {
+        "baseColor": {
+          "file": "T_NW_WaterRecycler_01_WornTeal_BaseColor.png",
+          "semantic": "base-color",
+          "colorSpace": "sRGB",
+          "channels": "RGB",
+          "bytes": 32592,
+          "sha256": "c8fbcbdba3bb7943b091301e10726131fb629b5bc4dfeadc2ff98ac4f454033b"
+        },
+        "normal": {
+          "file": "T_NW_WaterRecycler_01_WornTeal_Normal.png",
+          "semantic": "tangent-normal-open-gl",
+          "colorSpace": "linear",
+          "channels": "RGB",
+          "bytes": 116222,
+          "sha256": "a97f1e8b22a352cfc8c3c5e752e482b1a44067beaad843d2c18939718d1b2d75"
+        },
+        "metallicSmoothness": {
+          "file": "T_NW_WaterRecycler_01_WornTeal_MetallicSmoothness.png",
+          "semantic": "urp-metallic-smoothness",
+          "colorSpace": "linear",
+          "channels": "R=metallic,A=smoothness",
+          "bytes": 42082,
+          "sha256": "27675b3b6d3bc6fae683a4fdef9e095d1915f33840267442f25494737e591742"
+        },
+        "occlusion": {
+          "file": "T_NW_WaterRecycler_01_WornTeal_Occlusion.png",
+          "semantic": "ambient-occlusion",
+          "colorSpace": "linear",
+          "channels": "G=occlusion",
+          "bytes": 10318,
+          "sha256": "d4590fb86f6b78f96106ef988bce86fb01128a0bf4faf1f2efa3cf10c41545dd"
+        }
+      }
+    },
+    {
+      "name": "M_DarkMetal",
+      "shader": "Universal Render Pipeline/Lit",
+      "textureTiling": [
+        1.8,
+        1.8
+      ],
+      "normalScale": 0.4,
+      "occlusionStrength": 0.74,
+      "fallback": {
+        "metallic": 0.78,
+        "smoothness": 0.42
+      },
+      "textures": {
+        "baseColor": {
+          "file": "T_NW_WaterRecycler_01_DarkMetal_BaseColor.png",
+          "semantic": "base-color",
+          "colorSpace": "sRGB",
+          "channels": "RGB",
+          "bytes": 23012,
+          "sha256": "13cd54c2eb954420bebf1b3384f041d9de6e29dd0188909148d365901d15db24"
+        },
+        "normal": {
+          "file": "T_NW_WaterRecycler_01_DarkMetal_Normal.png",
+          "semantic": "tangent-normal-open-gl",
+          "colorSpace": "linear",
+          "channels": "RGB",
+          "bytes": 120797,
+          "sha256": "a76eb86de6b3b81f2c4f5b92cd84f01ff8d4504b5884e5dbc6d305782d2b390a"
+        },
+        "metallicSmoothness": {
+          "file": "T_NW_WaterRecycler_01_DarkMetal_MetallicSmoothness.png",
+          "semantic": "urp-metallic-smoothness",
+          "colorSpace": "linear",
+          "channels": "R=metallic,A=smoothness",
+          "bytes": 34713,
+          "sha256": "65869953a31a49ec56242c532a14ac6451210beea920b82722f53943b4522ca3"
+        },
+        "occlusion": {
+          "file": "T_NW_WaterRecycler_01_DarkMetal_Occlusion.png",
+          "semantic": "ambient-occlusion",
+          "colorSpace": "linear",
+          "channels": "G=occlusion",
+          "bytes": 11877,
+          "sha256": "7a0c899f6d53e7523b60a5f3b2f480dda53e2becfd2070b663e63f7167d50089"
+        }
+      }
+    },
+    {
+      "name": "M_SafetyOrange",
+      "shader": "Universal Render Pipeline/Lit",
+      "textureTiling": [
+        1.5,
+        1.5
+      ],
+      "normalScale": 0.45,
+      "occlusionStrength": 0.76,
+      "fallback": {
+        "metallic": 0.02,
+        "smoothness": 0.27
+      },
+      "textures": {
+        "baseColor": {
+          "file": "T_NW_WaterRecycler_01_SafetyOrange_BaseColor.png",
+          "semantic": "base-color",
+          "colorSpace": "sRGB",
+          "channels": "RGB",
+          "bytes": 39209,
+          "sha256": "5e08f22d026cd091d4ec7f13e32f4dba269188515d7e98750dd3f6f611484493"
+        },
+        "normal": {
+          "file": "T_NW_WaterRecycler_01_SafetyOrange_Normal.png",
+          "semantic": "tangent-normal-open-gl",
+          "colorSpace": "linear",
+          "channels": "RGB",
+          "bytes": 116904,
+          "sha256": "0ad552987eafd1c6acacc3b26aa3f9ea32ee848fe9a96844f0f5781f0f78a9e0"
+        },
+        "metallicSmoothness": {
+          "file": "T_NW_WaterRecycler_01_SafetyOrange_MetallicSmoothness.png",
+          "semantic": "urp-metallic-smoothness",
+          "colorSpace": "linear",
+          "channels": "R=metallic,A=smoothness",
+          "bytes": 44275,
+          "sha256": "7d3dc7c228dfbee409fe5230d711751c8fd17d186429362980d42c8d7427cb73"
+        },
+        "occlusion": {
+          "file": "T_NW_WaterRecycler_01_SafetyOrange_Occlusion.png",
+          "semantic": "ambient-occlusion",
+          "colorSpace": "linear",
+          "channels": "G=occlusion",
+          "bytes": 11109,
+          "sha256": "9f1475bfc6b27ea6af8ee5d7abb269d1e0f5708a7d5cb87156cb7fb8d2ef7d19"
+        }
+      }
+    }
+  ],
+  "geometry": {
+    "sourcePartCount": 28,
+    "meshObjectCount": 3,
+    "materialSlotCount": 3,
+    "vertexCount": 3928,
+    "polygonCount": 3674,
+    "triangleCount": 7772,
+    "degenerateTriangleCount": 0,
+    "nonDegenerateTriangleCount": 7772,
+    "boundsMeters": {
+      "min": [
+        -0.73,
+        -0.453,
+        0.02
+      ],
+      "max": [
+        0.73,
+        0.442,
+        1.495
+      ],
+      "size": [
+        1.46,
+        0.895,
+        1.475
+      ]
+    },
+    "suggestedBoxCollider": {
+      "center": [
+        0.0,
+        -0.0055,
+        0.7575
+      ],
+      "size": [
+        1.46,
+        0.895,
+        1.475
+      ]
+    },
+    "objects": [
+      "NW_WaterRecycler_01_Painted",
+      "NW_WaterRecycler_01_Hardware",
+      "NW_WaterRecycler_01_Accent"
+    ],
+    "sourceTriangleCount": 7772,
+    "fbxRoundTrip": {
+      "meshObjectCount": 3,
+      "materialSlotCount": 3,
+      "vertexCount": 3928,
+      "polygonCount": 3674,
+      "triangleCount": 7772,
+      "degenerateTriangleCount": 0,
+      "nonDegenerateTriangleCount": 7772
+    }
+  },
+  "acceptance": {
+    "previewRendered": true,
+    "fbxExported": true,
+    "fbxRoundTripVerified": true,
+    "blendSaved": true,
+    "meshMergedByMaterial": true,
+    "textureSetComplete": true,
+    "manualReviewStillRequired": true
+  },
+  "files": [
+    {
+      "name": "NW_WaterRecycler_01.blend",
+      "bytes": 196420,
+      "sha256": "7496aca95305a98c7ce6d777419d55b7805ebf44fb74e9fd3e988a58cf5425dc"
+    },
+    {
+      "name": "NW_WaterRecycler_01.fbx",
+      "bytes": 173564,
+      "sha256": "42fb4545961a375e7286fc2293771012cfb461758d129f8bb7ec91a50cd2035d"
+    },
+    {
+      "name": "NW_WaterRecycler_01_preview.png",
+      "bytes": 513958,
+      "sha256": "5e688dce72ad25a6e6b953d833f4022b0a1adc0813e7bfb1f5013e41052228dd"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_WornTeal_BaseColor.png",
+      "bytes": 32592,
+      "sha256": "c8fbcbdba3bb7943b091301e10726131fb629b5bc4dfeadc2ff98ac4f454033b"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_WornTeal_Normal.png",
+      "bytes": 116222,
+      "sha256": "a97f1e8b22a352cfc8c3c5e752e482b1a44067beaad843d2c18939718d1b2d75"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_WornTeal_MetallicSmoothness.png",
+      "bytes": 42082,
+      "sha256": "27675b3b6d3bc6fae683a4fdef9e095d1915f33840267442f25494737e591742"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_WornTeal_Occlusion.png",
+      "bytes": 10318,
+      "sha256": "d4590fb86f6b78f96106ef988bce86fb01128a0bf4faf1f2efa3cf10c41545dd"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_DarkMetal_BaseColor.png",
+      "bytes": 23012,
+      "sha256": "13cd54c2eb954420bebf1b3384f041d9de6e29dd0188909148d365901d15db24"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_DarkMetal_Normal.png",
+      "bytes": 120797,
+      "sha256": "a76eb86de6b3b81f2c4f5b92cd84f01ff8d4504b5884e5dbc6d305782d2b390a"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_DarkMetal_MetallicSmoothness.png",
+      "bytes": 34713,
+      "sha256": "65869953a31a49ec56242c532a14ac6451210beea920b82722f53943b4522ca3"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_DarkMetal_Occlusion.png",
+      "bytes": 11877,
+      "sha256": "7a0c899f6d53e7523b60a5f3b2f480dda53e2becfd2070b663e63f7167d50089"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_SafetyOrange_BaseColor.png",
+      "bytes": 39209,
+      "sha256": "5e08f22d026cd091d4ec7f13e32f4dba269188515d7e98750dd3f6f611484493"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_SafetyOrange_Normal.png",
+      "bytes": 116904,
+      "sha256": "0ad552987eafd1c6acacc3b26aa3f9ea32ee848fe9a96844f0f5781f0f78a9e0"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_SafetyOrange_MetallicSmoothness.png",
+      "bytes": 44275,
+      "sha256": "7d3dc7c228dfbee409fe5230d711751c8fd17d186429362980d42c8d7427cb73"
+    },
+    {
+      "name": "T_NW_WaterRecycler_01_SafetyOrange_Occlusion.png",
+      "bytes": 11109,
+      "sha256": "9f1475bfc6b27ea6af8ee5d7abb269d1e0f5708a7d5cb87156cb7fb8d2ef7d19"
+    }
+  ]
+}

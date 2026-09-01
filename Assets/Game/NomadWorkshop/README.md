@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**居民 Utility AI + 实时 3D + Humanoid / Blender 静态道具 + URP 3D Renderer 证据 v0.4**，更新于 2026-09-01。它仍是可删除的技术验证，不是 Foundation Prototype、垂直切片或正式美术基线。当前产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**居民 Utility AI + 实时 3D + Humanoid / Blender PBR 静态道具 + URP 3D Renderer 证据 v0.5**，更新于 2026-09-01。它仍是可删除的技术验证，不是 Foundation Prototype、垂直切片或正式美术基线。当前产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -14,13 +14,14 @@
 - 运行时实际实例化共享 Humanoid、禁用 Root Motion、按模拟倍率播放动作；任一资产或状态契约失效时会回退程序假人；
 - 六个灰盒设施都通过 `FacilityInteractionAnchor` 声明站位、朝向、动作语义和可选手部目标，已经覆盖站立取用、跪姿维修、拾取搬运与坐姿休息等三类以上接缝；
 - 内嵌 FBX 材质被显式重映射为项目自有 URP Lit 材质，身体与眼睛法线贴图按 Normal Map 导入；
-- Blender 5.2 的版本化 `bpy` 脚本可以生成一个 14 Mesh 的废土储物箱，并输出 `.blend`、FBX、预览和 manifest；
-- Unity Editor 工具会核对来源哈希，配置静态 ModelImporter，把 manifest 的 Base Color / Metallic / Roughness 翻译为三个外部 URP/Lit 材质并显式 Remap，再生成 Root / Visual Identity 的 Prefab、一个 Bounds BoxCollider、预览场景和审计报告；
-- 静态 FBX 的坐标轴已经实际烘焙并验证直立；784 个 Blender 源顶点导入后因硬边、法线与材质边界拆分为 3024 个 Runtime Vertex，三角形仍为 1512。
+- Blender 5.2 的两个版本化 `bpy` Harness 已经生成 14 Mesh 的废土储物箱，以及从 28 个来源部件按材质合并为 3 Mesh 的水循环设施；两者都输出 `.blend`、FBX、预览和 manifest；
+- 第二个 Harness 还会确定性生成三个材质族的 Base Color、OpenGL Normal、URP Metallic Smoothness 与 Occlusion，共 12 张 512×512 PBR 贴图，并在导出后重新导入 FBX 检查几何；
+- Unity Editor 工具核对 FBX、生成脚本与全部贴图哈希，按色彩空间和通道语义配置 Importer，创建三个外部 URP/Lit 材质并显式 Remap，再生成 Root / Visual Identity 的 Prefab、一个 Bounds BoxCollider、预览场景和审计报告；
+- 两个静态 FBX 的坐标轴均已实际烘焙并验证直立。储物箱是 784 Blender Vertex / 3024 Runtime Vertex / 1512 Triangle；水循环设施是 3928 Blender Vertex / 8083 Runtime Vertex / 7772 Triangle，来源、FBX 回读与 Unity Triangle 一致且没有退化三角形。
 - 项目默认 `Renderer2D` 保持为 Universal RP Asset 的 index 0；游戏 Spike 从 URP 官方模板生成唯一的次级 `UniversalRendererData`（index 1），只有隔离预览相机显式选择它；
-- 固定 3D Game View 已实际看到箱体体积、硬阴影、金属高光和青 / 橙 / 黑材质区分，没有粉材质、黑屏或错误姿态；自动审计仍把最终审美结论留给人工。
+- 固定 3D Game View 已实际看到两个道具的体积、阴影、金属高光和青 / 橙 / 黑材质层级；水循环设施的划痕、细微法线与裸露金属响应可读，没有粉材质、黑屏或错误姿态。自动审计仍把最终审美结论留给人工。
 
-这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。3D Renderer 只在一个可删除的棚拍场景中闭环了首个静态道具；正式车辆镜头、后处理、Shader / VFX、目标平台性能和统一艺术指导仍未成立。
+这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。3D Renderer 目前只在可删除的棚拍场景中闭环两个静态道具；程序磨损仍缺少基于 Mesh 边缘、遮挡、重力与用途的细节，正式车辆镜头、后处理、Shader / VFX、目标平台性能和统一艺术指导仍未成立。
 
 ## 目录与边界
 
@@ -55,6 +56,8 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/配置并审计 Humanoid 资产` 
 
 Editor 菜单 `Assets/SSFramework/游牧工坊/Blender Import Spike/配置并审计储物箱` 会重放 FBX 哈希校验、Importer、URP 材质 Remap、Prefab、Collider、预览场景和最终审计。重建步骤、已验证数值和删除边界见 [`Spikes/BlenderImport/NW_StorageCrate_01/README.md`](Spikes/BlenderImport/NW_StorageCrate_01/README.md)。完整原理见 [`docs/blender-art-pipeline.md`](../../../docs/blender-art-pipeline.md)。
 
+Editor 菜单 `Assets/SSFramework/游牧工坊/Blender Import Spike/配置并审计纹理化水循环设施` 会重放 12 张 PBR 贴图的哈希、色彩空间和通道契约，配置外部 URP/Lit 材质、3 Mesh Prefab、Collider 与独立 3D 预览。重建和验收边界见 [`Spikes/BlenderImport/NW_WaterRecycler_01/README.md`](Spikes/BlenderImport/NW_WaterRecycler_01/README.md)。
+
 Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3D Renderer` 会从当前 URP 包的官方模板幂等生成次级 3D Renderer、材质和隔离预览场景。它拒绝覆盖未知默认 Renderer，审计默认 index 与相机 index，并把报告写到被忽略的 `ArtPipelineOutput/`。重建与删除边界见 [`Spikes/Rendering/Urp3D/README.md`](Spikes/Rendering/Urp3D/README.md)。
 
 ## 第三方资产边界
@@ -65,13 +68,14 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 上游免费包的 Roughness 贴图未进入仓库，因为当前 URP Lit 材质没有可靠的通道打包流程，不为“资产齐全”保留未使用文件；
 - 许可证、官方下载页、upload id、文件大小与 SHA-256 分别记录在两个 `SOURCE.md` 中；
 - 储物箱是项目脚本生成的自有技术探针，不依赖第三方模型；可重建 `.blend` 和批量输出被忽略，只提交一个小型 FBX + manifest 作为跨机器 Unity 导入证据。
+- 水循环设施的 Mesh 和 12 张贴图同样由项目脚本确定性生成；它证明 PBR 契约和三材质合并，不代表程序噪声已达到正式手绘或 Mesh-specific 材质质量。
 
 ## 当前验证证据
 
 - 编译：0 error / 0 warning；
-- EditMode：`Game.NomadWorkshop.Simulation.Tests` + `Game.NomadWorkshop.Editor.Tests`，18/18；其中 Blender 静态道具导入与 URP 3D Renderer 契约各 2 项；
+- EditMode：`Game.NomadWorkshop.Simulation.Tests` + `Game.NomadWorkshop.Editor.Tests`，20/20；其中储物箱导入、纹理化水循环设施和 URP 3D Renderer 契约各 2 项；
 - PlayMode：`Game.NomadWorkshop.PlayMode.Tests`，2/2；既验证未配置资产时的假人回退，也实际实例化模型并依次进入五个 Animator 状态；
-- Game View：实际检查过普通模拟、Idle 比例、紧急维修姿态、Blender 导入预览和独立 URP 3D 预览；截图属于临时证据，位于被 Git 忽略的 `Screenshots/`。默认 Renderer2D 下的 Import Preview 仍保持 `inconclusive`，次级 Universal Renderer 的固定镜头已人工确认体积、硬阴影、材质分区和高光成立。
+- Game View：实际检查过普通模拟、Idle 比例、紧急维修姿态、两个 Blender 导入预览和独立 URP 3D 预览；截图属于临时证据，位于被 Git 忽略的 `Screenshots/`。默认 Renderer2D 下的 Import Preview 仍保持 `inconclusive`，次级 Universal Renderer 的固定镜头已人工确认体积、阴影、材质分区、法线与高光成立。
 
 测试重点覆盖危险口渴压过休闲、多需求行动按实际压力得分、同 Seed 重现、不同 Seed 只在短名单内变化、重复设施不放大意图概率、无正效用时安全等待、冲突预留不泄漏，以及 Avatar / Clip / 材质 / Controller / 锚点的导入契约。
 
@@ -83,6 +87,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - Animation Rigging、手部 IK、工具挂点实际消费与专用交互修正；
 - 正式 NavMesh / 网格寻路、建造、库存、保存读取和 Framework Context 接线；
 - 正式 UI、艺术指导、音效、性能采样、Player Build 与玩家体验验证；
+- 六视图 Contact Sheet、UV Checker、Texel Density / 非流形门禁，以及基于 Curvature / AO / Position 的 Mesh-specific 贴图；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步不再扩张动作数量或继续装饰棚拍。用第二种 Blender 几何尝试把当前 14 个 Renderer 按材质合并到约 3 个，并比较 Draw Call、Runtime Vertex、遮挡、碰撞与可编辑性；第二轮仍能稳定复现后，才决定是否形成 `blender-asset-pipeline` Project Skill。随后以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype；手部 IK 只在真实设施接触误差证明有必要后加入。
+下一步不再扩张动作数量或继续装饰棚拍。先补 Blender 六视图 Contact Sheet、UV / 非流形 / Texel Density 证据，再用同一 Asset Brief 对本地 TripoSR、少量云服务和一个 Mesh-specific PBR 工具做受控比较；胜负按“生成 + 清理 + Unity 验收”的总成本判断。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。第一个外部 AI Mesh 走通前不急于固化 `blender-asset-pipeline` Project Skill，手部 IK 也只在真实接触误差证明有必要后加入。
