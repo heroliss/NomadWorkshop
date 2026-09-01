@@ -2,7 +2,8 @@
     "name": "Game.NomadWorkshop.Editor",
     "rootNamespace": "Game.NomadWorkshop.Editor",
     "references": [
-        "Game.NomadWorkshop"
+        "Game.NomadWorkshop",
+        "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [
         "Editor"

@@ -25,4 +25,4 @@
 | Work | `Armature\|Fixing_Kneeling` | `Resident_Work.anim` | 否 |
 | Rest | `Armature\|Sitting_Idle_Loop` | `Resident_Rest.anim` | 是 |
 
-完整 23.75 MB 动作源和下载压缩包不进入 Git。需要重新抽取时，从官方 Itch 页面下载 Standard 包，把无 Root Motion FBX 临时导入到 `Assets/Game/NomadWorkshop/ThirdParty/QuaterniusUniversalAnimationLibrary/Source/UAL1_Standard.fbx`，再执行菜单 `SSFramework/游牧工坊/配置并审计 Humanoid 资产`；抽取完成后应再次移除 `Source/`。
+完整 23.75 MB 动作源和下载压缩包不进入 Git。需要重新抽取时，从官方 Itch 页面下载 Standard 包，把无 Root Motion FBX 临时导入到 `Assets/Game/NomadWorkshop/ThirdParty/QuaterniusUniversalAnimationLibrary/Source/UAL1_Standard.fbx`，再执行菜单 `Assets/SSFramework/游牧工坊/配置并审计 Humanoid 资产`；抽取完成后应再次移除 `Source/`。

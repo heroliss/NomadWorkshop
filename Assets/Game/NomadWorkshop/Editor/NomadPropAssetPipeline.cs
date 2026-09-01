@@ -39,7 +39,7 @@ namespace Game.NomadWorkshop.Editor
         /// 显式重放静态道具的 Importer、URP 材质映射、根级 Collider、Prefab 与预览场景生成，
         /// 并把本轮审计证据写到已忽略的 ArtPipelineOutput。
         /// </summary>
-        [MenuItem("SSFramework/游牧工坊/Blender Import Spike/配置并审计储物箱")]
+        [MenuItem("Assets/SSFramework/游牧工坊/Blender Import Spike/配置并审计储物箱")]
         public static void ConfigureAndReport()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

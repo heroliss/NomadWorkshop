@@ -45,7 +45,7 @@ namespace Game.NomadWorkshop.Editor
         };
 
         /// <summary>按当前 Spike 契约重设 ModelImporter，并在重导入后输出 Avatar 与动作清单。</summary>
-        [MenuItem("SSFramework/游牧工坊/配置并审计 Humanoid 资产")]
+        [MenuItem("Assets/SSFramework/游牧工坊/配置并审计 Humanoid 资产")]
         public static void ConfigureAndReport()
         {
             HumanoidAssetAudit characterAudit = ApplyCharacterImportPolicy(CharacterModelPath);

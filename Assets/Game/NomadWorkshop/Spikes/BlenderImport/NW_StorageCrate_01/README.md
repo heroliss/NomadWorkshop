@@ -13,7 +13,7 @@
    当前入口以 PowerShell 7 验证；不要用可能错误解码 UTF-8 无 BOM 脚本的 Windows PowerShell 5.1。
 
 2. 从同一次 `ArtPipelineOutput/BlenderSmoke/NW_StorageCrate_01/` 输出中，将 FBX 和 `manifest.json` 导入本目录；manifest 在 Unity 中命名为 `NW_StorageCrate_01.manifest.json`。不要混用不同 Smoke 运行的 FBX 与 manifest。
-3. 在 Unity 执行 `SSFramework/游牧工坊/Blender Import Spike/配置并审计储物箱`。
+3. 在 Unity 执行 `Assets/SSFramework/游牧工坊/Blender Import Spike/配置并审计储物箱`。
 4. 运行 EditMode fixture `NomadPropAssetPipelineTests`。
 
 菜单会重建或更新 `Materials/`、`Prefabs/` 和 `Preview/`，并把审计报告写入被 Git 忽略的 `ArtPipelineOutput/UnityImportSpike/NW_StorageCrate_01/report.json`。
@@ -34,7 +34,7 @@ Source Vertex 与 Runtime Vertex 不是同一个指标。硬边、法线、UV �
 
 ## 当前视觉边界
 
-项目默认 Universal RP Asset 目前只有 `Renderer2DData`。Game View 已人工确认模型直立、比例合理、轮廓和三种基础颜色可见，但不能可靠验证 Metallic、Roughness、法线、3D 阴影和灯光。审计因此把 rendering verdict 保持为 `inconclusive`。下一步应在游戏专属 Universal Renderer 3D Spike 中补证，不应为了本探针静默替换全局 Renderer。
+项目默认 Universal RP Renderer 仍是 `Renderer2DData`。本 Import Preview 已人工确认模型直立、比例合理、轮廓和三种基础颜色可见，但它不负责验证 Metallic、Roughness、法线、3D 阴影和灯光，所以 rendering verdict 继续保持 `inconclusive`。独立的 [`Rendering/Urp3D`](../../Rendering/Urp3D/README.md) 已通过相机显式选择次级 Universal Renderer 补上首轮 PBR 显示证据，没有替换全局默认值；两个场景的结论不能混用。
 
 ## 删除边界
 
