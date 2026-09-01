@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**居民 Utility AI + 实时 3D + Humanoid 资产管线证据 v0.2**，更新于 2026-09-01。它仍是可删除的技术验证，不是 Foundation Prototype、垂直切片或正式美术基线。当前产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**居民 Utility AI + 实时 3D + Humanoid / Blender 静态道具资产管线证据 v0.3**，更新于 2026-09-01。它仍是可删除的技术验证，不是 Foundation Prototype、垂直切片或正式美术基线。当前产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -13,9 +13,12 @@
 - Universal Animation Library 免费标准版的无 Root Motion FBX 导入出 43 个 30 FPS Human Motion；项目只抽取 Idle、Walk、Pickup、Fixing、Sitting 五个 `.anim`，并用稳定语义状态隔离上游 Clip 名；
 - 运行时实际实例化共享 Humanoid、禁用 Root Motion、按模拟倍率播放动作；任一资产或状态契约失效时会回退程序假人；
 - 六个灰盒设施都通过 `FacilityInteractionAnchor` 声明站位、朝向、动作语义和可选手部目标，已经覆盖站立取用、跪姿维修、拾取搬运与坐姿休息等三类以上接缝；
-- 内嵌 FBX 材质被显式重映射为项目自有 URP Lit 材质，身体与眼睛法线贴图按 Normal Map 导入。
+- 内嵌 FBX 材质被显式重映射为项目自有 URP Lit 材质，身体与眼睛法线贴图按 Normal Map 导入；
+- Blender 5.2 的版本化 `bpy` 脚本可以生成一个 14 Mesh 的废土储物箱，并输出 `.blend`、FBX、预览和 manifest；
+- Unity Editor 工具会核对来源哈希，配置静态 ModelImporter，把 manifest 的 Base Color / Metallic / Roughness 翻译为三个外部 URP/Lit 材质并显式 Remap，再生成 Root / Visual Identity 的 Prefab、一个 Bounds BoxCollider、预览场景和审计报告；
+- 静态 FBX 的坐标轴已经实际烘焙并验证直立；784 个 Blender 源顶点导入后因硬边、法线与材质边界拆分为 3024 个 Runtime Vertex，三角形仍为 1512。
 
-这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。
+这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。当前默认 Renderer 仍为 2D，静态道具截图只能证明轮廓、方向、比例和基础颜色，不能证明 PBR 灯光已经成立。
 
 ## 目录与边界
 
@@ -28,6 +31,7 @@ NomadWorkshop/
 ├── Materials/        # 项目自有 URP Lit 材质，不直接修改第三方内嵌材质
 ├── ThirdParty/       # 最小选入资产、原始许可证、来源、下载哈希与重建说明
 ├── Scenes/           # 只经 Unity Editor 保存的 Spike 场景
+├── Spikes/           # 可删除的跨工具证据，不是 Runtime Content
 └── Tests/
     ├── EditMode/     # 决策规则、Avatar、动作、材质、Controller 与锚点契约
     └── PlayMode/     # 回退路径和真实 Humanoid 五状态实例化
@@ -47,20 +51,23 @@ NomadWorkshop/
 
 Editor 菜单 `SSFramework/游牧工坊/配置并审计 Humanoid 资产` 会重放角色导入、贴图类型、材质映射与最终产物审计。完整动作源默认不在仓库；重新抽取步骤与上游哈希见 [`ThirdParty/QuaterniusUniversalAnimationLibrary/SOURCE.md`](ThirdParty/QuaterniusUniversalAnimationLibrary/SOURCE.md)。
 
+Editor 菜单 `SSFramework/游牧工坊/Blender Import Spike/配置并审计储物箱` 会重放 FBX 哈希校验、Importer、URP 材质 Remap、Prefab、Collider、预览场景和最终审计。重建步骤、已验证数值和删除边界见 [`Spikes/BlenderImport/NW_StorageCrate_01/README.md`](Spikes/BlenderImport/NW_StorageCrate_01/README.md)。完整原理见 [`docs/blender-art-pipeline.md`](../../../docs/blender-art-pipeline.md)。
+
 ## 第三方资产边界
 
 - 角色与动作均来自 Quaternius 官方免费标准包，许可证为 CC0 1.0；
 - 仓库保留一个约 0.83 MB 基准角色、实际使用贴图和五个抽取动作，不保留 129 MB 角色压缩包或 23.75 MB 完整动作源 FBX；
 - 当前 Base Character 是穿基础内衣的中性身体基体，只验证 Avatar、比例、材质和重定向，**不是废土服装或正式角色美术**；
 - 上游免费包的 Roughness 贴图未进入仓库，因为当前 URP Lit 材质没有可靠的通道打包流程，不为“资产齐全”保留未使用文件；
-- 许可证、官方下载页、upload id、文件大小与 SHA-256 分别记录在两个 `SOURCE.md` 中。
+- 许可证、官方下载页、upload id、文件大小与 SHA-256 分别记录在两个 `SOURCE.md` 中；
+- 储物箱是项目脚本生成的自有技术探针，不依赖第三方模型；可重建 `.blend` 和批量输出被忽略，只提交一个小型 FBX + manifest 作为跨机器 Unity 导入证据。
 
 ## 当前验证证据
 
 - 编译：0 error / 0 warning；
-- EditMode：`Game.NomadWorkshop.Simulation.Tests` + `Game.NomadWorkshop.Editor.Tests`，14/14；
+- EditMode：`Game.NomadWorkshop.Simulation.Tests` + `Game.NomadWorkshop.Editor.Tests`，16/16；其中 Blender 静态道具导入契约新增 2 项；
 - PlayMode：`Game.NomadWorkshop.PlayMode.Tests`，2/2；既验证未配置资产时的假人回退，也实际实例化模型并依次进入五个 Animator 状态；
-- Game View：实际检查过普通模拟、Idle 比例与紧急维修姿态；截图属于临时证据，位于被 Git 忽略的 `Screenshots/`。
+- Game View：实际检查过普通模拟、Idle 比例、紧急维修姿态和 Blender 储物箱导入预览；截图属于临时证据，位于被 Git 忽略的 `Screenshots/`。储物箱轮廓、直立方向、比例和颜色成立，PBR 光照因当前 `Renderer2DData` 明确保持 `inconclusive`。
 
 测试重点覆盖危险口渴压过休闲、多需求行动按实际压力得分、同 Seed 重现、不同 Seed 只在短名单内变化、重复设施不放大意图概率、无正效用时安全等待、冲突预留不泄漏，以及 Avatar / Clip / 材质 / Controller / 锚点的导入契约。
 
@@ -74,4 +81,4 @@ Editor 菜单 `SSFramework/游牧工坊/配置并审计 Humanoid 资产` 会重�
 - 正式 UI、艺术指导、音效、性能采样、Player Build 与玩家体验验证；
 - 项目默认 Renderer 仍是 `Renderer2D`：Mesh 与 URP Lit 材质能显示，但正式 3D 光照、阴影、后处理和性能预算尚未成立。
 
-下一步不再扩张动作数量。优先用游戏专属 Universal Renderer 3D 配置和一套兼容 Humanoid 的废土服装验证正式视觉方向，再进入三名居民的任务竞争、预留与长期运行；手部 IK 只在真实设施接触误差证明有必要后加入。
+下一步不再扩张动作数量。先建立游戏专属 Universal Renderer 3D 配置，验证静态道具的灯光、阴影和 PBR 参数；随后用第二种 Blender 几何尝试把当前 14 个 Renderer 按材质合并到约 3 个，并比较 Draw Call、Runtime Vertex 与可编辑性。视觉基础成立后，再以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype；手部 IK 只在真实设施接触误差证明有必要后加入。

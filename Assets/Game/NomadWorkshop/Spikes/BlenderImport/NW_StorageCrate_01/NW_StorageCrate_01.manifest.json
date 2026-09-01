@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "harnessVersion": "0.2.0",
+  "status": "passed",
+  "asset": {
+    "id": "NW_StorageCrate_01",
+    "purpose": "Versioned Blender-to-FBX production-pipeline smoke probe",
+    "sourceKind": "procedural-bpy",
+    "intendedUse": "Pipeline validation only; not approved production art"
+  },
+  "toolchain": {
+    "blenderVersion": "5.2.1 LTS",
+    "blenderVersionCycle": "release",
+    "pythonVersion": "3.13.13",
+    "generatedAtUtc": "2026-09-01T10:11:43.263274+00:00",
+    "sourceScriptSha256": "595df8f701b85d76698b531d42cd7116d400b47ee0a6b5f6b5540d352d2178cb"
+  },
+  "coordinateContract": {
+    "authoringUnits": "meters",
+    "blenderUpAxis": "+Z",
+    "fbxForwardAxis": "-Z",
+    "fbxUpAxis": "+Y",
+    "fbxSpaceTransformBaked": true,
+    "rootTransform": "identity"
+  },
+  "materials": [
+    {
+      "name": "M_WornTeal",
+      "baseColorLinear": [
+        0.075,
+        0.245,
+        0.265,
+        1.0
+      ],
+      "metallic": 0.35,
+      "roughness": 0.48
+    },
+    {
+      "name": "M_DarkMetal",
+      "baseColorLinear": [
+        0.045,
+        0.055,
+        0.06,
+        1.0
+      ],
+      "metallic": 0.72,
+      "roughness": 0.32
+    },
+    {
+      "name": "M_SafetyOrange",
+      "baseColorLinear": [
+        0.78,
+        0.19,
+        0.035,
+        1.0
+      ],
+      "metallic": 0.22,
+      "roughness": 0.42
+    }
+  ],
+  "geometry": {
+    "meshObjectCount": 14,
+    "vertexCount": 784,
+    "polygonCount": 756,
+    "triangleCount": 1512,
+    "boundsMeters": {
+      "min": [
+        -0.6175,
+        -0.4825,
+        0.02
+      ],
+      "max": [
+        0.6175,
+        0.4755,
+        0.965
+      ],
+      "size": [
+        1.235,
+        0.958,
+        0.945
+      ]
+    },
+    "suggestedBoxCollider": {
+      "center": [
+        0.0,
+        -0.0035,
+        0.4925
+      ],
+      "size": [
+        1.235,
+        0.958,
+        0.945
+      ]
+    },
+    "objects": [
+      "NW_StorageCrate_01_Base",
+      "NW_StorageCrate_01_Lid",
+      "NW_StorageCrate_01_FrontPanel",
+      "NW_StorageCrate_01_BackPanel",
+      "NW_StorageCrate_01_LeftPanel",
+      "NW_StorageCrate_01_RightPanel",
+      "NW_StorageCrate_01_Post_LF",
+      "NW_StorageCrate_01_Post_LB",
+      "NW_StorageCrate_01_Post_RF",
+      "NW_StorageCrate_01_Post_RB",
+      "NW_StorageCrate_01_FrontBrace",
+      "NW_StorageCrate_01_BackBrace",
+      "NW_StorageCrate_01_Label",
+      "NW_StorageCrate_01_Latch"
+    ]
+  },
+  "acceptance": {
+    "previewRendered": true,
+    "fbxExported": true,
+    "blendSaved": true,
+    "manualReviewStillRequired": true
+  },
+  "files": [
+    {
+      "name": "NW_StorageCrate_01.blend",
+      "bytes": 108117,
+      "sha256": "5d047f8a4f2e894ff1ed66630ba1cc98b0808cce6653b0063c5f4a476a7dc6e5"
+    },
+    {
+      "name": "NW_StorageCrate_01.fbx",
+      "bytes": 80444,
+      "sha256": "3bdf561c0bbbf8f8673c1aefcd7fdddacae2d7ea66263a6e54d8af80c37f3c89"
+    },
+    {
+      "name": "NW_StorageCrate_01_preview.png",
+      "bytes": 294624,
+      "sha256": "cc55be6649f4b56d200df8c0587608748fcc000a3b3fe8f42e56ce6ee52e6d7a"
+    }
+  ]
+}
