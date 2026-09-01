@@ -27,6 +27,14 @@ ArtPipelineOutput/BlenderTexturedProp/NW_WaterRecycler_01/
 
 同一次运行生成 `.blend`、FBX、Blender Hero 预览、六视图 Contact Sheet、12 张贴图和 `manifest.json`。若要替换仓库中的跨机器证据，必须从同一次通过的运行复制 FBX、manifest、Contact Sheet 和全部贴图，不能混用不同轮次的文件。
 
+若要生成供外部 Image-to-3D 盲测使用的透明背景、中性光照单图，再运行：
+
+```powershell
+pwsh -File Tools/ArtPipeline/Blender/run-blender-ai-mesh-input.ps1
+```
+
+该入口只读取上述 `.blend`，输出到被忽略的 `ArtPipelineOutput/AIMeshInput/`，不替换这里的 Unity 跨机器证据。输入文件和来源 Hash 由独立 manifest 记录；完整实验边界见 [`docs/nomad-workshop-ai-mesh-blind-test.md`](../../../../../../docs/nomad-workshop-ai-mesh-blind-test.md)。
+
 ## 在 Unity 中重放
 
 执行菜单：

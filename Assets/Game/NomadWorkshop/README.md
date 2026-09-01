@@ -15,6 +15,7 @@
 - 六个灰盒设施都通过 `FacilityInteractionAnchor` 声明站位、朝向、动作语义和可选手部目标，已经覆盖站立取用、跪姿维修、拾取搬运与坐姿休息等三类以上接缝；
 - 内嵌 FBX 材质被显式重映射为项目自有 URP Lit 材质，身体与眼睛法线贴图按 Normal Map 导入；
 - Blender 5.2 的两个版本化 `bpy` Harness 已经生成 14 Mesh 的废土储物箱，以及从 28 个来源部件按材质合并为 3 Mesh 的水循环设施；两者都输出 `.blend`、FBX、预览和 manifest；
+- 独立 AI Mesh 输入入口会读取已验证 `.blend`，隐藏棚拍地面和有色灯光，输出透明背景、中性三点光的 640×640 RGBA 单图及来源 / 产物 Hash；它不修改源资产，也不把外部 Provider 接入冒充为已经验证；
 - 第二个 Harness 还会确定性生成三个材质族的 Base Color、OpenGL Normal、URP Metallic Smoothness 与 Occlusion，共 12 张 512×512 PBR 贴图，并在导出后重新导入 FBX 检查几何、封闭拓扑与 UV；
 - 同一轮输出包含 Hero / Front / Side / Top / Wireframe / UV Checker 六视图 Contact Sheet；manifest 固定尺寸、布局、哈希和 `manual_review_required` 边界，自动化不能把证据存在误报为美术通过；
 - Unity Editor 工具核对 FBX、生成脚本、Contact Sheet 与全部贴图哈希，按用途配置证据图和 PBR Texture Importer，创建三个外部 URP/Lit 材质并显式 Remap，再生成 Root / Visual Identity 的 Prefab、一个 Bounds BoxCollider、预览场景和审计报告；
@@ -91,4 +92,4 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步不再扩张动作数量或继续装饰棚拍。按[首轮 AI Mesh 盲测协议](../../../docs/nomad-workshop-ai-mesh-blind-test.md)，用同一 Asset Brief 对本地 TripoSR、Stable Fast 3D 和最多一个云服务做受控比较，让所有候选强制经过现有 Contact Sheet、拓扑 / UV、权利和 Unity 导入 Harness；胜负按“生成 + 清理 + Unity 验收”的总成本判断。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，建立首份平台性能 / 纹理预算，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。第一个外部 AI Mesh 走通前不急于固化 `blender-asset-pipeline` Project Skill，手部 IK 也只在真实接触误差证明有必要后加入。
+下一步不再扩张动作数量或继续装饰棚拍。按[首轮 AI Mesh 盲测协议](../../../docs/nomad-workshop-ai-mesh-blind-test.md)，用同一 Asset Brief 让 Rodin Gen-2.5 挑战当前确定性 `bpy` 基准，让候选强制经过现有 Contact Sheet、拓扑 / UV、权利和 Unity 导入 Harness；TripoSR 与 Stable Fast 3D 只在自托管价值足以覆盖 Windows 工具链成本时补测，胜负按“生成 + 清理 + Unity 验收”的总成本判断。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，建立首份平台性能 / 纹理预算，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。第一个外部 AI Mesh 走通前不急于固化 `blender-asset-pipeline` Project Skill，手部 IK 也只在真实接触误差证明有必要后加入。
