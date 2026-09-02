@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 1,
+  "harnessVersion": "0.1.0",
+  "status": "inspected",
+  "asset": {
+    "id": "NW_FieldKitchen_01",
+    "sourceObject": "model",
+    "sourceKind": "external-ai-mesh-candidate",
+    "approval": "candidate-only",
+    "gameReady": false,
+    "manualArtReviewRequired": true
+  },
+  "source": {
+    "blendPath": "D:\\SSFramework\\ArtPipelineOutput\\AIMeshExperiments\\NW_FieldKitchen_01\\rodin-image-to-3d-20260902-01\\NW_FieldKitchen_01_RodinGen25.blend",
+    "bytes": 12621120,
+    "sha256": "83e438bcb1ada0e05066f46f980b7bf560234b1e83517f5d860ae5b0301acf32"
+  },
+  "toolchain": {
+    "blenderVersion": "5.2.1 LTS",
+    "pythonVersion": "3.13.13",
+    "generatedAtUtc": "2026-09-02T05:15:14.351577+00:00",
+    "sourceScriptSha256": "4984a6437714a996f196dace740863c755aebe46fa05b5eccf668f037c2b3059"
+  },
+  "coordinateContract": {
+    "authoringUnits": "Blender scene units; dimensions reported without automatic normalization",
+    "blenderUpAxis": "+Z",
+    "fbxForwardAxis": "-Z",
+    "fbxUpAxis": "+Y",
+    "glbUpAxis": "+Y"
+  },
+  "geometry": {
+    "meshObjectCount": 1,
+    "vertexCount": 18924,
+    "triangleCount": 37908,
+    "worldBounds": {
+      "min": [
+        -0.944062,
+        -0.369881,
+        0.0
+      ],
+      "max": [
+        0.912518,
+        0.375177,
+        1.585033
+      ],
+      "size": [
+        1.85658,
+        0.745058,
+        1.585033
+      ],
+      "center": [
+        -0.015772,
+        0.002648,
+        0.792516
+      ]
+    },
+    "objects": [
+      {
+        "name": "model",
+        "dataName": "model",
+        "vertexCount": 18924,
+        "edgeCount": 37922,
+        "polygonCount": 18968,
+        "triangleCount": 37908,
+        "degenerateTriangleCount": 0,
+        "duplicateFaceCount": 5,
+        "meshValidationWouldChange": true,
+        "validatedPolygonCount": 18963,
+        "validatedTriangleCount": 37903,
+        "quadCount": 18940,
+        "ngonCount": 0,
+        "connectedComponentCount": 6,
+        "topology": {
+          "looseVertexCount": 0,
+          "looseEdgeCount": 0,
+          "boundaryEdgeCount": 0,
+          "nonManifoldEdgeCount": 0
+        },
+        "uv": {
+          "layers": [
+            "st"
+          ],
+          "activeLayer": "st",
+          "bounds": {
+            "min": [
+              0.001,
+              0.001
+            ],
+            "max": [
+              0.999,
+              0.999
+            ]
+          },
+          "areaSum": 0.653658,
+          "degenerateTriangleCount": 0,
+          "outOfUnitRangeLoopCount": 0
+        },
+        "surfaceAreaSquareMetersAtCurrentScale": 11.40085,
+        "materialSlots": [
+          "model"
+        ],
+        "modifiers": [],
+        "transform": {
+          "location": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotationEulerRadians": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    ]
+  },
+  "sanitization": {
+    "policy": "Blender Mesh.validate on copied data blocks; source .blend is never overwritten",
+    "objects": [
+      {
+        "object": "model",
+        "blenderValidationApplied": true,
+        "sourcePolygonCount": 18968,
+        "workingPolygonCount": 18963,
+        "removedPolygonCount": 5,
+        "sourceTriangleCount": 37908,
+        "workingTriangleCount": 37903,
+        "removedTriangleCount": 5
+      }
+    ]
+  },
+  "materials": [
+    {
+      "name": "model",
+      "useNodes": true,
+      "blendMethod": "DITHERED",
+      "principledInputs": {
+        "Base Color": {
+          "linked": true,
+          "images": [
+            "2f7a2ccadfd1443dad2247407c6f2b20_texture_diffuse.png"
+          ]
+        },
+        "Metallic": {
+          "linked": true,
+          "images": [
+            "493ac49b6cb74151940828b072651d52_texture_metallic.png"
+          ]
+        },
+        "Roughness": {
+          "linked": true,
+          "images": [
+            "8a6b9b3865a04f51a40c6d6191d4b776_texture_roughness.png"
+          ]
+        },
+        "Normal": {
+          "linked": true,
+          "images": [
+            "6a0ba952c13948feb823caf590944212_texture_normal.png"
+          ]
+        },
+        "Alpha": {
+          "linked": false,
+          "images": []
+        },
+        "Emission Color": {
+          "linked": false,
+          "images": []
+        }
+      },
+      "nodes": [
+        "BSDF_PRINCIPLED",
+        "OUTPUT_MATERIAL",
+        "TEX_IMAGE",
+        "UVMAP",
+        "SEPARATE_COLOR",
+        "TEX_IMAGE",
+        "SEPARATE_COLOR",
+        "TEX_IMAGE",
+        "NORMAL_MAP",
+        "TEX_IMAGE"
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "2f7a2ccadfd1443dad2247407c6f2b20_texture_diffuse.png",
+      "usages": [
+        "Base Color"
+      ],
+      "originalFilepath": "//textures\\2f7a2ccadfd1443dad2247407c6f2b20_texture_diffuse.png",
+      "resolvedOriginalPath": "D:\\SSFramework\\ArtPipelineOutput\\AIMeshExperiments\\NW_FieldKitchen_01\\rodin-image-to-3d-20260902-01\\textures\\2f7a2ccadfd1443dad2247407c6f2b20_texture_diffuse.png",
+      "originalExists": true,
+      "packedInSource": true,
+      "archiveSource": "external-file",
+      "archivedPath": "textures/2f7a2ccadfd1443dad2247407c6f2b20_texture_diffuse.png",
+      "archived": true,
+      "width": 2048,
+      "height": 2048,
+      "channels": 4,
+      "colorspace": "sRGB",
+      "alphaMode": "STRAIGHT",
+      "fileFormat": "PNG",
+      "bytes": 4286955,
+      "sha256": "eb6c415cf3ab487195c5d562cdc94fd60fb8ea72ca10201f0c3161d49e01e6a3"
+    },
+    {
+      "name": "493ac49b6cb74151940828b072651d52_texture_metallic.png",
+      "usages": [
+        "Metallic"
+      ],
+      "originalFilepath": "//textures\\493ac49b6cb74151940828b072651d52_texture_metallic.png",
+      "resolvedOriginalPath": "D:\\SSFramework\\ArtPipelineOutput\\AIMeshExperiments\\NW_FieldKitchen_01\\rodin-image-to-3d-20260902-01\\textures\\493ac49b6cb74151940828b072651d52_texture_metallic.png",
+      "originalExists": true,
+      "packedInSource": true,
+      "archiveSource": "external-file",
+      "archivedPath": "textures/493ac49b6cb74151940828b072651d52_texture_metallic.png",
+      "archived": true,
+      "width": 2048,
+      "height": 2048,
+      "channels": 4,
+      "colorspace": "Non-Color",
+      "alphaMode": "STRAIGHT",
+      "fileFormat": "PNG",
+      "bytes": 1401621,
+      "sha256": "f62fd35bfa1ff7f68e508eb800c7234446100ff2a5c2eecb10bad91856b04e9c"
+    },
+    {
+      "name": "6a0ba952c13948feb823caf590944212_texture_normal.png",
+      "usages": [
+        "Normal"
+      ],
+      "originalFilepath": "//textures\\6a0ba952c13948feb823caf590944212_texture_normal.png",
+      "resolvedOriginalPath": "D:\\SSFramework\\ArtPipelineOutput\\AIMeshExperiments\\NW_FieldKitchen_01\\rodin-image-to-3d-20260902-01\\textures\\6a0ba952c13948feb823caf590944212_texture_normal.png",
+      "originalExists": true,
+      "packedInSource": true,
+      "archiveSource": "external-file",
+      "archivedPath": "textures/6a0ba952c13948feb823caf590944212_texture_normal.png",
+      "archived": true,
+      "width": 2048,
+      "height": 2048,
+      "channels": 4,
+      "colorspace": "Non-Color",
+      "alphaMode": "STRAIGHT",
+      "fileFormat": "PNG",
+      "bytes": 4186556,
+      "sha256": "56de110a0ced7753adc16fd911d13bf0b0d0181d793cec52f989b707f2585e1a"
+    },
+    {
+      "name": "8a6b9b3865a04f51a40c6d6191d4b776_texture_roughness.png",
+      "usages": [
+        "Roughness"
+      ],
+      "originalFilepath": "//textures\\8a6b9b3865a04f51a40c6d6191d4b776_texture_roughness.png",
+      "resolvedOriginalPath": "D:\\SSFramework\\ArtPipelineOutput\\AIMeshExperiments\\NW_FieldKitchen_01\\rodin-image-to-3d-20260902-01\\textures\\8a6b9b3865a04f51a40c6d6191d4b776_texture_roughness.png",
+      "originalExists": true,
+      "packedInSource": true,
+      "archiveSource": "external-file",
+      "archivedPath": "textures/8a6b9b3865a04f51a40c6d6191d4b776_texture_roughness.png",
+      "archived": true,
+      "width": 2048,
+      "height": 2048,
+      "channels": 4,
+      "colorspace": "Non-Color",
+      "alphaMode": "STRAIGHT",
+      "fileFormat": "PNG",
+      "bytes": 1627682,
+      "sha256": "5094a343fc5ecd5b27f6499d69a14e17aa4846395fa4bfaa07147b46bd6db5aa"
+    }
+  ],
+  "derivedTextures": {
+    "urpMetallicSmoothness": {
+      "path": "textures/NW_FieldKitchen_01_MetallicSmoothness.png",
+      "width": 2048,
+      "height": 2048,
+      "colorspace": "linear",
+      "packing": "R=metallic, A=1-roughness (URP smoothness)",
+      "bytes": 4370883,
+      "sha256": "775c337d9eb964fdd942d45e8ef826fba3a1fd5f1285ec5299182fc7f7702df0"
+    },
+    "normalConvention": "Source normal is preserved; Unity import must verify/flip the green channel when required."
+  },
+  "exports": {
+    "packedBlend": "NW_FieldKitchen_01_packed.blend",
+    "fbx": "NW_FieldKitchen_01.fbx",
+    "glb": "NW_FieldKitchen_01.glb",
+    "roundTrips": {
+      "fbx": {
+        "succeeded": true,
+        "meshObjectCount": 1,
+        "vertexCount": 18924,
+        "triangleCount": 37903
+      },
+      "glb": {
+        "succeeded": true,
+        "meshObjectCount": 1,
+        "vertexCount": 22058,
+        "triangleCount": 37902
+      }
+    }
+  },
+  "acceptance": {
+    "sourcePreserved": true,
+    "allReferencedTexturesArchived": true,
+    "packedBlendSaved": true,
+    "fbxExported": true,
+    "glbExported": true,
+    "fbxRoundTripRead": true,
+    "glbRoundTripRead": true,
+    "sourceMeshValidationClean": false,
+    "fbxTriangleCountMatchesValidatedSource": true,
+    "glbTriangleCountMatchesValidatedSource": false,
+    "allMeshesHaveActiveUv": true,
+    "pbrCoreMapped": true,
+    "urpMetallicSmoothnessGenerated": true,
+    "manualArtReviewStillRequired": true,
+    "productionApproved": false
+  },
+  "warnings": [
+    "The candidate is one combined Mesh; gameplay parts are not independently editable or animatable.",
+    "At least one Mesh contains disconnected geometry islands; review fused/floating details manually.",
+    "Blender validation found 5 duplicate faces in the source; portable outputs use a recorded background-only validation copy.",
+    "Archived textures are below 4K; provider generation settings may differ from DCC delivery resolution.",
+    "GLB round trip contains 37902 triangles versus 37903 after Blender validation."
+  ],
+  "files": [
+    {
+      "path": "NW_FieldKitchen_01_packed.blend",
+      "kind": "artifact",
+      "bytes": 12618273,
+      "sha256": "f8cb720a668bb01e0134c6422b06773ac5c9cabd8e1a25d9516f084ff1cd3a00"
+    },
+    {
+      "path": "NW_FieldKitchen_01.fbx",
+      "kind": "artifact",
+      "bytes": 1101932,
+      "sha256": "997c4fe8ca8d426262cf10cb5551e36aaa0dead902b7b6734fbf9008c6db1466"
+    },
+    {
+      "path": "NW_FieldKitchen_01.glb",
+      "kind": "artifact",
+      "bytes": 13219360,
+      "sha256": "4bb518a480b126b428d0e2c89a427eea000864a19c4908702061aba1fba7d641"
+    },
+    {
+      "path": "textures/2f7a2ccadfd1443dad2247407c6f2b20_texture_diffuse.png",
+      "kind": "texture",
+      "bytes": 4286955,
+      "sha256": "eb6c415cf3ab487195c5d562cdc94fd60fb8ea72ca10201f0c3161d49e01e6a3"
+    },
+    {
+      "path": "textures/493ac49b6cb74151940828b072651d52_texture_metallic.png",
+      "kind": "texture",
+      "bytes": 1401621,
+      "sha256": "f62fd35bfa1ff7f68e508eb800c7234446100ff2a5c2eecb10bad91856b04e9c"
+    },
+    {
+      "path": "textures/6a0ba952c13948feb823caf590944212_texture_normal.png",
+      "kind": "texture",
+      "bytes": 4186556,
+      "sha256": "56de110a0ced7753adc16fd911d13bf0b0d0181d793cec52f989b707f2585e1a"
+    },
+    {
+      "path": "textures/8a6b9b3865a04f51a40c6d6191d4b776_texture_roughness.png",
+      "kind": "texture",
+      "bytes": 1627682,
+      "sha256": "5094a343fc5ecd5b27f6499d69a14e17aa4846395fa4bfaa07147b46bd6db5aa"
+    },
+    {
+      "path": "textures/NW_FieldKitchen_01_MetallicSmoothness.png",
+      "kind": "texture",
+      "bytes": 4370883,
+      "sha256": "775c337d9eb964fdd942d45e8ef826fba3a1fd5f1285ec5299182fc7f7702df0"
+    }
+  ]
+}

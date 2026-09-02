@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**居民 Utility AI + 实时 3D + Humanoid / Blender PBR 静态道具 + 资产证据 Harness v0.6**，更新于 2026-09-01。它仍是可删除的技术验证，不是 Foundation Prototype、垂直切片或正式美术基线。当前产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**居民 Utility AI + 实时 3D + Humanoid / Blender 与外部 AI PBR 静态道具 + 资产证据 Harness v0.7**，更新于 2026-09-02。它仍是可删除的技术验证，不是 Foundation Prototype、垂直切片或正式美术基线。当前产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -20,6 +20,8 @@
 - 同一轮输出包含 Hero / Front / Side / Top / Wireframe / UV Checker 六视图 Contact Sheet；manifest 固定尺寸、布局、哈希和 `manual_review_required` 边界，自动化不能把证据存在误报为美术通过；
 - Unity Editor 工具核对 FBX、生成脚本、Contact Sheet 与全部贴图哈希，按用途配置证据图和 PBR Texture Importer，创建三个外部 URP/Lit 材质并显式 Remap，再生成 Root / Visual Identity 的 Prefab、一个 Bounds BoxCollider、预览场景和审计报告；
 - 两个静态 FBX 的坐标轴均已实际烘焙并验证直立。储物箱是 784 Blender Vertex / 3024 Runtime Vertex / 1512 Triangle；水循环设施是 3928 Blender Vertex / 8083 Runtime Vertex / 7772 Triangle，来源、FBX 回读与 Unity Triangle 一致，拓扑与 UV 质量门禁通过；其 1001.091 px/m 是包含材质平铺的有效密度，不是唯一贴图内存预算。
+- 首个 Rodin Gen-2.5 Reviewed Hero 候选已通过 Blender Bridge 进入 Blender，并经通用 AI Mesh Intake 保留源字节、归档 PBR 贴图、清理副本、FBX / GLB 回读和 SHA-256；Bridge 实际交付 2K 而非网页 8K 设置，且必须人工保存图像或 Pack，不能把插件连接成功误报为文件已经归档；
+- Rodin 野战厨房在 Unity 中是 1 Mesh / 1 Material Slot、18,924 Source Vertex / 22,058 Runtime Vertex、37,903 Triangle；Bounds、URP/Lit 通道、Prefab、BoxCollider 与预览场景审计成立，固定相机能看见青色旧漆、不锈钢、橙色安全件、织物与软管；源候选仍有 5 个重复面、6 个几何岛和不可拆分部件，保持人工复核且未批准为生产资产；
 - 项目默认 `Renderer2D` 保持为 Universal RP Asset 的 index 0；游戏 Spike 从 URP 官方模板生成唯一的次级 `UniversalRendererData`（index 1），只有隔离预览相机显式选择它；
 - 固定 3D Game View 已实际看到两个道具的体积、阴影、金属高光和青 / 橙 / 黑材质层级；水循环设施的划痕、细微法线与裸露金属响应可读，没有粉材质、黑屏或错误姿态。自动审计仍把最终审美结论留给人工。
 
@@ -60,6 +62,8 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Blender Import Spike/配置并审
 
 Editor 菜单 `Assets/SSFramework/游牧工坊/Blender Import Spike/配置并审计纹理化水循环设施` 会重放 12 张 PBR 贴图、六视图 Contact Sheet、拓扑 / UV 和有效纹素密度证据，配置外部 URP/Lit 材质、3 Mesh Prefab、Collider 与独立 3D 预览。重建和验收边界见 [`Spikes/BlenderImport/NW_WaterRecycler_01/README.md`](Spikes/BlenderImport/NW_WaterRecycler_01/README.md)。
 
+Editor 菜单 `Assets/SSFramework/游牧工坊/AI Mesh Spike/配置并审计 Rodin 野战厨房` 会从已入库的 Intake 报告开始，核对 Intake 脚本、FBX 与三张运行时贴图哈希，配置 Base Color / Normal / MetallicSmoothness、外部 URP/Lit 材质、单 Mesh Prefab、BoxCollider 与隔离预览场景。它只证明候选能安全进入 Unity，不会把 `candidate-only` 自动升级为生产美术。Bridge 陷阱、拓扑和删除边界见 [`Spikes/BlenderImport/NW_FieldKitchen_01_Rodin/README.md`](Spikes/BlenderImport/NW_FieldKitchen_01_Rodin/README.md)。
+
 Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3D Renderer` 会从当前 URP 包的官方模板幂等生成次级 3D Renderer、材质和隔离预览场景。它拒绝覆盖未知默认 Renderer，审计默认 index 与相机 index，并把报告写到被忽略的 `ArtPipelineOutput/`。重建与删除边界见 [`Spikes/Rendering/Urp3D/README.md`](Spikes/Rendering/Urp3D/README.md)。
 
 ## 第三方资产边界
@@ -71,11 +75,12 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 许可证、官方下载页、upload id、文件大小与 SHA-256 分别记录在两个 `SOURCE.md` 中；
 - 储物箱是项目脚本生成的自有技术探针，不依赖第三方模型；可重建 `.blend` 和批量输出被忽略，只提交一个小型 FBX + manifest 作为跨机器 Unity 导入证据。
 - 水循环设施的 Mesh 和 12 张贴图同样由项目脚本确定性生成；它证明 PBR 契约和三材质合并，不代表程序噪声已达到正式手绘或 Mesh-specific 材质质量。
+- Rodin 野战厨房来自用户账号下的受监督云端实验；仓库保留规范化 FBX、运行时必要贴图和机器可读 Intake 报告，不提交账号、Cookie、原始 Provider 会话或浏览器状态。商业使用前仍要归档生成当日条款、订阅层和输出权利。
 
 ## 当前验证证据
 
-- 编译：0 error / 0 warning；
-- EditMode：`Game.NomadWorkshop.Simulation.Tests` + `Game.NomadWorkshop.Editor.Tests`，21/21；水循环设施现有独立 Contact Sheet 证据测试；
+- 编译：0 error；
+- EditMode：本轮完整项目套件 645/645（95.02 秒）；包含 Rodin 候选来源哈希、2K 真实分辨率、FBX 几何、Importer、URP/Lit、Prefab、Collider、预览场景与人工复核边界；
 - PlayMode：`Game.NomadWorkshop.PlayMode.Tests`，2/2；既验证未配置资产时的假人回退，也实际实例化模型并依次进入五个 Animator 状态；
 - Game View：实际检查过普通模拟、Idle 比例、紧急维修姿态、两个 Blender 导入预览和独立 URP 3D 预览；截图属于临时证据，位于被 Git 忽略的 `Screenshots/`。默认 Renderer2D 下的 Import Preview 仍保持 `inconclusive`，次级 Universal Renderer 的固定镜头已人工确认体积、阴影、材质分区、法线与高光成立。
 
@@ -92,4 +97,4 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步不再扩张动作数量或继续装饰棚拍。按[首轮 AI Mesh 盲测协议](../../../docs/nomad-workshop-ai-mesh-blind-test.md)，用同一 Asset Brief 让 Rodin Gen-2.5 挑战当前确定性 `bpy` 基准，让候选强制经过现有 Contact Sheet、拓扑 / UV、权利和 Unity 导入 Harness；TripoSR 与 Stable Fast 3D 只在自托管价值足以覆盖 Windows 工具链成本时补测，胜负按“生成 + 清理 + Unity 验收”的总成本判断。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，建立首份平台性能 / 纹理预算，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。第一个外部 AI Mesh 走通前不急于固化 `blender-asset-pipeline` Project Skill，手部 IK 也只在真实接触误差证明有必要后加入。
+下一步不再重抽同一个厨房外观，也不扩张动作数量或继续装饰棚拍。先在 Blender 对 Rodin 候选做一次可记账的拆件 / Pivot / Anchor 正式化试验，回答它究竟是可用底模还是只提供概念价值；再用一个形体风险不同的资产重放 Intake，重复成立后才提炼 `blender-asset-pipeline` Project Skill，避免 Skill 复制仍在变化的网页和 Bridge 细节。随后把三个同材质族资产放进接近车辆甲板的代表性镜头，建立首份平台性能 / 纹理预算，并以兼容 Humanoid 的废土服装和三名居民任务竞争推进 Foundation Prototype。手部 IK 仍只在真实接触误差证明有必要后加入。

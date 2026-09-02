@@ -24,6 +24,8 @@ Codex 的 MCP 配置指向 `D:/unity-mcp-server/src/index.js`。下面是调用�
 Win32 `PrintWindow`，即使窗口被遮挡也可观察且不抢焦点。检查诊断/配置窗口时优先用它，截图后仍必须实际打开
 PNG 复查，不能只看工具返回 success。Game/Scene 继续分别用 `unity_screenshot_game` / `unity_screenshot_scene`。
 
+`unity_screenshot_game` 会把抓帧安排到下一次 Game View 渲染；刚打开场景、刚导入 Shader / Material 或视图仍在刷新时，工具即使返回 success，也可能保存瞬态占位画面。本项目曾在同一相机直接渲染正常时抓到纯青色 Mesh 剪影。遇到这类矛盾先用 `unity_graphics_game_capture` 做同相机直出对照，等待视图稳定后再抓；必须实际打开两张图判断，不能修改材质去迎合一次异常截图。
+
 EditorWindow 截图不等于通用交互：可表达的菜单、查询、滚动与尺寸调整优先用 `unity_execute_menu_item` / `unity_execute_code`；
 只有 MCP 无法表达的原生控件点击、拖动或系统弹窗才转 Windows 界面控制。
 
