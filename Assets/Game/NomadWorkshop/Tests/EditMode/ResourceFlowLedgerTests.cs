@@ -138,6 +138,95 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void CarryingHaul_RetargetsDestinationWithoutMovingCargoOrLeakingReservations()
+        {
+            var interactions = new ReservationLedger();
+            ResourceInventory source = Inventory("tank", 4, NomadResourceIds.Water, 2);
+            var carrier = new ResourceInventory("water-can", ResourceMeasure.Milliliter, 2);
+            var firstStation = new ResourceInventory(
+                "station-01-water",
+                ResourceMeasure.Milliliter,
+                2);
+            var secondStation = new ResourceInventory(
+                "station-02-water",
+                ResourceMeasure.Milliliter,
+                2);
+            var ledger = new ResourceFlowLedger(interactions);
+            Assert.IsTrue(ledger.TryReserveHaul(
+                Haul("retarget", source, carrier, firstStation, NomadResourceIds.Water, "改道", Ada, 2),
+                out HaulTaskLease lease,
+                out _));
+            lease.PickUp();
+
+            Assert.IsTrue(lease.TryRetargetDestination(
+                secondStation,
+                new[] { "station:tank", "station:station-02-water" },
+                out ResourceFlowBlocker blocker));
+
+            Assert.IsFalse(blocker.IsBlocked);
+            Assert.AreSame(secondStation, lease.Request.Destination);
+            Assert.AreEqual(2, carrier.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(2, ledger.GetAvailableCapacity(firstStation));
+            Assert.AreEqual(0, ledger.GetAvailableCapacity(secondStation));
+            Assert.IsFalse(interactions.TryGetOwner("station:station-01-water", out _));
+            Assert.IsTrue(interactions.TryGetOwner("station:station-02-water", out ulong owner));
+            Assert.AreEqual(Ada, owner);
+
+            lease.Deliver();
+
+            Assert.AreEqual(0, firstStation.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(2, secondStation.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(0, carrier.GetAmount(NomadResourceIds.Water));
+            Assert.IsFalse(interactions.TryGetOwner("station:station-02-water", out _));
+        }
+
+        [Test]
+        public void RetargetInteractionConflict_RestoresOriginalCapacityAndInteractionContract()
+        {
+            var interactions = new ReservationLedger();
+            ResourceInventory source = Inventory("tank", 4, NomadResourceIds.Water, 2);
+            var carrier = new ResourceInventory("water-can", ResourceMeasure.Milliliter, 2);
+            var firstStation = new ResourceInventory(
+                "station-01-water",
+                ResourceMeasure.Milliliter,
+                2);
+            var secondStation = new ResourceInventory(
+                "station-02-water",
+                ResourceMeasure.Milliliter,
+                2);
+            var ledger = new ResourceFlowLedger(interactions);
+            Assert.IsTrue(interactions.TryAcquire(
+                0xB001UL,
+                new[] { "station:station-02-water" },
+                out ReservationLease occupiedDestination));
+            Assert.IsTrue(ledger.TryReserveHaul(
+                Haul("retarget-fails", source, carrier, firstStation,
+                    NomadResourceIds.Water, "失败后恢复", Ada, 2),
+                out HaulTaskLease lease,
+                out _));
+            lease.PickUp();
+
+            Assert.IsFalse(lease.TryRetargetDestination(
+                secondStation,
+                new[] { "station:tank", "station:station-02-water" },
+                out ResourceFlowBlocker blocker));
+
+            Assert.AreEqual(ResourceFlowBlockReason.InteractionUnavailable, blocker.Reason);
+            Assert.AreSame(firstStation, lease.Request.Destination);
+            Assert.AreEqual(0, ledger.GetAvailableCapacity(firstStation));
+            Assert.AreEqual(2, ledger.GetAvailableCapacity(secondStation));
+            Assert.IsTrue(interactions.TryGetOwner("station:station-01-water", out ulong owner));
+            Assert.AreEqual(Ada, owner);
+            Assert.IsTrue(interactions.TryGetOwner("station:station-02-water", out ulong occupiedOwner));
+            Assert.AreEqual(0xB001UL, occupiedOwner);
+
+            occupiedDestination.Dispose();
+            lease.Deliver();
+            Assert.AreEqual(2, firstStation.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(0, secondStation.GetAmount(NomadResourceIds.Water));
+        }
+
+        [Test]
         public void InteractionConflict_FailsWithoutLeakingNumericReservations()
         {
             var interactions = new ReservationLedger();

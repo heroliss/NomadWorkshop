@@ -682,6 +682,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _system.ConfigureTimingsForTests(0.25f, 5f);
             yield return BuildFacility("drinking-station", 0, 0);
             yield return BuildFacility("drinking-station", 2400, 0);
+            Assert.That(
+                _model.DrinkingStationCapacityMilliliters.Value,
+                Is.EqualTo(12_000),
+                "两座设施必须各自贡献 6 L 容量，而不是继续共享一个 6 L 库存。 ");
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
 
             const int approachFrameLimit = 720;
@@ -691,7 +695,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 yield return null;
                 observedPreferredStationTravel =
                     _model.ResidentPhase.Value == FoundationResidentPhase.MovingToDrinkingStation &&
-                    _model.CurrentTask.Value.Contains("facility-0001");
+                    _model.CurrentTask.Value.Contains("facility-0001") &&
+                    _model.ResidentCarryingWater.Value;
                 if (observedPreferredStationTravel) break;
             }
             Assert.That(observedPreferredStationTravel, Is.True, "应先观察到居民正在前往第一座饮水站。 ");
@@ -713,6 +718,29 @@ namespace Game.NomadWorkshop.PlayMode.Tests
 
             Assert.That(observedRetarget, Is.True, "旧设施不可用后应重新解析到同功能的第二座设施。 ");
             Assert.That(_model.CompletedDrinkCount.Value, Is.EqualTo(1));
+            FoundationFacilityInventoryState[] inventories = _context.ExecuteCommand(
+                new GetFoundationFacilityInventoriesCommand());
+            Assert.That(inventories, Has.Length.EqualTo(2));
+            FoundationFacilityInventoryState firstStation = default;
+            FoundationFacilityInventoryState secondStation = default;
+            for (var i = 0; i < inventories.Length; i++)
+            {
+                if (inventories[i].FacilityInstanceId == "facility-0001")
+                    firstStation = inventories[i];
+                else if (inventories[i].FacilityInstanceId == "facility-0002")
+                    secondStation = inventories[i];
+            }
+            Assert.That(firstStation.InventoryId, Is.Not.Empty);
+            Assert.That(secondStation.InventoryId, Is.Not.Empty);
+            Assert.That(firstStation.Amount, Is.Zero, "旧路径目标不应收到改道后的水。 ");
+            Assert.That(
+                secondStation.Amount,
+                Is.EqualTo(1_700),
+                "第二座站应收到 2 L 搬运水，并从自己的库存扣除 300 mL 饮用量。 ");
+            Assert.That(
+                _model.WaterCanAnchorFacilityInstanceId.Value,
+                Is.EqualTo("facility-0002"),
+                "水罐表现锚点必须与最终交付库存属于同一设施实例。 ");
             Assert.That(_model.LastBlocker.Value, Is.Empty);
         }
 
@@ -746,11 +774,19 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.That(
                     _model.ResidentPhase.Value,
                     Is.Not.EqualTo(FoundationResidentPhase.Blocked),
-                    "身体库存暂满只能形成等待/如厕压力，不能令居民永久停机。 ");
+                    "身体库存暂满只能形成等待/如厕压力，不能令居民永久停机。 " +
+                    $"Task={_model.CurrentTask.Value}; Blocker={_model.LastBlocker.Value}");
             }
 
             Assert.That(observedDestinationFull, Is.True, "测试应实际经过用户报告的 DestinationFull 窗口。 ");
-            Assert.That(_model.CompletedDrinkCount.Value, Is.GreaterThanOrEqualTo(2));
+            Assert.That(
+                _model.CompletedDrinkCount.Value,
+                Is.GreaterThanOrEqualTo(2),
+                $"Task={_model.CurrentTask.Value}; Blocker={_model.LastBlocker.Value}; " +
+                $"Station={_model.DrinkingStationWaterMilliliters.Value}mL; " +
+                $"Body={_model.BodyWaterMilliliters.Value}mL; " +
+                $"Bladder={_model.BladderWasteMilliliters.Value}mL; " +
+                $"Toilet={_model.CompletedToiletUseCount.Value}");
             Assert.That(_model.CompletedToiletUseCount.Value, Is.GreaterThanOrEqualTo(1));
             Assert.That(
                 _model.ToiletHoldingWasteMilliliters.Value,

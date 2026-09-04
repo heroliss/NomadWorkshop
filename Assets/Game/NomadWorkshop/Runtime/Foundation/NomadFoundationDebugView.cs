@@ -37,6 +37,9 @@ namespace Game.NomadWorkshop.Foundation
         private int _remainingPathCorners;
         private string _activePathSummary = string.Empty;
         private FoundationWaterCanLocation _waterCanLocation;
+        private string _waterCanAnchorFacilityInstanceId = string.Empty;
+        private FoundationFacilityInventoryState[] _facilityInventories =
+            Array.Empty<FoundationFacilityInventoryState>();
         private int _waterCanWaterMilliliters;
         private int _waterCanCapacityMilliliters;
         private FoundationActionPlanProjection _latestActionPlan;
@@ -88,6 +91,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
                 _facilityAccess = this.ExecuteCommand(
                     new GetFoundationFacilityAccessCommand()));
+            Bag.Subscribe(readModel.FacilityInventoryRevision, _ =>
+                _facilityInventories = this.ExecuteCommand(
+                    new GetFoundationFacilityInventoriesCommand()));
             Bag.Subscribe(readModel.BuildTransactionPhase, value => _buildTransactionPhase = value);
             Bag.Subscribe(readModel.PositionSnapMillimeters, value => _positionSnapMillimeters = value);
             Bag.Subscribe(readModel.RotationSnapDeciDegrees, value => _rotationSnapDeciDegrees = value);
@@ -97,6 +103,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.RemainingPathCorners, value => _remainingPathCorners = value);
             Bag.Subscribe(readModel.ActivePathSummary, value => _activePathSummary = value);
             Bag.Subscribe(readModel.WaterCanLocation, value => _waterCanLocation = value);
+            Bag.Subscribe(
+                readModel.WaterCanAnchorFacilityInstanceId,
+                value => _waterCanAnchorFacilityInstanceId = value ?? string.Empty);
             Bag.Subscribe(
                 readModel.WaterCanWaterMilliliters,
                 value => _waterCanWaterMilliliters = value);
@@ -299,7 +308,15 @@ namespace Game.NomadWorkshop.Foundation
             DrawMeter("当前动作", _actionProgress);
             GUILayout.Label(
                 $"车辆水箱 {FormatVolume(_vehicleWaterMilliliters, _vehicleWaterCapacityMilliliters)}   " +
-                $"饮水站 {FormatVolume(_stationWaterMilliliters, _stationWaterCapacityMilliliters)}");
+                $"全部饮水站 {FormatVolume(_stationWaterMilliliters, _stationWaterCapacityMilliliters)}");
+            for (var i = 0; i < _facilityInventories.Length; i++)
+            {
+                FoundationFacilityInventoryState inventory = _facilityInventories[i];
+                GUILayout.Label(
+                    $"  {inventory.FacilityInstanceId}/{inventory.CompartmentId}  " +
+                    FormatVolume(inventory.Amount, inventory.Capacity),
+                    _smallStyle);
+            }
             GUILayout.Label(
                 $"体内待代谢水 {FormatVolume(_bodyWaterMilliliters, _bodyWaterCapacityMilliliters)}   " +
                 $"膀胱内容物 {FormatVolume(_bladderWasteMilliliters, _bladderCapacityMilliliters)}",
@@ -309,6 +326,7 @@ namespace Game.NomadWorkshop.Foundation
                 _smallStyle);
             GUILayout.Label(
                 $"唯一防漏水罐：{Describe(_waterCanLocation)} · " +
+                $"锚点 {DescribeAnchor(_waterCanAnchorFacilityInstanceId)} · " +
                 $"内含水 {FormatVolume(_waterCanWaterMilliliters, _waterCanCapacityMilliliters)}",
                 _smallStyle);
             if (_latestActionPlan.Evaluated)
@@ -472,6 +490,9 @@ namespace Game.NomadWorkshop.Foundation
         private static string FormatVolume(int amountMilliliters, int capacityMilliliters) =>
             $"{ResourceAmountFormatting.Format(amountMilliliters, ResourceMeasure.Milliliter)} / " +
             ResourceAmountFormatting.Format(capacityMilliliters, ResourceMeasure.Milliliter);
+
+        private static string DescribeAnchor(string facilityInstanceId) =>
+            string.IsNullOrEmpty(facilityInstanceId) ? "随居民携带" : facilityInstanceId;
 
         private static int NextValue(int current, params int[] values)
         {

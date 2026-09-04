@@ -42,6 +42,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<bool> ShowPlacementGrid { get; private set; } = new(true);
         [field: SerializeField] public RP<int> FacilityRevision { get; private set; } = new(0);
         [field: SerializeField] public RP<int> FacilityAccessRevision { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("设施实例库存只读投影的版本；变化时 View 应重新取得快照。")]
+        public RP<int> FacilityInventoryRevision { get; private set; } = new(0);
 
         [Header("居民与物质链（运行时只读观察）")]
         [field: SerializeField] public RP<FoundationResidentPhase> ResidentPhase { get; private set; } =
@@ -54,6 +56,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<bool> ResidentCarryingWater { get; private set; } = new(false);
         [field: SerializeField] public RP<FoundationWaterCanLocation> WaterCanLocation { get; private set; } =
             new(FoundationWaterCanLocation.VehicleWaterTank);
+        [field: SerializeField, Tooltip("水罐不在居民手中时所依附的精确设施实例；不能只靠设施类型猜测。")]
+        public RP<string> WaterCanAnchorFacilityInstanceId { get; private set; } = new(string.Empty);
         [field: SerializeField] public RP<int> WaterCanWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> WaterCanCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationActionPlanProjection> LatestActionPlan { get; private set; } =
@@ -81,6 +85,7 @@ namespace Game.NomadWorkshop.Foundation
 
         [SerializeField] private List<FoundationFacilityState> facilities = new();
         [SerializeField] private List<FoundationFacilityAccessState> facilityAccess = new();
+        [SerializeField] private List<FoundationFacilityInventoryState> facilityInventories = new();
 
         internal IReadOnlyList<FoundationFacilityState> Facilities => facilities;
 
@@ -148,6 +153,33 @@ namespace Game.NomadWorkshop.Foundation
 
         internal FoundationFacilityAccessState[] GetFacilityAccessSnapshot() =>
             facilityAccess.ToArray();
+
+        internal void ReplaceFacilityInventories(
+            IReadOnlyList<FoundationFacilityInventoryState> source)
+        {
+            int sourceCount = source?.Count ?? 0;
+            if (facilityInventories.Count == sourceCount)
+            {
+                var unchanged = true;
+                for (var i = 0; i < sourceCount; i++)
+                {
+                    if (facilityInventories[i].Equals(source[i])) continue;
+                    unchanged = false;
+                    break;
+                }
+                if (unchanged) return;
+            }
+
+            facilityInventories.Clear();
+            if (source != null)
+            {
+                for (var i = 0; i < source.Count; i++) facilityInventories.Add(source[i]);
+            }
+            FacilityInventoryRevision.Value++;
+        }
+
+        internal FoundationFacilityInventoryState[] GetFacilityInventorySnapshot() =>
+            facilityInventories.ToArray();
 
         private bool HasSameFacilityAccess(IReadOnlyList<FoundationFacilityAccessState> source)
         {

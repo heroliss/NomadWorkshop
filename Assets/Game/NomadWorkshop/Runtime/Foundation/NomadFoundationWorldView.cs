@@ -66,6 +66,7 @@ namespace Game.NomadWorkshop.Foundation
         private Transform _waterCanVisual;
         private Transform _waterCanFillVisual;
         private FoundationWaterCanLocation _waterCanLocation;
+        private string _waterCanAnchorFacilityInstanceId = string.Empty;
         private Material _ghostValidMaterial;
         private Material _ghostInvalidMaterial;
         private Material _ghostPartialMaterial;
@@ -144,6 +145,11 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.WaterCanLocation, location =>
             {
                 _waterCanLocation = location;
+                UpdateWaterCanVisual();
+            });
+            Bag.Subscribe(readModel.WaterCanAnchorFacilityInstanceId, instanceId =>
+            {
+                _waterCanAnchorFacilityInstanceId = instanceId ?? string.Empty;
                 UpdateWaterCanVisual();
             });
             Bag.Subscribe(readModel.WaterCanWaterMilliliters, amount =>
@@ -658,7 +664,12 @@ namespace Game.NomadWorkshop.Foundation
                 if (!_definitions.TryGetValue(
                         state.DefinitionId,
                         out NomadFacilityDefinition definition) ||
-                    definition.Function != expectedFunction)
+                    definition.Function != expectedFunction ||
+                    (!string.IsNullOrEmpty(_waterCanAnchorFacilityInstanceId) &&
+                     !string.Equals(
+                         state.InstanceId,
+                         _waterCanAnchorFacilityInstanceId,
+                         StringComparison.Ordinal)))
                     continue;
 
                 Quaternion rotation = Quaternion.Euler(0f, (float)state.Pose.YawDegrees, 0f);

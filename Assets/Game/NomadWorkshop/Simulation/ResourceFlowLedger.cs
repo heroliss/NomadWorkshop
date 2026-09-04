@@ -98,11 +98,23 @@ namespace Game.NomadWorkshop.Simulation
         public ulong OwnerId { get; }
         public ResourceInventory Source { get; }
         public ResourceInventory Carrier { get; }
-        public ResourceInventory Destination { get; }
+        /// <summary>
+        /// 当前目的库存。任务进入租约后，只能通过
+        /// <see cref="HaulTaskLease.TryRetargetDestination"/> 原子改写，调用方不能绕过容量与交互预留。
+        /// </summary>
+        public ResourceInventory Destination { get; private set; }
         public ResourceId Resource { get; }
         public int Amount { get; }
         public string Reason { get; }
-        public IReadOnlyList<string> InteractionKeys { get; }
+        public IReadOnlyList<string> InteractionKeys { get; private set; }
+
+        internal void RetargetDestination(
+            ResourceInventory destination,
+            IReadOnlyList<string> interactionKeys)
+        {
+            Destination = destination ?? throw new ArgumentNullException(nameof(destination));
+            InteractionKeys = CopyInteractionKeys(interactionKeys);
+        }
 
         internal static string[] CopyInteractionKeys(IReadOnlyList<string> interactionKeys)
         {
@@ -360,6 +372,71 @@ namespace Game.NomadWorkshop.Simulation
             lease.ReleaseInteraction();
         }
 
+        internal bool TryRetargetDestination(
+            HaulTaskLease lease,
+            ResourceInventory destination,
+            IReadOnlyList<string> interactionKeys,
+            out ResourceFlowBlocker blocker)
+        {
+            if (lease == null) throw new ArgumentNullException(nameof(lease));
+            if (destination == null) throw new ArgumentNullException(nameof(destination));
+            if (!lease.IsOwnedBy(this))
+                throw new InvalidOperationException("只能改写仍由当前资源账本持有的搬运租约。 ");
+            if (lease.State is not (HaulTaskState.Reserved or HaulTaskState.Carrying))
+                throw new InvalidOperationException(
+                    $"搬运任务 {lease.Request.TaskId} 不能在 {lease.State} 阶段改写目的地。 ");
+
+            HaulTaskRequest request = lease.Request;
+            if (ReferenceEquals(destination, request.Source) ||
+                ReferenceEquals(destination, request.Carrier))
+                throw new ArgumentException("新目的库存不能与来源或携带库存相同。", nameof(destination));
+            destination.EnsureCompatible(request.Resource);
+            string[] normalizedInteractionKeys =
+                HaulTaskRequest.CopyInteractionKeys(interactionKeys);
+
+            ResourceInventory previousDestination = request.Destination;
+            if (!ReferenceEquals(previousDestination, destination) &&
+                GetAvailableCapacity(destination) < request.Amount)
+            {
+                blocker = new ResourceFlowBlocker(
+                    ResourceFlowBlockReason.DestinationFull,
+                    destination.Id,
+                    request.Resource);
+                return false;
+            }
+
+            string taskKey = BuildTaskKey(request.TaskId);
+            IReadOnlyList<string> previousInteractionKeys = request.InteractionKeys;
+            lease.ReleaseInteraction();
+            if (!_interactions.TryAcquire(
+                    request.OwnerId,
+                    IncludeTaskKey(taskKey, normalizedInteractionKeys),
+                    out ReservationLease replacementInteraction))
+            {
+                if (!_interactions.TryAcquire(
+                        request.OwnerId,
+                        IncludeTaskKey(taskKey, previousInteractionKeys),
+                        out ReservationLease restoredInteraction))
+                    throw new InvalidOperationException(
+                        $"搬运任务 {request.TaskId} 改道失败后无法恢复原交互预留，账本已损坏。 ");
+
+                lease.ReplaceInteraction(restoredInteraction);
+                blocker = new ResourceFlowBlocker(
+                    ResourceFlowBlockReason.InteractionUnavailable);
+                return false;
+            }
+
+            if (!ReferenceEquals(previousDestination, destination))
+            {
+                RemoveIncoming(previousDestination, request.Amount);
+                AddIncoming(destination, request.Amount);
+            }
+            request.RetargetDestination(destination, normalizedInteractionKeys);
+            lease.ReplaceInteraction(replacementInteraction);
+            blocker = ResourceFlowBlocker.None;
+            return true;
+        }
+
         internal void Cancel(HaulTaskLease lease, HaulTaskState previousState)
         {
             HaulTaskRequest request = lease.Request;
@@ -551,6 +628,25 @@ namespace Game.NomadWorkshop.Simulation
         /// <summary>取消发生在拾取后时为 true；货物仍在居民携带库存，必须重新派送或落地。</summary>
         public bool CargoRequiresRecovery { get; private set; }
 
+        /// <summary>
+        /// 在资源尚未交付时原子改写目的库存和交互预留。失败时原目的容量与全部交互键保持不变，
+        /// 携带中的真实货物也不会离开 Carrier。
+        /// </summary>
+        public bool TryRetargetDestination(
+            ResourceInventory destination,
+            IReadOnlyList<string> interactionKeys,
+            out ResourceFlowBlocker blocker)
+        {
+            ResourceFlowLedger ledger = _ledger;
+            if (ledger == null)
+                throw new InvalidOperationException($"搬运任务 {Request.TaskId} 已经结束。 ");
+            return ledger.TryRetargetDestination(
+                this,
+                destination,
+                interactionKeys,
+                out blocker);
+        }
+
         public void PickUp()
         {
             if (State != HaulTaskState.Reserved)
@@ -584,6 +680,17 @@ namespace Game.NomadWorkshop.Simulation
         {
             _interactionLease?.Dispose();
             _interactionLease = null;
+        }
+
+        internal bool IsOwnedBy(ResourceFlowLedger ledger) => ReferenceEquals(_ledger, ledger);
+
+        internal void ReplaceInteraction(ReservationLease interactionLease)
+        {
+            if (_interactionLease != null)
+                throw new InvalidOperationException(
+                    $"搬运任务 {Request.TaskId} 的旧交互预留尚未释放。 ");
+            _interactionLease = interactionLease ??
+                throw new ArgumentNullException(nameof(interactionLease));
         }
     }
 

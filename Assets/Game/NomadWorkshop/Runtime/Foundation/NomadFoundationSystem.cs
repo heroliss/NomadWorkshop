@@ -100,6 +100,9 @@ namespace Game.NomadWorkshop.Foundation
         private readonly Dictionary<string, FacilityAccessEvaluation> _committedFacilityAccess =
             new(StringComparer.Ordinal);
         private readonly List<FoundationFacilityAccessState> _facilityAccessProjection = new();
+        private readonly Dictionary<string, ResourceInventory> _drinkingStationInventories =
+            new(StringComparer.Ordinal);
+        private readonly List<FoundationFacilityInventoryState> _facilityInventoryProjection = new();
 
         private NomadFoundationModel _model;
         private DeckNavigationUtility _navigation;
@@ -132,7 +135,6 @@ namespace Game.NomadWorkshop.Foundation
         private ResourceFlowLedger _resourceFlow;
         private ResourceInventory _vehicleWater;
         private ResourceInventory _waterCan;
-        private ResourceInventory _drinkingStation;
         private ResourceInventory _toiletHolding;
         private ResidentWaterCycle _residentWaterCycle;
         private readonly ResidentActionPlanEvaluator _actionPlanEvaluator = new();
@@ -142,6 +144,9 @@ namespace Game.NomadWorkshop.Foundation
         private HaulTaskLease _activeHaul;
         private ResidentWaterActionLease _activeResidentAction;
         private FoundationWaterCanLocation _waterCanLocation;
+        private string _waterCanAnchorFacilityInstanceId = string.Empty;
+        private string _activeWaterSourceFacilityInstanceId = string.Empty;
+        private string _activeWaterTargetFacilityInstanceId = string.Empty;
         private bool _waterCanPickupWasAtSource;
         private bool _drinkAfterActiveHaul;
         private FoundationResidentPhase _residentPhase;
@@ -582,6 +587,9 @@ namespace Game.NomadWorkshop.Foundation
             _committedFacilityAccess.Clear();
             _facilityAccessProjection.Clear();
             _model.ReplaceFacilityAccess(_facilityAccessProjection);
+            _drinkingStationInventories.Clear();
+            _facilityInventoryProjection.Clear();
+            _model.ReplaceFacilityInventories(_facilityInventoryProjection);
 
             _placementLedger = deckLayout.CreatePlacementLedger();
             _residentClearanceMillimeters = Mathf.CeilToInt(
@@ -665,13 +673,19 @@ namespace Game.NomadWorkshop.Foundation
                 ResourceMeasure.Milliliter,
                 WaterCanCapacityMilliliters);
             _waterCanLocation = FoundationWaterCanLocation.VehicleWaterTank;
+            _waterCanAnchorFacilityInstanceId = TryFindPlacedFacility(
+                NomadFacilityFunction.VehicleWaterTank,
+                out FoundationFacilityState initialWaterTank,
+                out _)
+                ? initialWaterTank.InstanceId
+                : string.Empty;
+            _activeWaterSourceFacilityInstanceId = string.Empty;
+            _activeWaterTargetFacilityInstanceId = string.Empty;
             _waterCanPickupWasAtSource = false;
             _residentRecreation = 0.32f;
             _activeLeisureRestore = 0f;
-            _drinkingStation = new ResourceInventory(
-                "drinking-station",
-                ResourceMeasure.Milliliter,
-                DrinkingStationCapacityMilliliters);
+            for (var i = 0; i < initialFacilities.Count; i++)
+                AddFacilityInventory(initialFacilities[i]);
             _toiletHolding = new ResourceInventory(
                 "toilet-holding",
                 ResourceMeasure.Milliliter,
@@ -691,10 +705,13 @@ namespace Game.NomadWorkshop.Foundation
             _model.SimulationSpeed.Value = initialSimulationSpeed;
             _model.ResidentCarryingWater.Value = false;
             _model.WaterCanLocation.Value = _waterCanLocation;
+            _model.WaterCanAnchorFacilityInstanceId.Value =
+                _waterCanAnchorFacilityInstanceId;
             _model.WaterCanWaterMilliliters.Value = 0;
             _model.WaterCanCapacityMilliliters.Value = _waterCan.Capacity;
             _model.VehicleWaterCapacityMilliliters.Value = _vehicleWater.Capacity;
-            _model.DrinkingStationCapacityMilliliters.Value = _drinkingStation.Capacity;
+            _model.DrinkingStationWaterMilliliters.Value = 0;
+            _model.DrinkingStationCapacityMilliliters.Value = 0;
             _model.BodyWaterCapacityMilliliters.Value = _residentWaterCycle.BodyWater.Capacity;
             _model.BladderCapacityMilliliters.Value = _residentWaterCycle.Bladder.Capacity;
             _model.ToiletHoldingCapacityMilliliters.Value = _toiletHolding.Capacity;
@@ -1246,10 +1263,12 @@ namespace Game.NomadWorkshop.Foundation
         private void CommitPendingPlacementTruth()
         {
             _navigationObstacles.Add(_pendingPlacement.InstanceId, _pendingObstacle);
-            _model.AddFacility(new FoundationFacilityState(
+            var facility = new FoundationFacilityState(
                 _pendingPlacement.InstanceId,
                 _pendingPlacement.DefinitionId,
-                _pendingPlacement.Pose));
+                _pendingPlacement.Pose);
+            _model.AddFacility(facility);
+            AddFacilityInventory(facility);
         }
 
         private void RollbackPartiallyCommittedPlacementTruth()
@@ -1259,6 +1278,7 @@ namespace Game.NomadWorkshop.Foundation
             _placementLedger.Remove(instanceId);
             _navigationObstacles.Remove(instanceId);
             _model.RemoveFacility(instanceId);
+            RemoveFacilityInventory(instanceId);
             _committedFacilityAccess.Remove(instanceId);
             RebuildCommittedInteractionSpaces(reacquireActiveSpace: true);
         }
@@ -1590,10 +1610,7 @@ namespace Game.NomadWorkshop.Foundation
                 TryStartLeisureRoutine();
                 return;
             }
-            if (!TryFindPlacedFacility(
-                    NomadFacilityFunction.DrinkingStation,
-                    out FoundationFacilityState station,
-                    out _))
+            if (!HasPlacedFacility(NomadFacilityFunction.DrinkingStation))
             {
                 if (needsDrink)
                     SetResidentPhase(
@@ -1604,19 +1621,26 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            int stationWater = _drinkingStation.GetAmount(NomadResourceIds.Water);
-            int restockTarget = Math.Min(
-                DrinkingStationRestockTargetMilliliters,
-                _drinkingStation.Capacity);
-            if (needsDrink && stationWater > 0)
+            if (needsDrink && TrySelectDrinkingStation(
+                    requireDrinkServing: true,
+                    requireRestock: false,
+                    out FoundationFacilityState stockedStation,
+                    out _))
             {
                 _model.LastBlocker.Value = string.Empty;
-                BeginDrink(station);
+                BeginDrink(stockedStation);
                 return;
             }
 
-            if (!needsDrink && stationWater >= restockTarget)
+            if (!TrySelectDrinkingStation(
+                    requireDrinkServing: false,
+                    requireRestock: true,
+                    out FoundationFacilityState station,
+                    out ResourceInventory stationInventory))
             {
+                if (needsDrink)
+                    _model.LastBlocker.Value =
+                        "RouteUnavailable · 没有可补水的可达饮水站实例 · 将继续代谢并重新评估";
                 TryStartLeisureRoutine();
                 return;
             }
@@ -1638,15 +1662,18 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            TryStartWaterRestock(source, station, needsDrink);
+            TryStartWaterRestock(source, station, stationInventory, needsDrink);
         }
 
         private void TryStartWaterRestock(
             in FoundationFacilityState source,
             in FoundationFacilityState station,
+            ResourceInventory stationInventory,
             bool drinkAfterDelivery)
         {
-            int haulMilliliters = CalculateWaterHaulMilliliters(drinkAfterDelivery);
+            int haulMilliliters = CalculateWaterHaulMilliliters(
+                stationInventory,
+                drinkAfterDelivery);
             if (haulMilliliters <= 0)
             {
                 if (drinkAfterDelivery)
@@ -1659,6 +1686,7 @@ namespace Game.NomadWorkshop.Foundation
             ResidentActionPlanEvaluation plan = EvaluateWaterRestockPlan(
                 source,
                 station,
+                stationInventory,
                 drinkAfterDelivery,
                 haulMilliliters,
                 out FoundationFacilityState waterCanFacility,
@@ -1686,7 +1714,7 @@ namespace Game.NomadWorkshop.Foundation
                 ResidentOwnerId,
                 _vehicleWater,
                 _waterCan,
-                _drinkingStation,
+                stationInventory,
                 NomadResourceIds.Water,
                 haulMilliliters,
                 drinkAfterDelivery
@@ -1706,6 +1734,8 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
+            _activeWaterSourceFacilityInstanceId = source.InstanceId;
+            _activeWaterTargetFacilityInstanceId = station.InstanceId;
             _drinkAfterActiveHaul = drinkAfterDelivery;
             _waterCanPickupWasAtSource = waterCanAtSource;
             if (_waterCanLocation == FoundationWaterCanLocation.Resident)
@@ -1726,19 +1756,21 @@ namespace Game.NomadWorkshop.Foundation
                 allowAlternativeFacility: false);
         }
 
-        private int CalculateWaterHaulMilliliters(bool drinkAfterDelivery)
+        private int CalculateWaterHaulMilliliters(
+            ResourceInventory stationInventory,
+            bool drinkAfterDelivery)
         {
             int desiredMilliliters = drinkAfterDelivery
                 ? WaterHaulBatchMilliliters
                 : Math.Max(
                     0,
                     DrinkingStationRestockTargetMilliliters -
-                    _drinkingStation.GetAmount(NomadResourceIds.Water));
+                    stationInventory.GetAmount(NomadResourceIds.Water));
             return Math.Min(
                 desiredMilliliters,
                 Math.Min(
                     _vehicleWater.GetAmount(NomadResourceIds.Water),
-                    Math.Min(_waterCan.FreeCapacity, _drinkingStation.FreeCapacity)));
+                    Math.Min(_waterCan.FreeCapacity, stationInventory.FreeCapacity)));
         }
 
         private void TryStartLeisureRoutine()
@@ -1900,13 +1932,32 @@ namespace Game.NomadWorkshop.Foundation
         private ResidentActionPlanEvaluation EvaluateWaterRestockPlan(
             in FoundationFacilityState source,
             in FoundationFacilityState station,
+            ResourceInventory stationInventory,
             bool drinkAfterDelivery,
             int haulMilliliters,
             out FoundationFacilityState waterCanFacility,
             out bool waterCanAtSource)
         {
-            waterCanAtSource = _waterCanLocation == FoundationWaterCanLocation.VehicleWaterTank;
-            waterCanFacility = waterCanAtSource ? source : station;
+            waterCanAtSource = _waterCanLocation == FoundationWaterCanLocation.VehicleWaterTank &&
+                               string.Equals(
+                                   _waterCanAnchorFacilityInstanceId,
+                                   source.InstanceId,
+                                   StringComparison.Ordinal);
+            if (_waterCanLocation == FoundationWaterCanLocation.Resident)
+            {
+                waterCanFacility = default;
+            }
+            else
+            {
+                NomadFacilityFunction anchorFunction = waterCanAtSource
+                    ? NomadFacilityFunction.VehicleWaterTank
+                    : NomadFacilityFunction.DrinkingStation;
+                if (!TryFindFacilityByInstanceId(
+                        _waterCanAnchorFacilityInstanceId,
+                        anchorFunction,
+                        out waterCanFacility))
+                    waterCanFacility = waterCanAtSource ? source : station;
+            }
 
             var requirement = new CargoTransportRequirement(
                 NomadResourceIds.Water,
@@ -1946,7 +1997,7 @@ namespace Game.NomadWorkshop.Foundation
 
             float stockDeficit = Mathf.Clamp01(
                 (DrinkingStationRestockTargetMilliliters -
-                 _drinkingStation.GetAmount(NomadResourceIds.Water)) /
+                 stationInventory.GetAmount(NomadResourceIds.Water)) /
                 (float)DrinkingStationRestockTargetMilliliters);
             var proposal = new ResidentActionPlanProposal(
                 $"water-restock:{_waterTaskSequence + 1}",
@@ -2005,9 +2056,10 @@ namespace Game.NomadWorkshop.Foundation
             Vector3 sourceGoal;
             if (_waterCanLocation != FoundationWaterCanLocation.Resident)
             {
-                NomadFacilityDefinition waterCanDefinition = waterCanAtSource
-                    ? sourceDefinition
-                    : stationDefinition;
+                if (!_definitions.TryGetValue(
+                        waterCanFacility.DefinitionId,
+                        out NomadFacilityDefinition waterCanDefinition))
+                    return false;
                 if (!TrySelectBestInteractionSlot(
                         cursor,
                         waterCanFacility,
@@ -2172,10 +2224,10 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            if (!TryFindPlacedFacility(
+            if (!TryFindFacilityByInstanceId(
+                    _activeWaterSourceFacilityInstanceId,
                     NomadFacilityFunction.VehicleWaterTank,
-                    out FoundationFacilityState source,
-                    out _))
+                    out FoundationFacilityState source))
             {
                 Block("取得水罐后找不到车辆水箱设施", ResourceFlowBlocker.None);
                 return;
@@ -2190,10 +2242,10 @@ namespace Game.NomadWorkshop.Foundation
         private void CompleteWaterPickup()
         {
             _activeHaul.PickUp();
-            if (!TryFindPlacedFacility(
+            if (!TryFindFacilityByInstanceId(
+                    _activeWaterTargetFacilityInstanceId,
                     NomadFacilityFunction.DrinkingStation,
-                    out FoundationFacilityState station,
-                    out _))
+                    out FoundationFacilityState station))
             {
                 Block("饮水站在搬运途中消失", ResourceFlowBlocker.None);
                 return;
@@ -2209,13 +2261,18 @@ namespace Game.NomadWorkshop.Foundation
         {
             bool shouldDrink = _drinkAfterActiveHaul ||
                                _residentWaterCycle.Thirst >= DrinkNeedThreshold;
+            string deliveredStationInstanceId = _activeWaterTargetFacilityInstanceId;
             _activeHaul.Deliver();
             _activeHaul = null;
             _drinkAfterActiveHaul = false;
-            SetWaterCanLocation(FoundationWaterCanLocation.DrinkingStation);
+            _activeWaterSourceFacilityInstanceId = string.Empty;
+            SetWaterCanLocation(
+                FoundationWaterCanLocation.DrinkingStation,
+                deliveredStationInstanceId);
 
             if (!shouldDrink)
             {
+                _activeWaterTargetFacilityInstanceId = string.Empty;
                 ReleaseActiveInteractionSpace(publishProjection: true);
                 SetResidentPhase(
                     FoundationResidentPhase.Idle,
@@ -2223,10 +2280,10 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            if (!TryFindPlacedFacility(
+            if (!TryFindFacilityByInstanceId(
+                    deliveredStationInstanceId,
                     NomadFacilityFunction.DrinkingStation,
-                    out FoundationFacilityState station,
-                    out _))
+                    out FoundationFacilityState station))
             {
                 Block("饮水站在任务途中消失", ResourceFlowBlocker.None);
                 return;
@@ -2236,9 +2293,19 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BeginDrink(FoundationFacilityState station)
         {
+            if (!_drinkingStationInventories.TryGetValue(
+                    station.InstanceId,
+                    out ResourceInventory stationInventory))
+            {
+                Block(
+                    $"饮水站 {station.InstanceId} 缺少实例库存",
+                    ResourceFlowBlocker.None);
+                return;
+            }
+
             if (!_residentWaterCycle.TryReserveDrink(
                     _resourceFlow,
-                    _drinkingStation,
+                    stationInventory,
                     $"drink:{_waterTaskSequence}",
                     $"facility:{station.InstanceId}:drink",
                     ResidentWaterCycle.DefaultDrinkServingMilliliters,
@@ -2258,10 +2325,12 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
+            _activeWaterTargetFacilityInstanceId = station.InstanceId;
             if (!TryBeginMove(
                     FoundationResidentPhase.MovingToDrinkingStation,
                     "沿连续 NavMesh 路径前往饮水站",
-                    station))
+                    station,
+                    allowAlternativeFacility: false))
                 return;
 
             if (AdvanceResidentAlongPath(0f))
@@ -2277,6 +2346,7 @@ namespace Game.NomadWorkshop.Foundation
             _activeResidentAction = null;
             ReleaseActiveInteractionSpace(publishProjection: true);
             _model.CompletedDrinkCount.Value++;
+            _activeWaterTargetFacilityInstanceId = string.Empty;
             SetResidentPhase(FoundationResidentPhase.Idle, "完成一次饮水，水已进入居民身体");
         }
 
@@ -2342,12 +2412,18 @@ namespace Game.NomadWorkshop.Foundation
 
             ReleaseActiveInteractionSpace(publishProjection: false);
             ClearActivePath();
-            if (!TrySelectFacilityInteractionForIntent(
+            ResourceFlowBlocker retargetBlocker = ResourceFlowBlocker.None;
+            bool hasCandidate = TrySelectFacilityInteractionForIntent(
                     _activeMoveIntent,
                     out FoundationFacilityState selectedFacility,
                     out DeckPose dockingPose,
                     out string slotLabel,
-                    out InteractionSpaceSlot selectedSlot) ||
+                    out InteractionSpaceSlot selectedSlot);
+            bool resourceTargetReady = hasCandidate &&
+                                       TryRetargetActiveWaterHaul(
+                                           selectedFacility,
+                                           out retargetBlocker);
+            if (!resourceTargetReady ||
                 !TryAcquireInteractionSpace(selectedSlot) ||
                 !TryAssignDockingPath(dockingPose))
             {
@@ -2357,9 +2433,11 @@ namespace Game.NomadWorkshop.Foundation
                 SetResidentPhase(
                     FoundationResidentPhase.WaitingForRoute,
                     $"路线暂不可达：{_activeMoveIntent.Task}；将自动换 Slot、换同功能设施或重试");
-                _model.LastBlocker.Value =
-                    $"RouteUnavailable · {_activeMoveIntent.FacilityFunction} · " +
-                    _activeMoveIntent.PreferredFacilityInstanceId;
+                _model.LastBlocker.Value = retargetBlocker.IsBlocked
+                    ? $"{retargetBlocker.Reason} · 搬运资源目标无法改道 · " +
+                      selectedFacility.InstanceId
+                    : $"RouteUnavailable · {_activeMoveIntent.FacilityFunction} · " +
+                      _activeMoveIntent.PreferredFacilityInstanceId;
                 PublishCurrentFacilityAccessProjection();
                 return false;
             }
@@ -2371,6 +2449,47 @@ namespace Game.NomadWorkshop.Foundation
             SetResidentPhase(
                 _activeMoveIntent.TravelPhase,
                 $"{_activeMoveIntent.Task} · {selectedFacility.InstanceId}/{slotLabel}");
+            return true;
+        }
+
+        private bool TryRetargetActiveWaterHaul(
+            in FoundationFacilityState selectedFacility,
+            out ResourceFlowBlocker blocker)
+        {
+            blocker = ResourceFlowBlocker.None;
+            if (_activeHaul == null ||
+                _activeHaul.State != HaulTaskState.Carrying ||
+                _activeMoveIntent.TravelPhase !=
+                FoundationResidentPhase.MovingToDrinkingStation ||
+                string.Equals(
+                    selectedFacility.InstanceId,
+                    _activeWaterTargetFacilityInstanceId,
+                    StringComparison.Ordinal))
+                return true;
+
+            if (!_drinkingStationInventories.TryGetValue(
+                    selectedFacility.InstanceId,
+                    out ResourceInventory destination))
+            {
+                blocker = new ResourceFlowBlocker(
+                    ResourceFlowBlockReason.DestinationFull,
+                    BuildDrinkingStationInventoryId(selectedFacility.InstanceId),
+                    NomadResourceIds.Water);
+                return false;
+            }
+
+            if (!_activeHaul.TryRetargetDestination(
+                    destination,
+                    new[]
+                    {
+                        $"facility:{_activeWaterSourceFacilityInstanceId}:water-pickup",
+                        $"facility:{selectedFacility.InstanceId}:water-delivery",
+                        $"carrier:{_waterCan.Id}",
+                    },
+                    out blocker))
+                return false;
+
+            _activeWaterTargetFacilityInstanceId = selectedFacility.InstanceId;
             return true;
         }
 
@@ -2418,6 +2537,7 @@ namespace Game.NomadWorkshop.Foundation
                         candidate.DefinitionId,
                         out NomadFacilityDefinition definition) ||
                     definition.Function != intent.FacilityFunction ||
+                    !IsFacilityCompatibleWithActiveMove(intent, candidate) ||
                     !TrySelectBestInteractionSlot(
                         ToNavigationPoint(_model.ResidentLocalPosition.Value),
                         candidate,
@@ -2437,6 +2557,25 @@ namespace Game.NomadWorkshop.Foundation
                 selectedSlot = slot;
             }
             return bestLength < float.PositiveInfinity;
+        }
+
+        private bool IsFacilityCompatibleWithActiveMove(
+            in FoundationResidentMoveIntent intent,
+            in FoundationFacilityState candidate)
+        {
+            if (_activeHaul == null ||
+                _activeHaul.State != HaulTaskState.Carrying ||
+                intent.TravelPhase != FoundationResidentPhase.MovingToDrinkingStation ||
+                string.Equals(
+                    candidate.InstanceId,
+                    _activeWaterTargetFacilityInstanceId,
+                    StringComparison.Ordinal))
+                return true;
+
+            return _drinkingStationInventories.TryGetValue(
+                       candidate.InstanceId,
+                       out ResourceInventory inventory) &&
+                   _resourceFlow.GetAvailableCapacity(inventory) >= _activeHaul.Request.Amount;
         }
 
         private bool TrySelectBestInteractionSlot(
@@ -2660,7 +2799,20 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            if (_hasActiveMoveIntent) TryResumeActiveMove();
+            if (!_hasActiveMoveIntent || TryResumeActiveMove()) return;
+
+            bool canSafelyReplan = _activeResidentAction != null ||
+                                   (_activeHaul != null &&
+                                    _activeHaul.State == HaulTaskState.Reserved);
+            if (!canSafelyReplan) return;
+
+            ReleaseActiveTasks();
+            ClearActivePath();
+            PublishCurrentFacilityAccessProjection();
+            _model.LastBlocker.Value = string.Empty;
+            SetResidentPhase(
+                FoundationResidentPhase.Idle,
+                "建造使未提交任务路线失效，已释放预留并准备重新选择目标");
         }
 
         private void WriteRemainingPathProjection()
@@ -2756,6 +2908,107 @@ namespace Game.NomadWorkshop.Foundation
                 ? $"{blocker.Reason} · {blocker.InventoryId} · {blocker.Resource}"
                 : task;
         }
+
+        private bool TrySelectDrinkingStation(
+            bool requireDrinkServing,
+            bool requireRestock,
+            out FoundationFacilityState selectedStation,
+            out ResourceInventory selectedInventory)
+        {
+            selectedStation = default;
+            selectedInventory = null;
+            float bestPathLength = float.PositiveInfinity;
+            Vector3 residentPosition = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
+            for (var i = 0; i < facilities.Count; i++)
+            {
+                FoundationFacilityState candidate = facilities[i];
+                if (!_definitions.TryGetValue(
+                        candidate.DefinitionId,
+                        out NomadFacilityDefinition definition) ||
+                    definition.Function != NomadFacilityFunction.DrinkingStation ||
+                    !_drinkingStationInventories.TryGetValue(
+                        candidate.InstanceId,
+                        out ResourceInventory inventory))
+                    continue;
+
+                int water = inventory.GetAmount(NomadResourceIds.Water);
+                if (requireDrinkServing &&
+                    water < ResidentWaterCycle.DefaultDrinkServingMilliliters)
+                    continue;
+                int restockTarget = Math.Min(
+                    DrinkingStationRestockTargetMilliliters,
+                    inventory.Capacity);
+                if (requireRestock &&
+                    (water >= restockTarget || inventory.FreeCapacity <= 0))
+                    continue;
+                if (!TryMeasureFacilityPath(
+                        residentPosition,
+                        candidate,
+                        definition,
+                        out float pathLength) ||
+                    pathLength >= bestPathLength)
+                    continue;
+
+                bestPathLength = pathLength;
+                selectedStation = candidate;
+                selectedInventory = inventory;
+            }
+            return selectedInventory != null;
+        }
+
+        /// <summary>
+        /// 任务候选只验证设施是否能从连续 NavMesh 到达，不读取瞬时 Slot 租约。
+        /// 真正开始移动时会先释放居民自己的旧 Slot，再由 TryResumeActiveMove 原子取得新 Slot。
+        /// </summary>
+        private bool TryMeasureFacilityPath(
+            Vector3 start,
+            in FoundationFacilityState facility,
+            NomadFacilityDefinition definition,
+            out float bestPathLength)
+        {
+            bestPathLength = float.PositiveInfinity;
+            IReadOnlyList<NomadFacilityInteractionGroupDefinition> groups =
+                definition.InteractionGroups;
+            for (var groupIndex = 0; groupIndex < groups.Count; groupIndex++)
+            {
+                NomadFacilityInteractionGroupDefinition group = groups[groupIndex];
+                for (var slotIndex = 0; slotIndex < group.AlternativeSlots.Count; slotIndex++)
+                {
+                    DeckPose slotPose = group.AlternativeSlots[slotIndex].Resolve(facility.Pose);
+                    if (!TryCalculateDockingPath(start, slotPose, out DeckNavPathProbe path) ||
+                        path.PathLength >= bestPathLength)
+                        continue;
+                    bestPathLength = path.PathLength;
+                }
+            }
+            return bestPathLength < float.PositiveInfinity;
+        }
+
+        private void AddFacilityInventory(in FoundationFacilityState facility)
+        {
+            if (!_definitions.TryGetValue(
+                    facility.DefinitionId,
+                    out NomadFacilityDefinition definition) ||
+                definition.Function != NomadFacilityFunction.DrinkingStation)
+                return;
+
+            _drinkingStationInventories.Add(
+                facility.InstanceId,
+                new ResourceInventory(
+                    BuildDrinkingStationInventoryId(facility.InstanceId),
+                    ResourceMeasure.Milliliter,
+                    DrinkingStationCapacityMilliliters));
+        }
+
+        private void RemoveFacilityInventory(string facilityInstanceId)
+        {
+            if (string.IsNullOrWhiteSpace(facilityInstanceId)) return;
+            _drinkingStationInventories.Remove(facilityInstanceId);
+        }
+
+        private static string BuildDrinkingStationInventoryId(string facilityInstanceId) =>
+            $"facility:{facilityInstanceId}:drinking-water";
 
         private bool HasPlacedFacility(NomadFacilityFunction function) =>
             TryFindPlacedFacility(function, out _, out _);
@@ -2854,9 +3107,7 @@ namespace Game.NomadWorkshop.Foundation
                                  _waterCan.GetAmount(NomadResourceIds.Water) > 0;
             if (_model.ResidentCarryingWater.Value != carryingWater)
                 _model.ResidentCarryingWater.Value = carryingWater;
-            SetInt(
-                _model.DrinkingStationWaterMilliliters,
-                _drinkingStation.GetAmount(NomadResourceIds.Water));
+            WriteFacilityInventoryProjection();
             SetInt(
                 _model.BodyWaterMilliliters,
                 _residentWaterCycle.BodyWater.GetAmount(NomadResourceIds.Water));
@@ -2866,6 +3117,38 @@ namespace Game.NomadWorkshop.Foundation
             SetInt(
                 _model.ToiletHoldingWasteMilliliters,
                 _toiletHolding.GetAmount(NomadResourceIds.HumanWaste));
+        }
+
+        private void WriteFacilityInventoryProjection()
+        {
+            var totalWater = 0;
+            var totalCapacity = 0;
+            _facilityInventoryProjection.Clear();
+            IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
+            for (var i = 0; i < facilities.Count; i++)
+            {
+                FoundationFacilityState facility = facilities[i];
+                if (!_drinkingStationInventories.TryGetValue(
+                        facility.InstanceId,
+                        out ResourceInventory inventory))
+                    continue;
+
+                int amount = inventory.GetAmount(NomadResourceIds.Water);
+                totalWater = checked(totalWater + amount);
+                totalCapacity = checked(totalCapacity + inventory.Capacity);
+                _facilityInventoryProjection.Add(new FoundationFacilityInventoryState(
+                    facility.InstanceId,
+                    inventory.Id,
+                    "drinking-water",
+                    NomadResourceIds.Water.Value,
+                    inventory.Measure,
+                    amount,
+                    inventory.Capacity));
+            }
+
+            SetInt(_model.DrinkingStationWaterMilliliters, totalWater);
+            SetInt(_model.DrinkingStationCapacityMilliliters, totalCapacity);
+            _model.ReplaceFacilityInventories(_facilityInventoryProjection);
         }
 
         private void ClearPlacementSelection(bool exitBuildMode)
@@ -2963,11 +3246,23 @@ namespace Game.NomadWorkshop.Foundation
             if (property.Value != value) property.Value = value;
         }
 
-        private void SetWaterCanLocation(FoundationWaterCanLocation location)
+        private void SetWaterCanLocation(
+            FoundationWaterCanLocation location,
+            string anchorFacilityInstanceId = "")
         {
             _waterCanLocation = location;
-            if (_model != null && _model.WaterCanLocation.Value != location)
+            _waterCanAnchorFacilityInstanceId = location == FoundationWaterCanLocation.Resident
+                ? string.Empty
+                : anchorFacilityInstanceId ?? string.Empty;
+            if (_model == null) return;
+            if (_model.WaterCanLocation.Value != location)
                 _model.WaterCanLocation.Value = location;
+            if (!string.Equals(
+                    _model.WaterCanAnchorFacilityInstanceId.Value,
+                    _waterCanAnchorFacilityInstanceId,
+                    StringComparison.Ordinal))
+                _model.WaterCanAnchorFacilityInstanceId.Value =
+                    _waterCanAnchorFacilityInstanceId;
         }
 
         private void ReleaseActiveTasks()
@@ -2977,6 +3272,8 @@ namespace Game.NomadWorkshop.Foundation
             _drinkAfterActiveHaul = false;
             _activeResidentAction?.Dispose();
             _activeResidentAction = null;
+            _activeWaterSourceFacilityInstanceId = string.Empty;
+            _activeWaterTargetFacilityInstanceId = string.Empty;
             ReleaseActiveInteractionSpace(publishProjection: false);
             _activeLeisureRestore = 0f;
             _activeLeisureKind = FoundationLeisureKind.None;

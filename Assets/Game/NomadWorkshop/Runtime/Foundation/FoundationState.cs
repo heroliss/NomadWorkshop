@@ -77,6 +77,69 @@ namespace Game.NomadWorkshop.Foundation
     }
 
     /// <summary>
+    /// 某个设施实例内一个真实库存隔间的只读投影。稳定设施 id 与库存 id 让调试、存档和 AI 工具
+    /// 能区分同类型设施，而不是把多座饮水站误看成一个共享水池。
+    /// </summary>
+    [Serializable]
+    public struct FoundationFacilityInventoryState : IEquatable<FoundationFacilityInventoryState>
+    {
+        [SerializeField] private string facilityInstanceId;
+        [SerializeField] private string inventoryId;
+        [SerializeField] private string compartmentId;
+        [SerializeField] private string resourceId;
+        [SerializeField] private ResourceMeasure measure;
+        [SerializeField] private int amount;
+        [SerializeField] private int capacity;
+
+        public FoundationFacilityInventoryState(
+            string facilityInstanceId,
+            string inventoryId,
+            string compartmentId,
+            string resourceId,
+            ResourceMeasure measure,
+            int amount,
+            int capacity)
+        {
+            this.facilityInstanceId = facilityInstanceId ?? string.Empty;
+            this.inventoryId = inventoryId ?? string.Empty;
+            this.compartmentId = compartmentId ?? string.Empty;
+            this.resourceId = resourceId ?? string.Empty;
+            this.measure = measure;
+            this.amount = Math.Max(0, amount);
+            this.capacity = Math.Max(0, capacity);
+        }
+
+        public string FacilityInstanceId => facilityInstanceId;
+        public string InventoryId => inventoryId;
+        public string CompartmentId => compartmentId;
+        public string ResourceId => resourceId;
+        public ResourceMeasure Measure => measure;
+        public int Amount => amount;
+        public int Capacity => capacity;
+
+        public bool Equals(FoundationFacilityInventoryState other) =>
+            string.Equals(facilityInstanceId, other.facilityInstanceId, StringComparison.Ordinal) &&
+            string.Equals(inventoryId, other.inventoryId, StringComparison.Ordinal) &&
+            string.Equals(compartmentId, other.compartmentId, StringComparison.Ordinal) &&
+            string.Equals(resourceId, other.resourceId, StringComparison.Ordinal) &&
+            measure == other.measure &&
+            amount == other.amount &&
+            capacity == other.capacity;
+
+        public override bool Equals(object obj) =>
+            obj is FoundationFacilityInventoryState other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(
+            facilityInstanceId,
+            inventoryId,
+            compartmentId,
+            resourceId,
+            measure,
+            amount,
+            capacity);
+    }
+
+    /// <summary>
     /// 最近一次完整行动方案的 Inspector 投影。它只保存可解释结果，不把纯 C# 估算器或可变候选泄露给 View。
     /// TotalUtility 是 Utility AI 在本次需求快照上的最终分数，而不是策划长期平衡承诺。
     /// </summary>
