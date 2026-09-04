@@ -20,6 +20,8 @@ namespace Game.NomadWorkshop.Foundation
         private const string ResidentDecisionRandomStreamId = "resident-decision";
         private const string LeisureOutcomeRandomStreamId =
             "resident-wellbeing:leisure-outcome";
+        private const string WorkPaceRandomStreamId =
+            "resident-performance:work-pace";
         private const string ResidentActionSequenceStreamId =
             "foundation:resident-action-id";
 
@@ -137,6 +139,7 @@ namespace Game.NomadWorkshop.Foundation
                     _model.ResidentLocalYawDegrees.Value)),
                 PersonalInventoryId = ResidentPersonalInventoryId,
                 ThirstPermille = ToPermille(waterCycle.Thirst),
+                HealthPermille = ToPermille(_residentWellbeing.Health),
                 FatiguePermille = ToPermille(_residentWellbeing.Fatigue),
                 StressPermille = ToPermille(_residentWellbeing.Stress),
                 EntertainmentPermille = ToPermille(_residentWellbeing.Entertainment),
@@ -157,6 +160,9 @@ namespace Game.NomadWorkshop.Foundation
             data.RandomStreams.Add(CreateRandomStream(
                 LeisureOutcomeRandomStreamId,
                 _leisureSequence));
+            data.RandomStreams.Add(CreateRandomStream(
+                WorkPaceRandomStreamId,
+                _workActionSequence));
             data.RandomStreams.Add(CreateRandomStream(
                 ResidentActionSequenceStreamId,
                 (long)_residentActionSequence + 1L));
@@ -360,7 +366,8 @@ namespace Game.NomadWorkshop.Foundation
                 restore.Resident.EntertainmentPermille / 1000f,
                 restore.Resident.MoodPermille / 1000f,
                 restore.Resident.FatiguePermille / 1000f,
-                restore.Resident.StressPermille / 1000f);
+                restore.Resident.StressPermille / 1000f,
+                restore.Resident.HealthPermille / 1000f);
 
             worldSeed = data.WorldSeed;
             _simulationClock.Restore(data.SimulationTick);
@@ -376,6 +383,10 @@ namespace Game.NomadWorkshop.Foundation
                 data,
                 LeisureOutcomeRandomStreamId,
                 fallback: 0L), LeisureOutcomeRandomStreamId);
+            _workActionSequence = GetRandomStreamCursor(
+                data,
+                WorkPaceRandomStreamId,
+                fallback: 0L);
             long nextActionSequence = GetRandomStreamCursor(
                 data,
                 ResidentActionSequenceStreamId,
@@ -389,6 +400,7 @@ namespace Game.NomadWorkshop.Foundation
             _residentDecisionRetryRemaining = 0f;
             _phaseDuration = 0f;
             _phaseRemaining = 0f;
+            _activeWorkEfficiency = CalculateExpectedWorkEfficiency();
             _activeLeisureOutcomeScale = 1f;
             _activeLeisureKind = FoundationLeisureKind.None;
             _activeWaterSourceFacilityInstanceId = string.Empty;
@@ -411,12 +423,17 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedLeisureCount.Value = 0;
             _model.CompletedDaydreamCount.Value = 0;
             _model.CompletedWanderCount.Value = 0;
+            _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
             SetWaterCanLocation(waterCanLocation, waterCanAnchor);
             ClearPlacementSelection(exitBuildMode: true);
             SetResidentPhase(
-                FoundationResidentPhase.Idle,
-                "已恢复运行检查点；瞬时路径与租约已重建，正在重新评估行动");
+                _residentWellbeing.IsAlive
+                    ? FoundationResidentPhase.Idle
+                    : FoundationResidentPhase.Dead,
+                _residentWellbeing.IsAlive
+                    ? "已恢复运行检查点；瞬时路径与租约已重建，正在重新评估行动"
+                    : "已恢复运行检查点；居民健康为零，保持死亡状态");
             WriteSimulationProjection();
 
             _initialized = true;
@@ -649,6 +666,10 @@ namespace Game.NomadWorkshop.Foundation
                                    string.Equals(
                                        stream.StreamId,
                                        LeisureOutcomeRandomStreamId,
+                                       StringComparison.Ordinal) ||
+                                   string.Equals(
+                                       stream.StreamId,
+                                       WorkPaceRandomStreamId,
                                        StringComparison.Ordinal) ||
                                    string.Equals(
                                        stream.StreamId,

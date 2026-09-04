@@ -42,10 +42,12 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> WaterCanCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<FoundationActionPlanProjection> LatestActionPlan;
         public readonly ReadOnlyReactiveProperty<float> ResidentThirst;
+        public readonly ReadOnlyReactiveProperty<float> ResidentHealth;
         public readonly ReadOnlyReactiveProperty<float> ResidentEntertainment;
         public readonly ReadOnlyReactiveProperty<float> ResidentMood;
         public readonly ReadOnlyReactiveProperty<float> ResidentFatigue;
         public readonly ReadOnlyReactiveProperty<float> ResidentStress;
+        public readonly ReadOnlyReactiveProperty<float> ResidentWorkEfficiency;
         public readonly ReadOnlyReactiveProperty<int> VehicleWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> VehicleWaterCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<int> DrinkingStationWaterMilliliters;
@@ -62,6 +64,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> CompletedLeisureCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedDaydreamCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedWanderCount;
+        public readonly ReadOnlyReactiveProperty<int> CompletedGroundRestCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedHobbyCount;
         public readonly ReadOnlyReactiveProperty<string> CurrentTask;
         public readonly ReadOnlyReactiveProperty<string> LastBlocker;
@@ -102,10 +105,12 @@ namespace Game.NomadWorkshop.Foundation
             WaterCanCapacityMilliliters = model.WaterCanCapacityMilliliters;
             LatestActionPlan = model.LatestActionPlan;
             ResidentThirst = model.ResidentThirst;
+            ResidentHealth = model.ResidentHealth;
             ResidentEntertainment = model.ResidentEntertainment;
             ResidentMood = model.ResidentMood;
             ResidentFatigue = model.ResidentFatigue;
             ResidentStress = model.ResidentStress;
+            ResidentWorkEfficiency = model.ResidentWorkEfficiency;
             VehicleWaterMilliliters = model.VehicleWaterMilliliters;
             VehicleWaterCapacityMilliliters = model.VehicleWaterCapacityMilliliters;
             DrinkingStationWaterMilliliters = model.DrinkingStationWaterMilliliters;
@@ -122,6 +127,7 @@ namespace Game.NomadWorkshop.Foundation
             CompletedLeisureCount = model.CompletedLeisureCount;
             CompletedDaydreamCount = model.CompletedDaydreamCount;
             CompletedWanderCount = model.CompletedWanderCount;
+            CompletedGroundRestCount = model.CompletedGroundRestCount;
             CompletedHobbyCount = model.CompletedHobbyCount;
             CurrentTask = model.CurrentTask;
             LastBlocker = model.LastBlocker;

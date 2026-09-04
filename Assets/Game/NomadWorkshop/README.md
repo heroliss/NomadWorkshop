@@ -20,15 +20,16 @@
 - 正式 Foundation 已接入小型甲板 NavMesh：0.1 m 实时预检复用 Agent 净空并收紧 Slot 映射，几何通过后创建候选障碍并异步更新导航；设施动作前居民精确抵达毫米 Slot 和朝向，普通散步才允许宽松采样；
 - 居民逻辑位置与运行时 `Resident 01` 根节点统一代表脚底，Y 固定在甲板表面 0；胶囊中心的 0.55 m 半高只属于 View 子视觉，不再同时写入 System 根位置导致悬空；
 - 居民移动保存“任务 + 设施功能 + 首选设施”语义而非一次性坐标；施工切断携水目标后，会把目的库存容量、资源交互键和语义路径原子迁移到另一实例；尚未取货的任务则释放预留后重选，不再以“建造后无法重新规划”为永久 Block；
-- 居民已拥有正向娱乐满足与心情、负向疲劳与压力四项独立连续状态；发呆和闲逛只缓慢降低疲劳 / 压力并略微改善心情，不补充娱乐。可建造观景画架提供三个共享容量的备选 Slot；居民把实际路程、作画偏好与娱乐收益放进同一 Utility 方案，只有精确到位后的作画阶段才连续恢复娱乐；
+- 居民已拥有正向健康、娱乐满足与心情，以及负向疲劳与压力等独立连续状态；严重缺水平滑损害健康，健康归零进入可保存的死亡终态。发呆和闲逛只缓慢降低疲劳 / 压力并略微改善心情，不补充娱乐；缺少床椅时可坐卧地面进行恢复较慢、轻微损失心情的兜底休息。可建造观景画架提供三个共享容量的备选 Slot；居民把实际路程、作画偏好与娱乐收益放进同一 Utility 方案，只有精确到位后的作画阶段才连续恢复娱乐；
+- 居民基础工作能力、健康、疲劳和压力共同形成连续工作效率；可控压力暂时提高动作速度，接近崩溃时增益回落，相关失误与健康代价则保留给风险通道。取得水罐、装水和交付等工作阶段各自在开始时固定采样一次小幅速度差异，不逐帧改变进度；
 - 无必要水任务时，可达空地闲逛、原地发呆与已建爱好设施共同参与确定性 Utility / Softmax；没有画架时前两者的基础比仍约为 1:2，画架会按需求、个人倾向与路程自然分走概率。行动效果差异在开始时按命名随机流固定采样一次，不逐帧抖动；
 - 项目默认 Renderer 已切到共享 Universal 3D Renderer；Foundation 主相机仍显式选择它，三个既有 2D 场景则显式固定 Renderer2D，避免默认迁移静默改画面。Foundation 已有内部 HDR、ACES / 克制 Bloom、降采样 SSAO、两级软阴影、程序化天空与首帧一次性局部 Reflection Probe；实际 Game View 已校准深色甲板可读性，但仍只是灰盒图形基线，不冒充最终 Art Bible；
-- 运行界面默认只显示居民 01 的紧凑状态卡与水分 / 精力 / 心情进度条，长任务说明可完整换行；右上居民 / 建造 / 开发面板互斥展开。世界输入只拦截实际可见 HUD 矩形，不再因固定调试区把左侧约三分之一甲板错误冻结；
+- 运行界面默认只显示居民 01 的紧凑状态卡与水分 / 健康 / 精力 / 心情进度条，长任务说明可完整换行；右上居民 / 建造 / 开发面板互斥展开，建造控制与开发 Harness 已分流。世界输入只拦截实际可见 HUD 矩形，不再因固定调试区把左侧约三分之一甲板错误冻结；
 - `NeedPressureCurve` 提供可复用的平滑需求曲线；当前膀胱在 50% 及以下不产生如厕驱动力，之后非线性上升，90% 起成为必处理的紧急需求。意图概率只在行动边界用领域隔离 Seed 采样，不会因每帧重试把小概率放大成必然；
 - 已锁定官方 AI Navigation 2.0.14；隔离 `NavigationInteractionSpike` 中 `DeckNavigationUtility : MonoUtilityBase` 同步构建小型甲板 NavMesh，空旷路径长度比为 1.000，穿过 27° 旋转柜体的路径长度比为 1.058；
 - 两名 NavMeshAgent 能相向通过，代表性最小间距约 0.69m；同一柜门的 left / center / right 是共享容量 1 的备选 Slot，A / B 会从相反方向选择 right / left，而不是沿格中心移动或同时穿手操作；
 - 柜门 InteractionGroup 的租约覆盖接近、Docking、开门、真实库存交接与关门全周期；资源提交不会提前释放设施容量，最终柜内 2 件物品分别进入两名居民携带库存；
-- 版本 3 存档协议覆盖世界 / 旅途、毫米 + 0.1° 甲板姿态、设施 / 蓝图、带计量维度的真实库存批次、居民连续状态、低于 1 mL 的 nL 代谢余量、随机流游标与中途行动检查点；`OutcomeCommitted` 防止加载后重复交接，NavMesh 路径和 RVO 速度明确按派生缓存重建；v2 会显式补入娱乐 / 心情中性初值，v1 无量纲开发存档仍明确拒绝；
+- 版本 4 存档协议覆盖世界 / 旅途、毫米 + 0.1° 甲板姿态、设施 / 蓝图、带计量维度的真实库存批次、居民健康与连续身心状态、低于 1 mL 的 nL 代谢余量、随机流游标与中途行动检查点；`OutcomeCommitted` 防止加载后重复交接，NavMesh 路径和 RVO 速度明确按派生缓存重建；v2 会显式补入娱乐 / 心情中性初值，v3 会把旧版“不会死亡”的居民迁移为完全健康，v1 无量纲开发存档仍明确拒绝；
 - `Capture/Restore/Save/LoadFoundationCheckpointCommand` 已把正式 Foundation 的已提交设施、逐站库存、水罐锚点、身体 / 膀胱、身心状态、模拟 Tick、随机游标，以及每座设施的三类连续状态、风险阈值 / 累计值 / 亚微余量、故障周期与具体故障真实穿过 SSFramework Context 与 `IStorageUtility` 的 JSON、FIFO、原子写和备份边界；加载后重建 NavMesh、Slot 和可达诊断。携水中途保存会回滚到车辆水箱守恒边界，尚未冒充玩家可操作的存档 UI；
 - `DeckPose` 与 `ContinuousFacilityPlacementLedger` 已在无 Unity 依赖的 Simulation 中实现毫米 / 0.1° 连续姿态、位置 / 旋转独立可关吸附、复合有向矩形占地、多层甲板、稳定排序和原子提交；正式玩家场景的 Model / System / View 与存档 DTO 已共用这套姿态真值；
 - 同意图目标先归并，紧急候选优先进入选择池，再在相对高分短名单中用确定性 Softmax 抽样；
@@ -169,6 +170,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - HUD 实际矩形 / 面板互斥 / 场景重建 EditMode 4/4（job `e3515b449afd`）；Game View 已检查长任务第二行、互斥建造面板和提亮后的深色材质，本地忽略证据为 `Screenshots/nomad-foundation-ui-readability-final.png`、`Screenshots/nomad-foundation-build-panel-final.png`；
 - Foundation 运行检查点最终完整 Simulation EditMode 120/120（job `92daa614078c`），中途携水守恒恢复 1/1（job `fc2444c1460e`），真实文件往返 1/1（job `4621a9139d5a`），无效检查点重建失败后自动回到加载前状态 1/1（job `2b7aae95abb8`）；最终 Foundation + 存储 PlayMode 24/24（job `08763c3fef3a`）还覆盖了半行动检查点在改动世界前被明确拒绝；
 - 首条设施状态与故障闭环：最终完整 Simulation EditMode 128/128（job `78d6d6e74d76`），最终 NomadWorkshop PlayMode 33/33（job `71de85b433c2`）；覆盖不同分帧等价、暂停、保养不回滚既有风险、修理开启新周期、精确存取风险轨迹、故障前取水预留安全释放和全链水量保持 60 L。Game View 已实际检查故障水箱红色反馈、四项状态条、阈值 / 累计值和四个 Harness 操作，本地忽略证据为 `Screenshots/nomad-foundation-facility-condition-v1.png`；
+- 健康、死亡与工作效率闭环：框架命令列 + 身心规则 + v3→v4 存档迁移联合 EditMode 59/59（job `60a395a68d11`），最终身心 / 休息选择定向 10/10（job `71dc8eabd612`），最终 Foundation PlayMode 27/27（job `8bccf37982ff`）；覆盖严重缺水损害健康、零健康稳定死亡、健康存取、命名工作速度随机流、低健康 / 高疲劳的行动成本与地面休息反超、坐卧灰盒表现，以及可控压力动员与过载回落。Game View 已检查独立健康条、建造 / 开发面板分流和开发态工作效率，本地忽略证据为 `Screenshots/nomad-build-panel-health-2026-09-05.png`、`Screenshots/nomad-developer-panel-health-2026-09-05.png`；框架诊断的独立命令说明列见 `Screenshots/framework-command-description-column-2026-09-05.png`；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
 - Game View：已实际查看 45° 紧邻既有饮水站时 0/3 Slot 可达但仍可确认的红色幽灵；`Screenshots/nomad-foundation-45deg-preview-parity.png` 同时显示既有设施三个绿色 Slot 与候选三个红色 Slot，无需悬停。同步 0.2 m 网格与基础建造模式见 `Screenshots/nomad-foundation-exact-docking-build-mode.png`（两者均为本地忽略证据）。
 

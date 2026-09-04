@@ -158,6 +158,107 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator SevereDehydration_EndsInStableDeathAndPersistsHealth()
+        {
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 8f,
+                configuredInitialThirst: 1f,
+                configuredThirstIncreasePerSecond: 0f);
+            _system.ConfigureHealthForTests(
+                health: 0.01f,
+                fatigue: 0.1f,
+                stress: 0.1f);
+            _system.ResetScenario();
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int frameLimit = 180;
+            for (var i = 0;
+                 i < frameLimit &&
+                 _model.ResidentPhase.Value != FoundationResidentPhase.Dead;
+                 i++)
+                yield return null;
+
+            Assert.That(_model.ResidentHealth.Value, Is.EqualTo(0f));
+            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Dead));
+            Vector3 deathPosition = _model.ResidentLocalPosition.Value;
+            yield return null;
+            yield return null;
+            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Dead));
+            Assert.That(_model.ResidentLocalPosition.Value, Is.EqualTo(deathPosition));
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            NomadWorkshopSaveData checkpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            Assert.That(checkpoint.Residents[0].HealthPermille, Is.Zero);
+
+            _system.ConfigureHealthForTests(
+                health: 1f,
+                fatigue: 0.1f,
+                stress: 0.1f);
+            _system.ResetScenario();
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+            Assert.That(_model.ResidentHealth.Value, Is.Zero);
+            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Dead));
+        }
+
+        [UnityTest]
+        public IEnumerator PoorHealthAndFatigue_UseVisibleGroundRestFallback()
+        {
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 8f,
+                configuredInitialThirst: 0.08f,
+                configuredThirstIncreasePerSecond: 0f);
+            _system.ConfigureWellbeingForTests(
+                entertainment: 0.7f,
+                mood: 0.7f,
+                fatigue: 0.85f,
+                stress: 0.5f);
+            _system.ConfigureHealthForTests(
+                health: 0.2f,
+                fatigue: 0.85f,
+                stress: 0.5f);
+            _system.ConfigureGroundRestForTests(20f);
+            _system.ResetScenario();
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            Transform resident = _worldView.transform.Find("Vehicle Deck Root/Resident 01");
+            Transform body = resident?.Find("Body");
+            Assert.That(body, Is.Not.Null);
+
+            var observedGroundRest = false;
+            float healthAtRestStart = 0f;
+            const int approachFrameLimit = 360;
+            for (var i = 0; i < approachFrameLimit; i++)
+            {
+                yield return null;
+                if (_model.ResidentPhase.Value != FoundationResidentPhase.RestingOnGround)
+                    continue;
+
+                observedGroundRest = true;
+                healthAtRestStart = _model.ResidentHealth.Value;
+                Assert.That(
+                    Quaternion.Angle(body.localRotation, Quaternion.Euler(0f, 0f, 90f)),
+                    Is.LessThan(0.1f),
+                    "地面休息必须有可见坐卧灰盒，而不是仍站立却只改文字状态。 ");
+                break;
+            }
+            Assert.That(observedGroundRest, Is.True,
+                "低健康与高疲劳应通过统一 Utility 真正进入地面休息。 ");
+
+            const int completionFrameLimit = 240;
+            for (var i = 0;
+                 i < completionFrameLimit && _model.CompletedGroundRestCount.Value == 0;
+                 i++)
+                yield return null;
+
+            Assert.That(_model.CompletedGroundRestCount.Value, Is.GreaterThanOrEqualTo(1));
+            Assert.That(_model.ResidentHealth.Value, Is.GreaterThan(healthAtRestStart));
+        }
+
+        [UnityTest]
         public IEnumerator BuildMode_OwnsPersistentDiagnosticsAndSynchronizedSnapGrid()
         {
             Transform sourceVisual = FindFacilityVisual("initial-vehicle-water-tank");
@@ -448,7 +549,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Is.EqualTo("initial-vehicle-water-tank"),
                 "未提交的携带阶段应回滚到精确水箱锚点，而不是保存半个资源租约。 ");
             Assert.That(checkpoint.Residents[0].ActiveAction, Is.Null);
-            Assert.That(checkpoint.RandomStreams.Count, Is.EqualTo(4));
+            Assert.That(checkpoint.RandomStreams.Count, Is.EqualTo(5));
+            Assert.That(
+                checkpoint.Residents[0].HealthPermille,
+                Is.EqualTo(Mathf.RoundToInt(_model.ResidentHealth.Value * 1000f)));
 
             long checkpointTick = checkpoint.SimulationTick;
             _context.ExecuteCommand(new ResetFoundationSliceCommand());

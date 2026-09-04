@@ -47,10 +47,12 @@ namespace Game.NomadWorkshop.Foundation
         private int _waterCanCapacityMilliliters;
         private FoundationActionPlanProjection _latestActionPlan;
         private float _thirst;
+        private float _health;
         private float _entertainment;
         private float _mood;
         private float _fatigue;
         private float _stress;
+        private float _workEfficiency = 1f;
         private int _vehicleWaterMilliliters;
         private int _vehicleWaterCapacityMilliliters;
         private int _stationWaterMilliliters;
@@ -66,6 +68,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _completedLeisure;
         private int _completedDaydreams;
         private int _completedWanders;
+        private int _completedGroundRests;
         private int _completedHobbies;
         private float _actionProgress;
         private string _currentTask = string.Empty;
@@ -73,6 +76,7 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, HideInInspector]
         private FoundationHudPanel _openPanel;
         private Vector2 _residentPanelScroll;
+        private Vector2 _buildPanelScroll;
         private Vector2 _developerPanelScroll;
         private GUIStyle _titleStyle;
         private GUIStyle _sectionStyle;
@@ -133,10 +137,14 @@ namespace Game.NomadWorkshop.Foundation
                 value => _waterCanCapacityMilliliters = value);
             Bag.Subscribe(readModel.LatestActionPlan, value => _latestActionPlan = value);
             Bag.Subscribe(readModel.ResidentThirst, value => _thirst = value);
+            Bag.Subscribe(readModel.ResidentHealth, value => _health = value);
             Bag.Subscribe(readModel.ResidentEntertainment, value => _entertainment = value);
             Bag.Subscribe(readModel.ResidentMood, value => _mood = value);
             Bag.Subscribe(readModel.ResidentFatigue, value => _fatigue = value);
             Bag.Subscribe(readModel.ResidentStress, value => _stress = value);
+            Bag.Subscribe(
+                readModel.ResidentWorkEfficiency,
+                value => _workEfficiency = value);
             Bag.Subscribe(
                 readModel.VehicleWaterMilliliters,
                 value => _vehicleWaterMilliliters = value);
@@ -172,6 +180,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.CompletedLeisureCount, value => _completedLeisure = value);
             Bag.Subscribe(readModel.CompletedDaydreamCount, value => _completedDaydreams = value);
             Bag.Subscribe(readModel.CompletedWanderCount, value => _completedWanders = value);
+            Bag.Subscribe(
+                readModel.CompletedGroundRestCount,
+                value => _completedGroundRests = value);
             Bag.Subscribe(readModel.CompletedHobbyCount, value => _completedHobbies = value);
             Bag.Subscribe(readModel.ActionProgress, value => _actionProgress = value);
             Bag.Subscribe(readModel.CurrentTask, value => _currentTask = value);
@@ -190,10 +201,10 @@ namespace Game.NomadWorkshop.Foundation
                     DrawResidentDetailsPanel();
                     break;
                 case FoundationHudPanel.Build:
-                    DrawDeveloperPanel(buildFocused: true);
+                    DrawBuildPanel();
                     break;
                 case FoundationHudPanel.Developer:
-                    DrawDeveloperPanel(buildFocused: false);
+                    DrawDeveloperPanel();
                     break;
             }
 
@@ -254,6 +265,7 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Space(2f);
             GUILayout.BeginHorizontal();
             DrawMiniStatus("水", "水分", 1f - _thirst, new Color(0.2f, 0.72f, 0.94f));
+            DrawMiniStatus("健", "健康", _health, new Color(0.4f, 0.86f, 0.48f));
             DrawMiniStatus("能", "精力", 1f - _fatigue, new Color(0.35f, 0.82f, 0.48f));
             DrawMiniStatus("心", "心情", _mood, new Color(0.92f, 0.62f, 0.3f));
             GUILayout.EndHorizontal();
@@ -278,7 +290,7 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.BeginArea(new Rect(outer.x + 4f, outer.y + 4f, outer.width - 8f, outer.height - 8f));
             GUILayout.BeginHorizontal();
             if (DrawToolbarButton(
-                    new GUIContent("居民详情", "查看居民的水分、精力、心情、娱乐、压力与生理状态。"),
+                    new GUIContent("居民详情", "查看居民的健康、水分、精力、心情、娱乐、压力与生理状态。"),
                     _openPanel == FoundationHudPanel.Resident))
             {
                 _openPanel = FoundationHudLayout.Toggle(
@@ -344,6 +356,13 @@ namespace Game.NomadWorkshop.Foundation
                 new Color(0.2f, 0.72f, 0.94f),
                 "由口渴缺口反向显示；越高表示当前越不需要喝水。");
             DrawStatusMeter(
+                "健",
+                "健康",
+                _health,
+                higherIsBetter: true,
+                new Color(0.4f, 0.86f, 0.48f),
+                "严重缺水会平滑加速损害健康；健康归零后居民死亡，普通休息不能复活。");
+            DrawStatusMeter(
                 "能",
                 "精力",
                 1f - _fatigue,
@@ -406,8 +425,12 @@ namespace Game.NomadWorkshop.Foundation
                 $"膀胱内容物 {FormatVolume(_bladderWasteMilliliters, _bladderCapacityMilliliters)}",
                 _smallStyle);
             GUILayout.Label(
+                $"当前预期工作效率 {_workEfficiency:P0}：健康与疲劳会降低效率，压力会提供有限的短时动员增益。",
+                _smallStyle);
+            GUILayout.Label(
                 $"完成：饮水 {_completedDrinks} · 如厕 {_completedToiletUses} · " +
-                $"休闲 {_completedLeisure}（发呆 {_completedDaydreams} / 闲逛 {_completedWanders} / 爱好 {_completedHobbies}）",
+                $"休闲 {_completedLeisure}（发呆 {_completedDaydreams} / 闲逛 {_completedWanders} / 爱好 {_completedHobbies}）· " +
+                $"地面休息 {_completedGroundRests}",
                 _smallStyle);
 
             if (!string.IsNullOrEmpty(_lastBlocker))
@@ -548,29 +571,17 @@ namespace Game.NomadWorkshop.Foundation
         private static float SafeRatio(int amount, int capacity) =>
             capacity <= 0 ? 0f : Mathf.Clamp01(amount / (float)capacity);
 
-        private void DrawDeveloperPanel(bool buildFocused)
+        private void DrawBuildPanel()
         {
             Rect outer = FoundationHudLayout.GetInformationPanelRect(
                 Screen.width,
                 Screen.height);
             GUILayout.BeginArea(outer, GUI.skin.box);
-            _developerPanelScroll = GUILayout.BeginScrollView(_developerPanelScroll);
+            _buildPanelScroll = GUILayout.BeginScrollView(_buildPanelScroll);
+            GUILayout.Label("游牧工坊 · 建造与通路", _titleStyle);
             GUILayout.Label(
-                buildFocused ? "游牧工坊 · 建造与通路" : "游牧工坊 · 开发控制台",
-                _titleStyle);
-            GUILayout.Label(
-                "连续建造 → 实体搬水 → 设施老化 / 故障 / 保养；完整方案参与 Utility 决策",
+                "选择设施、检查占地与交互位，再提交连续 NavMesh 建造事务",
                 _smallStyle);
-            GUILayout.Label(
-                $"第 {_lifeDay} 生活日 · {_lifeMinuteOfDay / 60:00}:" +
-                $"{_lifeMinuteOfDay % 60:00} · 气候年 {_climateYear}",
-                _smallStyle);
-            GUILayout.Label(
-                $"季节相位 {_seasonIndex + 1} 第 {_climateWeekInSeason} 周 · " +
-                $"日进度 {_lifeDayProgressPermille / 10f:0.0}% · " +
-                $"统一 Tick {_simulationTick / 1000d:0.000}s",
-                _smallStyle);
-
             GUILayout.Space(7f);
             GUILayout.Label("建造", _sectionStyle);
             if (GUILayout.Button(
@@ -690,6 +701,35 @@ namespace Game.NomadWorkshop.Foundation
             GUI.enabled = previousEnabled;
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(8f);
+            GUILayout.Label(
+                "开发期说明：当前点击确认仍会立即完成设施落位；材料运输、蓝图占位和人力施工将接入下一条执行闭环。",
+                _smallStyle);
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        private void DrawDeveloperPanel()
+        {
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(
+                Screen.width,
+                Screen.height);
+            GUILayout.BeginArea(outer, GUI.skin.box);
+            _developerPanelScroll = GUILayout.BeginScrollView(_developerPanelScroll);
+            GUILayout.Label("游牧工坊 · 开发控制台", _titleStyle);
+            GUILayout.Label(
+                "观察模拟真值、方案解释、资源守恒、设施状态与测试 Harness",
+                _smallStyle);
+            GUILayout.Label(
+                $"第 {_lifeDay} 生活日 · {_lifeMinuteOfDay / 60:00}:" +
+                $"{_lifeMinuteOfDay % 60:00} · 气候年 {_climateYear}",
+                _smallStyle);
+            GUILayout.Label(
+                $"季节相位 {_seasonIndex + 1} 第 {_climateWeekInSeason} 周 · " +
+                $"日进度 {_lifeDayProgressPermille / 10f:0.0}% · " +
+                $"统一 Tick {_simulationTick / 1000d:0.000}s",
+                _smallStyle);
+
             GUILayout.Space(7f);
             GUILayout.Label("居民与资源", _sectionStyle);
             GUILayout.Label($"状态：{Describe(_residentPhase)}  ·  {_currentTask}");
@@ -699,10 +739,12 @@ namespace Game.NomadWorkshop.Foundation
                     $"{_remainingPathCorners} 拐点 · {_activePathSummary}",
                     _smallStyle);
             DrawMeter("口渴", _thirst);
+            DrawMeter("健康", _health);
             DrawMeter("娱乐满足", _entertainment);
             DrawMeter("心情", _mood);
             DrawMeter("疲劳", _fatigue);
             DrawMeter("压力", _stress);
+            DrawMeter("工作效率（100%=标准）", _workEfficiency);
             DrawMeter("当前动作", _actionProgress);
             GUILayout.Label(
                 $"车辆水箱 {FormatVolume(_vehicleWaterMilliliters, _vehicleWaterCapacityMilliliters)}   " +
@@ -805,7 +847,8 @@ namespace Game.NomadWorkshop.Foundation
             }
             GUILayout.Label(
                 $"已完成饮水：{_completedDrinks}   如厕：{_completedToiletUses}   " +
-                $"自主休闲：{_completedLeisure}（发呆 {_completedDaydreams} / 散步 {_completedWanders} / 爱好 {_completedHobbies}）");
+                $"自主休闲：{_completedLeisure}（发呆 {_completedDaydreams} / 散步 {_completedWanders} / 爱好 {_completedHobbies}）   " +
+                $"地面休息：{_completedGroundRests}");
             if (!string.IsNullOrEmpty(_lastBlocker))
             {
                 bool hardBlocked = _residentPhase == FoundationResidentPhase.Blocked;
@@ -1054,6 +1097,8 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.Relaxing => "自主休整",
             FoundationResidentPhase.MovingToHobby => "前往爱好设施",
             FoundationResidentPhase.EnjoyingHobby => "作画与观景",
+            FoundationResidentPhase.RestingOnGround => "坐卧地面休息",
+            FoundationResidentPhase.Dead => "死亡",
             FoundationResidentPhase.Blocked => "阻塞",
             _ => phase.ToString(),
         };

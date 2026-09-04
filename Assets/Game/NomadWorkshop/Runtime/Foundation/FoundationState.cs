@@ -60,6 +60,8 @@ namespace Game.NomadWorkshop.Foundation
         UsingToilet = 14,
         MovingToHobby = 15,
         EnjoyingHobby = 16,
+        RestingOnGround = 17,
+        Dead = 18,
     }
 
     /// <summary>当前基础休闲的可观察类型；以后新增爱好时不会把所有休闲继续压成一个计数。</summary>
@@ -68,6 +70,7 @@ namespace Game.NomadWorkshop.Foundation
         None,
         Daydream,
         Wander,
+        GroundRest,
         Hobby,
     }
 

@@ -67,6 +67,8 @@ namespace Game.NomadWorkshop.Foundation
             new(FoundationActionPlanProjection.None);
         [field: SerializeField, Tooltip("口渴缺口，0 表示不渴，1 表示达到危险上限。")]
         public RP<float> ResidentThirst { get; private set; } = new(0f);
+        [field: SerializeField, Tooltip("正向健康值，1 表示健康，0 表示死亡；严重缺水会平滑加速损害健康。")]
+        public RP<float> ResidentHealth { get; private set; } = new(1f);
         [field: FormerlySerializedAs("<ResidentRecreation>k__BackingField")]
         [field: SerializeField, Tooltip("正向娱乐满足度，0 表示极度无聊，1 表示兴趣得到充分满足；普通发呆和闲逛不会补充它。")]
         public RP<float> ResidentEntertainment { get; private set; } = new(0f);
@@ -76,6 +78,8 @@ namespace Game.NomadWorkshop.Foundation
         public RP<float> ResidentFatigue { get; private set; } = new(0f);
         [field: SerializeField, Tooltip("压力负担，0 表示平静，1 表示压力极高；缺水、憋尿、阻塞与疲劳都会增加它。")]
         public RP<float> ResidentStress { get; private set; } = new(0f);
+        [field: SerializeField, Tooltip("当前状态下的预期工作速度乘数；100% 为标准人力，具体工作开始时还会固定采样少量个人波动。")]
+        public RP<float> ResidentWorkEfficiency { get; private set; } = new(1f);
         [field: SerializeField] public RP<int> VehicleWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> VehicleWaterCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> DrinkingStationWaterMilliliters { get; private set; } = new(0);
@@ -92,6 +96,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<int> CompletedLeisureCount { get; private set; } = new(0);
         [field: SerializeField] public RP<int> CompletedDaydreamCount { get; private set; } = new(0);
         [field: SerializeField] public RP<int> CompletedWanderCount { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("缺少床椅时在地面完成的低质量恢复次数。")]
+        public RP<int> CompletedGroundRestCount { get; private set; } = new(0);
         [field: SerializeField, Tooltip("已完成的真实爱好次数；与只恢复疲劳/压力的基础休整分开观察。")]
         public RP<int> CompletedHobbyCount { get; private set; } = new(0);
         [field: SerializeField] public RP<string> CurrentTask { get; private set; } = new("等待初始化");

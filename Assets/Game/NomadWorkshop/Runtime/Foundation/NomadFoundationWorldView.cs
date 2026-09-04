@@ -72,6 +72,7 @@ namespace Game.NomadWorkshop.Foundation
         private Transform _ghostRoot;
         private Transform _interactionPreviewRoot;
         private Transform _residentRoot;
+        private Transform _residentBody;
         private Transform _waterCanVisual;
         private Transform _waterCanFillVisual;
         private FoundationWaterCanLocation _waterCanLocation;
@@ -162,6 +163,7 @@ namespace Game.NomadWorkshop.Foundation
                 if (_residentRoot != null)
                     _residentRoot.localRotation = Quaternion.Euler(0f, yaw, 0f);
             });
+            Bag.Subscribe(readModel.ResidentPhase, UpdateResidentBodyPose);
             Bag.Subscribe(readModel.WaterCanLocation, location =>
             {
                 _waterCanLocation = location;
@@ -499,13 +501,26 @@ namespace Game.NomadWorkshop.Foundation
         private void BuildResidentVisual(Transform root)
         {
             Material body = CreateLitMaterial("M_Resident", new Color(0.78f, 0.56f, 0.28f));
-            CreatePrimitive(
+            _residentBody = CreatePrimitive(
                 PrimitiveType.Capsule,
                 "Body",
                 root,
                 new Vector3(0f, 0.55f, 0f),
                 new Vector3(0.42f, 0.55f, 0.42f),
-                body);
+                body).transform;
+        }
+
+        private void UpdateResidentBodyPose(FoundationResidentPhase phase)
+        {
+            if (_residentBody == null) return;
+            bool lying = phase is FoundationResidentPhase.RestingOnGround or
+                FoundationResidentPhase.Dead;
+            _residentBody.localPosition = lying
+                ? new Vector3(0f, 0.42f, 0f)
+                : new Vector3(0f, 0.55f, 0f);
+            _residentBody.localRotation = lying
+                ? Quaternion.Euler(0f, 0f, 90f)
+                : Quaternion.identity;
         }
 
         private void BuildWaterCanVisual()

@@ -9,9 +9,10 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     /// </summary>
     public static class NomadWorkshopSaveSchema
     {
-        public const int CurrentVersion = 3;
+        public const int CurrentVersion = 4;
         public const int DefaultEntertainmentPermille = 680;
         public const int DefaultMoodPermille = 700;
+        public const int DefaultHealthPermille = 1000;
     }
 
     /// <summary>
@@ -229,7 +230,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     }
 
     /// <summary>
-    /// 居民的持久状态；娱乐、心情、疲劳、压力、卫生与晕车都跨行动保留，
+    /// 居民的持久状态；健康、娱乐、心情、疲劳、压力、卫生与晕车都跨行动保留，
     /// 寻路走廊与 RVO 速度则在加载后按位置、目标和行动阶段重新计算。
     /// </summary>
     [Serializable]
@@ -240,6 +241,8 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public string PersonalInventoryId = string.Empty;
         public int HungerPermille;
         public int ThirstPermille;
+        /// <summary>正向健康值；0 表示已经死亡，1000 表示当前完全健康。</summary>
+        public int HealthPermille = NomadWorkshopSaveSchema.DefaultHealthPermille;
         public int FatiguePermille;
         public int StressPermille;
         /// <summary>正向娱乐满足度；0 表示极度无聊，1000 表示充分满足。</summary>
@@ -410,6 +413,18 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                         }
 
                         data.Version = 3;
+                        break;
+                    case 3:
+                        // v3 尚未拥有健康真值；旧居民按当时“不会死亡”的实际语义迁移为健康。
+                        for (var i = 0; i < data.Residents.Count; i++)
+                        {
+                            NomadResidentSaveData resident = data.Residents[i];
+                            if (resident == null) continue;
+                            resident.HealthPermille =
+                                NomadWorkshopSaveSchema.DefaultHealthPermille;
+                        }
+
+                        data.Version = 4;
                         break;
                     default:
                         throw new NotSupportedException(
@@ -619,6 +634,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                         $"居民 {resident.ResidentId} 引用不存在的库存 {resident.PersonalInventoryId}。");
                 ValidateRange(resident.HungerPermille, $"居民 {resident.ResidentId} 饥饿");
                 ValidateRange(resident.ThirstPermille, $"居民 {resident.ResidentId} 口渴");
+                ValidateRange(resident.HealthPermille, $"居民 {resident.ResidentId} 健康");
                 ValidateRange(resident.FatiguePermille, $"居民 {resident.ResidentId} 疲劳");
                 ValidateRange(resident.StressPermille, $"居民 {resident.ResidentId} 压力");
                 ValidateRange(resident.EntertainmentPermille, $"居民 {resident.ResidentId} 娱乐满足");

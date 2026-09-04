@@ -67,6 +67,27 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 NomadWorkshopSaveSchema.DefaultMoodPermille,
                 migrated.Residents[0].MoodPermille,
                 "v2 没有该字段，迁移后应采用首版身心系统的中性初值。");
+            Assert.AreEqual(
+                NomadWorkshopSaveSchema.DefaultHealthPermille,
+                migrated.Residents[0].HealthPermille,
+                "v2 应逐级经过 v3→v4，并取得旧版本不会死亡的健康默认值。");
+        }
+
+        [Test]
+        public void PrepareAfterLoad_MigratesVersionThreeHealthDefault()
+        {
+            NomadWorkshopSaveData versionThree = CreateValidSave();
+            versionThree.Version = 3;
+            versionThree.Residents[0].HealthPermille = 0;
+
+            NomadWorkshopSaveData migrated =
+                NomadWorkshopSaveContract.PrepareAfterLoad(versionThree);
+
+            Assert.That(migrated.Version, Is.EqualTo(NomadWorkshopSaveSchema.CurrentVersion));
+            Assert.That(
+                migrated.Residents[0].HealthPermille,
+                Is.EqualTo(NomadWorkshopSaveSchema.DefaultHealthPermille),
+                "v3 的缺省 0 表示字段不存在，不能迁移成居民已经死亡。 ");
         }
 
         [Test]
@@ -146,6 +167,11 @@ namespace Game.NomadWorkshop.Simulation.Tests
             mood.Residents[0].MoodPermille = -1;
             Assert.Throws<InvalidOperationException>(
                 () => NomadWorkshopSaveContract.ValidateForSave(mood));
+
+            NomadWorkshopSaveData health = CreateValidSave();
+            health.Residents[0].HealthPermille = 1001;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(health));
 
             NomadWorkshopSaveData metabolismRemainder = CreateValidSave();
             metabolismRemainder.Residents[0].WaterMetabolismPendingNanoliters = -1L;
@@ -311,6 +337,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 Pose = QuantizedDeckPose.FromMeters(0.6f, -1.2f, 27f),
                 HungerPermille = 350,
                 ThirstPermille = 610,
+                HealthPermille = 840,
                 FatiguePermille = 280,
                 StressPermille = 190,
                 EntertainmentPermille = 640,

@@ -11,6 +11,7 @@ namespace Game.NomadWorkshop.Simulation
     {
         public const string WanderCandidateId = "leisure:wander-open-deck";
         public const string DaydreamCandidateId = "leisure:daydream-in-place";
+        public const string GroundRestCandidateId = "recovery:rest-on-ground";
         public const string HobbyIntentId = "leisure:creative-observation";
 
         /// <summary>
@@ -90,6 +91,33 @@ namespace Game.NomadWorkshop.Simulation
                 RestQuality = 0.42f,
                 NeedEffects = ResidentWellbeing.CreateExpectedEffects(
                     ResidentWellbeingActivity.Daydream,
+                    restSeconds),
+            };
+        }
+
+        /// <summary>
+        /// 床铺与座椅不可用时的最低质量恢复方案。它无需设施或路径，因此不会因空间布局让低健康居民
+        /// 完全失去休息机会；较低舒适度和实际心情损失由连续身心模型表达，未来更好的承托物会自然胜出。
+        /// </summary>
+        public static ResidentActionPlanProposal CreateGroundRest(float restSeconds)
+        {
+            ValidatePositiveFinite(restSeconds, nameof(restSeconds));
+            return new ResidentActionPlanProposal(
+                GroundRestCandidateId,
+                "recovery-rest",
+                "在地面坐下或躺下休息")
+            {
+                Steps = new[]
+                {
+                    new ResidentActionStepEstimate(
+                        ResidentActionStepKind.Rest,
+                        restSeconds,
+                        label: "在当前安全位置进行低质量休息"),
+                },
+                BaseUtility = 0.018f,
+                RestQuality = 0.34f,
+                NeedEffects = ResidentWellbeing.CreateExpectedEffects(
+                    ResidentWellbeingActivity.GroundRest,
                     restSeconds),
             };
         }

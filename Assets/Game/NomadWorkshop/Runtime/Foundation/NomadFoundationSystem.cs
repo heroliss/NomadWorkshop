@@ -109,10 +109,18 @@ namespace Game.NomadWorkshop.Foundation
         private float initialFatigue = 0.28f;
         [SerializeField, Range(0f, 1f), Tooltip("新场景中居民的压力负担；0 为平静，1 为压力极高。")]
         private float initialStress = 0.22f;
+        [SerializeField, Range(0f, 1f), Tooltip("新场景中居民的正向健康值；严重缺水会损害健康，归零后居民死亡。")]
+        private float initialHealth = 1f;
+        [SerializeField, Range(0.5f, 1.5f), Tooltip("居民的长期基础工作效率；100% 表示完成标准人力时间恰好需要标准时长。")]
+        private float residentBaseWorkEfficiency = 1f;
+        [SerializeField, Range(0f, 0.25f), Tooltip("每次工作开始时固定采样的速度波动半径；0.08 表示在预期效率上下各浮动最多 8%，不会逐帧抖动。")]
+        private float workPaceVariation = 0.08f;
 
         [Header("空闲休整灰盒节奏")]
         [SerializeField, Min(0.1f), Tooltip("发呆或散步到达后的停留时长；首版保留足够观察窗口，后续再由性格与身心状态形成随机区间。")]
         private float leisureSeconds = 3.5f;
+        [SerializeField, Min(0.1f), Tooltip("缺少床或座椅时坐卧地面的低质量休息时长；它恢复较慢并轻微降低心情。")]
+        private float groundRestSeconds = 20f;
         [SerializeField, Min(0.1f), Tooltip("居民在观景画架完成一次作画爱好的时长；只有实际使用设施的阶段才恢复娱乐满足度。")]
         private float hobbySeconds = 8f;
         [SerializeField, Range(0f, 1f), Tooltip("居民 01 对作画与观景的个人偏好。首版放在 System 便于 Inspector 调试，后续迁入居民档案数据。")]
@@ -158,6 +166,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _leisureSequence;
         private long _residentDecisionSequence;
         private long _bladderOpportunitySequence;
+        private long _workActionSequence;
         private string _lastPublishedDecisionDiagnostic = string.Empty;
         private int _residentClearanceMillimeters;
         private bool _previewResidentOriginResolved;
@@ -205,6 +214,7 @@ namespace Game.NomadWorkshop.Foundation
         private float _phaseDuration;
         private float _phaseRemaining;
         private ResidentWellbeing _residentWellbeing;
+        private float _activeWorkEfficiency = 1f;
         private float _activeLeisureOutcomeScale = 1f;
         private FoundationLeisureKind _activeLeisureKind;
         private float _dockingNavMeshTolerance;
@@ -247,6 +257,12 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             AdvanceFacilityConditionsTo(_simulationClock.SimulationTick);
+            if (_residentPhase == FoundationResidentPhase.Dead)
+            {
+                WriteSimulationProjection();
+                return;
+            }
+
             float deltaTime = deltaMilliseconds / 1000f;
             ResidentWaterCycleTick physiologyTick = _residentWaterCycle.Advance(
                 deltaTime,
@@ -261,6 +277,12 @@ namespace Game.NomadWorkshop.Foundation
                     _residentPhase is FoundationResidentPhase.Blocked or
                         FoundationResidentPhase.WaitingForRoute),
                 _activeLeisureOutcomeScale);
+            if (!_residentWellbeing.IsAlive)
+            {
+                HandleResidentDeath();
+                WriteSimulationProjection();
+                return;
+            }
 
             switch (_residentPhase)
             {
@@ -356,6 +378,9 @@ namespace Game.NomadWorkshop.Foundation
                     break;
                 case FoundationResidentPhase.Relaxing:
                     if (TickTimer(deltaTime)) CompleteLeisure();
+                    break;
+                case FoundationResidentPhase.RestingOnGround:
+                    if (TickTimer(deltaTime)) CompleteGroundRest();
                     break;
                 case FoundationResidentPhase.MovingToHobby:
                     if (AdvanceResidentAlongPath(deltaTime))
@@ -585,6 +610,7 @@ namespace Game.NomadWorkshop.Foundation
             deliverySeconds = 0.01f;
             drinkingSeconds = 0.01f;
             leisureSeconds = 0.05f;
+            groundRestSeconds = 0.05f;
             hobbySeconds = 0.5f;
         }
 
@@ -607,6 +633,25 @@ namespace Game.NomadWorkshop.Foundation
         {
             waterCanCapabilities = capabilities;
             waterCanCleanliness = Mathf.Clamp01(cleanliness);
+        }
+
+        /// <summary>隔离测试设置居民身心起点和基础工作能力；修改后调用 ResetScenario。</summary>
+        public void ConfigureHealthForTests(
+            float health,
+            float fatigue,
+            float stress,
+            float baseWorkEfficiency = 1f)
+        {
+            initialHealth = Mathf.Clamp01(health);
+            initialFatigue = Mathf.Clamp01(fatigue);
+            initialStress = Mathf.Clamp01(stress);
+            residentBaseWorkEfficiency = Mathf.Clamp(baseWorkEfficiency, 0.5f, 1.5f);
+        }
+
+        /// <summary>隔离测试设置完整地面休息时长；修改后调用 ResetScenario。</summary>
+        public void ConfigureGroundRestForTests(float seconds)
+        {
+            groundRestSeconds = Mathf.Max(0.1f, seconds);
         }
 
         /// <summary>
@@ -710,6 +755,7 @@ namespace Game.NomadWorkshop.Foundation
             // 统一把游标解释为“下一次要消费的事件序号”；首个居民决策沿用历史序号 1。
             _residentDecisionSequence = 1;
             _bladderOpportunitySequence = 0;
+            _workActionSequence = 0;
             _lastPublishedDecisionDiagnostic = string.Empty;
             _routeRetryRemaining = 0f;
             _residentDecisionRetryRemaining = 0f;
@@ -783,7 +829,9 @@ namespace Game.NomadWorkshop.Foundation
                 initialEntertainment,
                 initialMood,
                 initialFatigue,
-                initialStress);
+                initialStress,
+                initialHealth);
+            _activeWorkEfficiency = CalculateExpectedWorkEfficiency();
             _activeLeisureOutcomeScale = 1f;
             for (var i = 0; i < initialFacilities.Count; i++)
                 AddFacilityInventory(initialFacilities[i]);
@@ -822,16 +870,21 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedLeisureCount.Value = 0;
             _model.CompletedDaydreamCount.Value = 0;
             _model.CompletedWanderCount.Value = 0;
+            _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
             _model.LastBlocker.Value = string.Empty;
             _model.ActionProgress.Value = 0f;
             _activeLeisureKind = FoundationLeisureKind.None;
             ClearPlacementSelection(exitBuildMode: true);
             SetResidentPhase(
-                HasPlacedFacility(NomadFacilityFunction.DrinkingStation)
-                    ? FoundationResidentPhase.Idle
-                    : FoundationResidentPhase.WaitingForFacility,
-                "等待玩家建造饮水站");
+                !_residentWellbeing.IsAlive
+                    ? FoundationResidentPhase.Dead
+                    : HasPlacedFacility(NomadFacilityFunction.DrinkingStation)
+                        ? FoundationResidentPhase.Idle
+                        : FoundationResidentPhase.WaitingForFacility,
+                _residentWellbeing.IsAlive
+                    ? "等待玩家建造饮水站"
+                    : "居民初始健康为零，已经死亡");
             WriteSimulationProjection();
 
             _initialized = true;
@@ -1655,6 +1708,7 @@ namespace Game.NomadWorkshop.Foundation
             AddToiletDecisionOption(options, ref pendingDiagnostic);
             AddWaterDecisionOptions(options, ref pendingDiagnostic);
             AddHobbyDecisionOption(options);
+            AddGroundRestDecisionOption(options);
             AddLeisureDecisionOptions(options);
 
             var candidates = new ResidentActionCandidate[options.Count];
@@ -1690,7 +1744,7 @@ namespace Game.NomadWorkshop.Foundation
         private ResidentNeedState[] CreateResidentNeedSnapshot()
         {
             ResidentNeedState[] wellbeing = _residentWellbeing.CreateDecisionNeedSnapshot();
-            return new[]
+            var result = new List<ResidentNeedState>(2 + wellbeing.Length)
             {
                 new ResidentNeedState(
                     ResidentNeed.Thirst,
@@ -1701,10 +1755,9 @@ namespace Game.NomadWorkshop.Foundation
                     _residentWaterCycle.ExcretionPressure,
                     0f,
                     pressureCurve: BladderPressureCurve),
-                wellbeing[0],
-                wellbeing[1],
-                wellbeing[2],
             };
+            result.AddRange(wellbeing);
+            return result.ToArray();
         }
 
         private void AddToiletDecisionOption(
@@ -1783,7 +1836,7 @@ namespace Game.NomadWorkshop.Foundation
             };
             ResidentActionPlanEvaluation evaluation = _actionPlanEvaluator.Evaluate(
                 proposal,
-                new ResidentDecisionCondition(motionSickness: 0f),
+                CreateResidentDecisionCondition(),
                 _actionPlanPolicy);
             options.Add(new FoundationResidentDecisionOption(
                 FoundationResidentDecisionKind.Toilet,
@@ -1977,7 +2030,7 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentDecisionKind.DirectDrink,
                 _actionPlanEvaluator.Evaluate(
                     proposal,
-                    new ResidentDecisionCondition(motionSickness: 0f),
+                    CreateResidentDecisionCondition(),
                     _actionPlanPolicy))
             {
                 TargetFacility = station,
@@ -1987,7 +2040,7 @@ namespace Game.NomadWorkshop.Foundation
         private void AddLeisureDecisionOptions(
             ICollection<FoundationResidentDecisionOption> options)
         {
-            var condition = new ResidentDecisionCondition(motionSickness: 0f);
+            ResidentDecisionCondition condition = CreateResidentDecisionCondition();
             bool hasWanderTarget = TrySelectWanderTarget(
                 out Vector3 wanderTarget,
                 out DeckNavPathProbe wanderPath,
@@ -2017,6 +2070,19 @@ namespace Game.NomadWorkshop.Foundation
                     _actionPlanPolicy)));
         }
 
+        private void AddGroundRestDecisionOption(
+            ICollection<FoundationResidentDecisionOption> options)
+        {
+            ResidentActionPlanProposal proposal =
+                ResidentLeisurePlanFactory.CreateGroundRest(groundRestSeconds);
+            options.Add(new FoundationResidentDecisionOption(
+                FoundationResidentDecisionKind.GroundRest,
+                _actionPlanEvaluator.Evaluate(
+                    proposal,
+                    CreateResidentDecisionCondition(),
+                    _actionPlanPolicy)));
+        }
+
         private void AddHobbyDecisionOption(
             ICollection<FoundationResidentDecisionOption> options)
         {
@@ -2041,7 +2107,7 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentDecisionKind.Hobby,
                 _actionPlanEvaluator.Evaluate(
                     proposal,
-                    new ResidentDecisionCondition(motionSickness: 0f),
+                    CreateResidentDecisionCondition(),
                     _actionPlanPolicy))
             {
                 TargetFacility = facility,
@@ -2071,9 +2137,17 @@ namespace Game.NomadWorkshop.Foundation
                 kind,
                 _actionPlanEvaluator.Evaluate(
                     proposal,
-                    new ResidentDecisionCondition(motionSickness: 0f),
+                    CreateResidentDecisionCondition(),
                     _actionPlanPolicy));
         }
+
+        private ResidentDecisionCondition CreateResidentDecisionCondition() => new(
+            motionSickness: 0f,
+            timeSensitivity: 1f,
+            effortAversion: ResidentPerformance.CalculateEffortAversion(
+                _residentWellbeing.Health,
+                _residentWellbeing.Fatigue),
+            riskAversion: 1f);
 
         private ResidentActionStepEstimate CreateTravelStep(
             float distanceMeters,
@@ -2136,6 +2210,9 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentDecisionKind.Wander:
                 case FoundationResidentDecisionKind.Daydream:
                     BeginLeisure(option);
+                    return;
+                case FoundationResidentDecisionKind.GroundRest:
+                    BeginGroundRest();
                     return;
                 case FoundationResidentDecisionKind.Hobby:
                     BeginHobby(option);
@@ -2277,6 +2354,20 @@ namespace Game.NomadWorkshop.Foundation
                 "统一 Utility 选择休闲：在原地发呆并观察四周");
         }
 
+        private void BeginGroundRest()
+        {
+            _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
+                worldSeed: worldSeed,
+                residentId: ResidentOwnerId,
+                leisureSequence: _leisureSequence++);
+            _activeLeisureKind = FoundationLeisureKind.GroundRest;
+            _model.LastBlocker.Value = string.Empty;
+            BeginTimedPhase(
+                FoundationResidentPhase.RestingOnGround,
+                groundRestSeconds,
+                "缺少更合适的床椅，在当前安全地面坐下或躺下休息");
+        }
+
         private void BeginHobby(FoundationResidentDecisionOption option)
         {
             _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
@@ -2381,7 +2472,7 @@ namespace Game.NomadWorkshop.Foundation
                 CargoCarrierKind.Container,
                 _waterCan.FreeCapacity,
                 waterCanCleanliness,
-                pickupSeconds,
+                EstimateWorkDuration(pickupSeconds),
                 waterCanCapabilities,
                 isAvailable: true);
             CargoTransportOptionEvaluation carrierEvaluation =
@@ -2443,11 +2534,7 @@ namespace Game.NomadWorkshop.Foundation
 
             return _actionPlanEvaluator.Evaluate(
                 proposal,
-                new ResidentDecisionCondition(
-                    motionSickness: 0f,
-                    timeSensitivity: 1f,
-                    effortAversion: 1f,
-                    riskAversion: 1f),
+                CreateResidentDecisionCondition(),
                 _actionPlanPolicy);
         }
 
@@ -2485,7 +2572,7 @@ namespace Game.NomadWorkshop.Foundation
                 AddTravelStep(steps, acquireTravelMeters, "前往防漏水罐");
                 steps.Add(new ResidentActionStepEstimate(
                     ResidentActionStepKind.AcquireItem,
-                    pickupSeconds,
+                    EstimateWorkDuration(pickupSeconds),
                     label: "取得唯一防漏水罐"));
                 cursor = waterCanGoal;
             }
@@ -2511,7 +2598,7 @@ namespace Game.NomadWorkshop.Foundation
 
             steps.Add(new ResidentActionStepEstimate(
                 ResidentActionStepKind.Transfer,
-                pickupSeconds,
+                EstimateWorkDuration(pickupSeconds),
                 label: "把车辆水箱中的水装入防漏水罐"));
 
             if (!TrySelectBestInteractionSlot(
@@ -2527,7 +2614,7 @@ namespace Game.NomadWorkshop.Foundation
             AddTravelStep(steps, stationTravelMeters, "携带有水的水罐前往饮水站");
             steps.Add(new ResidentActionStepEstimate(
                 ResidentActionStepKind.Transfer,
-                deliverySeconds,
+                EstimateWorkDuration(deliverySeconds),
                 label: "把水罐中的水倒入饮水站"));
             if (drinkAfterDelivery)
             {
@@ -2796,6 +2883,16 @@ namespace Game.NomadWorkshop.Foundation
                 "完成一次自主休整：疲劳与压力得到缓解，娱乐满足度未被虚构补充");
         }
 
+        private void CompleteGroundRest()
+        {
+            _activeLeisureOutcomeScale = 1f;
+            _activeLeisureKind = FoundationLeisureKind.None;
+            _model.CompletedGroundRestCount.Value++;
+            SetResidentPhase(
+                FoundationResidentPhase.Idle,
+                "完成一次地面休息：健康和疲劳得到有限恢复，但舒适度不足略微影响心情");
+        }
+
         private void CompleteHobby()
         {
             ReleaseActiveInteractionSpace(publishProjection: true);
@@ -2816,6 +2913,9 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (_residentPhase == FoundationResidentPhase.EnjoyingHobby)
                 return ResidentWellbeingActivity.Hobby;
+
+            if (_residentPhase == FoundationResidentPhase.RestingOnGround)
+                return ResidentWellbeingActivity.GroundRest;
 
             if (_residentPhase == FoundationResidentPhase.MovingToLeisure ||
                 _residentPhase == FoundationResidentPhase.Relaxing)
@@ -3359,11 +3459,42 @@ namespace Game.NomadWorkshop.Foundation
             float duration,
             string task)
         {
-            _phaseDuration = Mathf.Max(0.001f, duration);
+            float resolvedDuration = duration;
+            if (IsWorkTimedPhase(phase))
+            {
+                _activeWorkEfficiency = ResidentPerformance.SampleWorkEfficiency(
+                    worldSeed,
+                    ResidentOwnerId,
+                    _workActionSequence++,
+                    CalculateExpectedWorkEfficiency(),
+                    workPaceVariation);
+                resolvedDuration /= _activeWorkEfficiency;
+            }
+            else
+            {
+                _activeWorkEfficiency = CalculateExpectedWorkEfficiency();
+            }
+
+            _phaseDuration = Mathf.Max(0.001f, resolvedDuration);
             _phaseRemaining = _phaseDuration;
             _model.ActionProgress.Value = 0f;
             SetResidentPhase(phase, task);
         }
+
+        private float CalculateExpectedWorkEfficiency() =>
+            ResidentPerformance.CalculateExpectedWorkEfficiency(
+                residentBaseWorkEfficiency,
+                _residentWellbeing.Health,
+                _residentWellbeing.Fatigue,
+                _residentWellbeing.Stress);
+
+        private float EstimateWorkDuration(float standardDuration) =>
+            standardDuration / CalculateExpectedWorkEfficiency();
+
+        private static bool IsWorkTimedPhase(FoundationResidentPhase phase) =>
+            phase is FoundationResidentPhase.PickingUpWaterCan or
+                FoundationResidentPhase.PickingUpWater or
+                FoundationResidentPhase.DeliveringWater;
 
         private bool TickTimer(float deltaTime)
         {
@@ -3383,8 +3514,25 @@ namespace Game.NomadWorkshop.Foundation
                 phase != FoundationResidentPhase.Drinking &&
                 phase != FoundationResidentPhase.UsingToilet &&
                 phase != FoundationResidentPhase.Relaxing &&
+                phase != FoundationResidentPhase.RestingOnGround &&
                 phase != FoundationResidentPhase.EnjoyingHobby)
                 _model.ActionProgress.Value = 0f;
+        }
+
+        private void HandleResidentDeath()
+        {
+            ReleaseActiveTasks();
+            ReleaseActiveInteractionSpace(publishProjection: true);
+            ClearActivePath();
+            ClearActiveMoveIntent();
+            _activeLeisureOutcomeScale = 1f;
+            _activeLeisureKind = FoundationLeisureKind.None;
+            _phaseDuration = 0f;
+            _phaseRemaining = 0f;
+            SetResidentPhase(
+                FoundationResidentPhase.Dead,
+                "健康归零，居民已经死亡");
+            _model.LastBlocker.Value = "ResidentDied · 健康归零；普通休息不能复活居民";
         }
 
         private void Block(string task, ResourceFlowBlocker blocker)
@@ -3616,10 +3764,16 @@ namespace Game.NomadWorkshop.Foundation
             SetInt(_model.ClimateWeekInSeason, calendar.ClimateWeekInSeason);
             SetInt(_model.SeasonProgressPermille, calendar.SeasonProgressPermille);
             SetFloat(_model.ResidentThirst, _residentWaterCycle.Thirst);
+            SetFloat(_model.ResidentHealth, _residentWellbeing.Health);
             SetFloat(_model.ResidentEntertainment, _residentWellbeing.Entertainment);
             SetFloat(_model.ResidentMood, _residentWellbeing.Mood);
             SetFloat(_model.ResidentFatigue, _residentWellbeing.Fatigue);
             SetFloat(_model.ResidentStress, _residentWellbeing.Stress);
+            SetFloat(
+                _model.ResidentWorkEfficiency,
+                IsWorkTimedPhase(_residentPhase)
+                    ? _activeWorkEfficiency
+                    : CalculateExpectedWorkEfficiency());
             SetInt(
                 _model.VehicleWaterMilliliters,
                 _vehicleWater.GetAmount(NomadResourceIds.Water));

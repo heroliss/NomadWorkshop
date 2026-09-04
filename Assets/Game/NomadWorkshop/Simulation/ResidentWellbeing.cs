@@ -11,6 +11,7 @@ namespace Game.NomadWorkshop.Simulation
         Travel,
         Work,
         PersonalCare,
+        GroundRest,
         Daydream,
         Wander,
         Hobby,
@@ -58,7 +59,13 @@ namespace Game.NomadWorkshop.Simulation
         public const float BaseFatigueGrowthPerSecond = 0.0008f;
         public const float MaximumEntertainmentFatigueBuffer = 0.18f;
         public const float HobbyEntertainmentGainPerSecond = 0.028f;
+        public const float DehydrationDamageOnset = 0.82f;
+        public const float MaximumDehydrationHealthLossPerSecond = 0.004f;
+        public const float GroundRestHealthRecoveryPerSecond = 0.0012f;
 
+        private const float GroundRestFatigueRecoveryPerSecond = 0.014f;
+        private const float GroundRestStressRecoveryPerSecond = 0.008f;
+        private const float GroundRestMoodLossPerSecond = 0.00045f;
         private const float DaydreamFatigueRecoveryPerSecond = 0.010f;
         private const float WanderFatigueRecoveryPerSecond = 0.004f;
         private const float HobbyFatigueRecoveryPerSecond = 0.003f;
@@ -73,12 +80,14 @@ namespace Game.NomadWorkshop.Simulation
             float entertainment,
             float mood,
             float fatigue,
-            float stress)
+            float stress,
+            float health = 1f)
         {
             Entertainment = ValidateNormalized(entertainment, nameof(entertainment));
             Mood = ValidateNormalized(mood, nameof(mood));
             Fatigue = ValidateNormalized(fatigue, nameof(fatigue));
             Stress = ValidateNormalized(stress, nameof(stress));
+            Health = ValidateNormalized(health, nameof(health));
         }
 
         /// <summary>兴趣与有意义刺激的满足程度；发呆和普通闲逛不会补充它。</summary>
@@ -92,6 +101,14 @@ namespace Game.NomadWorkshop.Simulation
 
         /// <summary>心理与生理压力负担；缺水、憋尿、阻塞和高疲劳会增加它。</summary>
         public float Stress { get; private set; }
+
+        /// <summary>
+        /// 居民的正向生命健康；严重缺水会连续损害它，归零即死亡且不能靠普通休息复活。
+        /// 疾病、受伤、营养和医疗以后都应汇入这一结果状态，而不是各自另造一条“生命值”。
+        /// </summary>
+        public float Health { get; private set; }
+
+        public bool IsAlive => Health > 0f;
 
         /// <summary>
         /// 连续推进身心状态。随机差异由调用方在行动开始时固定采样为
@@ -109,7 +126,7 @@ namespace Game.NomadWorkshop.Simulation
                 throw new ArgumentOutOfRangeException(nameof(activity));
             if (!float.IsFinite(outcomeScale) || outcomeScale <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(outcomeScale));
-            if (seconds == 0f) return;
+            if (seconds == 0f || !IsAlive) return;
 
             float effectScale = Math.Min(1.5f, Math.Max(0.5f, outcomeScale));
             float entertainmentDelta = activity == ResidentWellbeingActivity.Hobby
@@ -146,6 +163,22 @@ namespace Game.NomadWorkshop.Simulation
             if (Entertainment >= 0.55f && Stress <= 0.45f && Mood < 0.72f)
                 moodDelta += 0.00025f * InverseLerp(0f, 0.72f, 0.72f - Mood);
             Mood = Clamp01(Mood + moodDelta * seconds);
+
+            // 轻微口渴只驱动饮水，不直接扣生命；越过严重缺水点后用平滑曲线加速损害。
+            // 只有补足水分且仍活着时才允许缓慢恢复，地面休息是低质量兜底，未来床铺可提供更高恢复率。
+            float dehydrationSeverity = SmootherStep(
+                InverseLerp(DehydrationDamageOnset, 1f, drivers.ThirstDeficit));
+            float healthDelta = -MaximumDehydrationHealthLossPerSecond *
+                                dehydrationSeverity;
+            if (drivers.ThirstDeficit < 0.55f)
+            {
+                float recoveryReadiness =
+                    1f - 0.65f * SmootherStep(InverseLerp(0.55f, 1f, Fatigue));
+                recoveryReadiness *=
+                    1f - 0.45f * SmootherStep(InverseLerp(0.55f, 1f, Stress));
+                healthDelta += GetHealthRecovery(activity) * recoveryReadiness * effectScale;
+            }
+            Health = Clamp01(Health + healthDelta * seconds);
         }
 
         /// <summary>
@@ -166,6 +199,14 @@ namespace Game.NomadWorkshop.Simulation
                 BaseFatigueGrowthPerSecond,
                 importance: 0.82f),
             new ResidentNeedState(
+                ResidentNeed.Health,
+                1f - Health,
+                0f,
+                importance: 1.2f,
+                // 健康是多个病因共同形成的结果状态；不能让“普通休息”仅因能少量恢复健康
+                // 就自动晋升为急救。严重缺水、火灾和未来疾病应由各自的针对性方案声明风险层。
+                canPromoteToUrgent: false),
+            new ResidentNeedState(
                 ResidentNeed.Stress,
                 Stress,
                 0f,
@@ -182,6 +223,18 @@ namespace Game.NomadWorkshop.Simulation
 
             return activity switch
             {
+                ResidentWellbeingActivity.GroundRest => new[]
+                {
+                    new NeedEffect(
+                        ResidentNeed.Health,
+                        Clamp01(GroundRestHealthRecoveryPerSecond * seconds)),
+                    new NeedEffect(
+                        ResidentNeed.Fatigue,
+                        Clamp01(GroundRestFatigueRecoveryPerSecond * seconds)),
+                    new NeedEffect(
+                        ResidentNeed.Stress,
+                        Clamp01(GroundRestStressRecoveryPerSecond * seconds)),
+                },
                 ResidentWellbeingActivity.Daydream => new[]
                 {
                     new NeedEffect(
@@ -235,6 +288,7 @@ namespace Game.NomadWorkshop.Simulation
             ResidentWellbeingActivity.Travel => 1.15f,
             ResidentWellbeingActivity.Work => 1.35f,
             ResidentWellbeingActivity.PersonalCare => 0.75f,
+            ResidentWellbeingActivity.GroundRest => 0.1f,
             ResidentWellbeingActivity.Daydream => 0.2f,
             ResidentWellbeingActivity.Wander => 0.55f,
             ResidentWellbeingActivity.Hobby => 0.45f,
@@ -243,6 +297,7 @@ namespace Game.NomadWorkshop.Simulation
 
         private static float GetFatigueRecovery(ResidentWellbeingActivity activity) => activity switch
         {
+            ResidentWellbeingActivity.GroundRest => GroundRestFatigueRecoveryPerSecond,
             ResidentWellbeingActivity.Daydream => DaydreamFatigueRecoveryPerSecond,
             ResidentWellbeingActivity.Wander => WanderFatigueRecoveryPerSecond,
             ResidentWellbeingActivity.Hobby => HobbyFatigueRecoveryPerSecond,
@@ -251,6 +306,7 @@ namespace Game.NomadWorkshop.Simulation
 
         private static float GetStressRecovery(ResidentWellbeingActivity activity) => activity switch
         {
+            ResidentWellbeingActivity.GroundRest => GroundRestStressRecoveryPerSecond,
             ResidentWellbeingActivity.Daydream => DaydreamStressRecoveryPerSecond,
             ResidentWellbeingActivity.Wander => WanderStressRecoveryPerSecond,
             ResidentWellbeingActivity.Hobby => HobbyStressRecoveryPerSecond,
@@ -259,11 +315,22 @@ namespace Game.NomadWorkshop.Simulation
 
         private static float GetMoodGain(ResidentWellbeingActivity activity) => activity switch
         {
+            ResidentWellbeingActivity.GroundRest => -GroundRestMoodLossPerSecond,
             ResidentWellbeingActivity.Daydream => DaydreamMoodGainPerSecond,
             ResidentWellbeingActivity.Wander => WanderMoodGainPerSecond,
             ResidentWellbeingActivity.Hobby => HobbyMoodGainPerSecond,
             _ => 0f,
         };
+
+        private static float GetHealthRecovery(ResidentWellbeingActivity activity) =>
+            activity switch
+            {
+                ResidentWellbeingActivity.GroundRest => GroundRestHealthRecoveryPerSecond,
+                ResidentWellbeingActivity.Daydream => 0.00022f,
+                ResidentWellbeingActivity.Hobby => 0.00018f,
+                ResidentWellbeingActivity.PersonalCare => 0.00012f,
+                _ => 0.00006f,
+            };
 
         private static float GetActivityStress(ResidentWellbeingActivity activity) => activity switch
         {
@@ -295,5 +362,90 @@ namespace Game.NomadWorkshop.Simulation
         }
 
         private static float Clamp01(float value) => Math.Min(1f, Math.Max(0f, value));
+    }
+
+    /// <summary>
+    /// 把居民长期能力与短期身心状态折算为工作速度。公式只产生连续乘数，不拥有行动计时器；
+    /// 执行器应在一次工作开始时固定采样个人波动，避免每帧随机造成进度抖动和存档分歧。
+    /// </summary>
+    public static class ResidentPerformance
+    {
+        private const string WorkPaceRandomStreamId = "resident-performance:work-pace";
+
+        public static float CalculateExpectedWorkEfficiency(
+            float baseEfficiency,
+            float health,
+            float fatigue,
+            float stress)
+        {
+            ValidatePositiveFinite(baseEfficiency, nameof(baseEfficiency));
+            ValidateNormalized(health, nameof(health));
+            ValidateNormalized(fatigue, nameof(fatigue));
+            ValidateNormalized(stress, nameof(stress));
+
+            // 健康与疲劳是主要限制；中高压力提供短时动员增益，接近崩溃时则开始回落，
+            // 但首版仍保留少量应激加速。失误、事故与长期健康代价属于质量 / 风险通道，
+            // 不能因为这里“做得更快”就被吞掉。
+            float healthFactor = 0.25f + 0.75f * SmootherStep(health);
+            float fatigueFactor = 1f - 0.58f * SmootherStep(fatigue);
+            float stressMobilization = 0.22f * SmootherStep(
+                InverseLerp(0.15f, 0.7f, stress));
+            float stressOverload = 0.1f * SmootherStep(
+                InverseLerp(0.82f, 1f, stress));
+            float stressFactor = 1f + stressMobilization - stressOverload;
+            return Clamp(baseEfficiency * healthFactor * fatigueFactor * stressFactor, 0.1f, 2f);
+        }
+
+        public static float SampleWorkEfficiency(
+            int worldSeed,
+            ulong residentId,
+            long actionSequence,
+            float expectedEfficiency,
+            float variation = 0.08f)
+        {
+            ValidatePositiveFinite(expectedEfficiency, nameof(expectedEfficiency));
+            if (!float.IsFinite(variation) || variation < 0f || variation > 0.5f)
+                throw new ArgumentOutOfRangeException(nameof(variation));
+
+            double sample = DeterministicRandom.Sample01(
+                worldSeed,
+                residentId,
+                WorkPaceRandomStreamId,
+                actionSequence);
+            float pace = 1f - variation + (float)sample * variation * 2f;
+            return Clamp(expectedEfficiency * pace, 0.1f, 2f);
+        }
+
+        /// <summary>健康欠佳与疲劳增加费力行动成本，因此更倾向原地或有承托的休息。</summary>
+        public static float CalculateEffortAversion(float health, float fatigue)
+        {
+            ValidateNormalized(health, nameof(health));
+            ValidateNormalized(fatigue, nameof(fatigue));
+            return 1f + (1f - health) * 1.4f + fatigue * 0.9f;
+        }
+
+        private static void ValidateNormalized(float value, string parameterName)
+        {
+            if (!float.IsFinite(value) || value < 0f || value > 1f)
+                throw new ArgumentOutOfRangeException(parameterName, "归一化居民状态必须位于 [0, 1]。");
+        }
+
+        private static void ValidatePositiveFinite(float value, string parameterName)
+        {
+            if (!float.IsFinite(value) || value <= 0f)
+                throw new ArgumentOutOfRangeException(parameterName, "工作效率必须是有限正数。");
+        }
+
+        private static float InverseLerp(float minimum, float maximum, float value) =>
+            maximum <= minimum ? 0f : Clamp((value - minimum) / (maximum - minimum), 0f, 1f);
+
+        private static float SmootherStep(float value)
+        {
+            float t = Clamp(value, 0f, 1f);
+            return t * t * t * (t * (t * 6f - 15f) + 10f);
+        }
+
+        private static float Clamp(float value, float minimum, float maximum) =>
+            Math.Min(maximum, Math.Max(minimum, value));
     }
 }
