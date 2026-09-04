@@ -8,7 +8,8 @@
     "sourceKind": "external-ai-mesh-candidate",
     "approval": "candidate-only",
     "gameReady": false,
-    "manualArtReviewRequired": true
+    "manualArtReviewRequired": true,
+    "preserveHierarchy": false
   },
   "source": {
     "blendPath": "D:\\SSFramework\\ArtPipelineOutput\\AIMeshExperiments\\NW_FieldKitchen_01\\rodin-image-to-3d-20260902-01\\NW_FieldKitchen_01_RodinGen25.blend",
@@ -18,20 +19,38 @@
   "toolchain": {
     "blenderVersion": "5.2.1 LTS",
     "pythonVersion": "3.13.13",
-    "generatedAtUtc": "2026-09-02T05:15:14.351577+00:00",
-    "sourceScriptSha256": "4984a6437714a996f196dace740863c755aebe46fa05b5eccf668f037c2b3059"
+    "generatedAtUtc": "2026-09-02T18:04:23.116250+00:00",
+    "sourceScriptSha256": "87dc4b12a1eba38a29985b37555b5702319454bcfea801b3e91d54a6b3e88663"
   },
   "coordinateContract": {
     "authoringUnits": "Blender scene units; dimensions reported without automatic normalization",
     "blenderUpAxis": "+Z",
     "fbxForwardAxis": "-Z",
     "fbxUpAxis": "+Y",
-    "glbUpAxis": "+Y"
+    "glbUpAxis": "+Y",
+    "objectAxisBake": "enabled for static mesh portability"
+  },
+  "hierarchy": {
+    "preserved": false,
+    "nodeCount": 1,
+    "emptyObjectCount": 0,
+    "meshObjectCount": 1,
+    "parentLinkCount": 0,
+    "nodes": [
+      {
+        "name": "model",
+        "type": "MESH",
+        "parent": ""
+      }
+    ],
+    "animationExported": false
   },
   "geometry": {
     "meshObjectCount": 1,
     "vertexCount": 18924,
     "triangleCount": 37908,
+    "evaluatedVertexCount": 18924,
+    "evaluatedTriangleCount": 37903,
     "worldBounds": {
       "min": [
         -0.944062,
@@ -116,6 +135,11 @@
             1.0,
             1.0
           ]
+        },
+        "evaluatedAfterSanitization": {
+          "vertexCount": 18924,
+          "polygonCount": 18963,
+          "triangleCount": 37903
         }
       }
     ]
@@ -294,12 +318,16 @@
       "fbx": {
         "succeeded": true,
         "meshObjectCount": 1,
+        "emptyObjectCount": 0,
+        "parentLinkCount": 0,
         "vertexCount": 18924,
         "triangleCount": 37903
       },
       "glb": {
         "succeeded": true,
         "meshObjectCount": 1,
+        "emptyObjectCount": 0,
+        "parentLinkCount": 0,
         "vertexCount": 22058,
         "triangleCount": 37902
       }
@@ -313,9 +341,13 @@
     "glbExported": true,
     "fbxRoundTripRead": true,
     "glbRoundTripRead": true,
+    "fbxHierarchyMatchesSource": true,
+    "glbHierarchyMatchesSource": true,
     "sourceMeshValidationClean": false,
     "fbxTriangleCountMatchesValidatedSource": true,
     "glbTriangleCountMatchesValidatedSource": false,
+    "fbxTriangleCountMatchesEvaluatedSource": true,
+    "glbTriangleCountMatchesEvaluatedSource": false,
     "allMeshesHaveActiveUv": true,
     "pbrCoreMapped": true,
     "urpMetallicSmoothnessGenerated": true,
@@ -327,20 +359,20 @@
     "At least one Mesh contains disconnected geometry islands; review fused/floating details manually.",
     "Blender validation found 5 duplicate faces in the source; portable outputs use a recorded background-only validation copy.",
     "Archived textures are below 4K; provider generation settings may differ from DCC delivery resolution.",
-    "GLB round trip contains 37902 triangles versus 37903 after Blender validation."
+    "GLB round trip contains 37902 triangles versus 37903 after Blender validation and modifier evaluation."
   ],
   "files": [
     {
       "path": "NW_FieldKitchen_01_packed.blend",
       "kind": "artifact",
-      "bytes": 12618273,
-      "sha256": "f8cb720a668bb01e0134c6422b06773ac5c9cabd8e1a25d9516f084ff1cd3a00"
+      "bytes": 12618271,
+      "sha256": "35d80e59a2ab6be427073600efeb5b1b66acf52f894d08a06e01129a443ffb74"
     },
     {
       "path": "NW_FieldKitchen_01.fbx",
       "kind": "artifact",
-      "bytes": 1101932,
-      "sha256": "997c4fe8ca8d426262cf10cb5551e36aaa0dead902b7b6734fbf9008c6db1466"
+      "bytes": 1101564,
+      "sha256": "5d2248779ba8396d000342017484689d098fcc2a4b1a465ad25d9f4aef7af1c5"
     },
     {
       "path": "NW_FieldKitchen_01.glb",

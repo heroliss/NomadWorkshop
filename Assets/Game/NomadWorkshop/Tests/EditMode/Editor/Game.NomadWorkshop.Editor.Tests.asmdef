@@ -4,6 +4,9 @@
     "references": [
         "Game.NomadWorkshop",
         "Game.NomadWorkshop.Editor",
+        "Game.NomadWorkshop.Simulation",
+        "Game.Framework",
+        "Unity.AI.Navigation",
         "UnityEngine.TestRunner"
     ],
     "includePlatforms": [

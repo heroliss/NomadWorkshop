@@ -2,13 +2,20 @@
     "name": "Game.NomadWorkshop",
     "rootNamespace": "Game.NomadWorkshop",
     "references": [
-        "Game.NomadWorkshop.Simulation"
+        "Game.NomadWorkshop.Simulation",
+        "Game.Framework",
+        "R3.Unity",
+        "UniTask",
+        "Unity.AI.Navigation",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": [],
+    "precompiledReferences": [
+        "R3.dll"
+    ],
     "autoReferenced": false,
     "defineConstraints": [],
     "versionDefines": [],

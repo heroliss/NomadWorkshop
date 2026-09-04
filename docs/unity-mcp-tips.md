@@ -14,6 +14,12 @@ Codex 的 MCP 配置指向 `D:/unity-mcp-server/src/index.js`。下面是调用�
 - 扩展方法写成静态调用：UI Toolkit 的 `Q` → `UQueryExtensions.Q<...>(root, ...)`；LINQ → `System.Linq.Enumerable.XXX(...)`。
 - **别同步等异步**（`.Result` / `.Wait()` / `.GetAwaiter().GetResult()`）——会冻住编辑器。只做"一次动作 / 读一份快照"，延迟检查拆成多次调用。
 
+截至 2026-09-03，Plugin 2.39.5 + Unity 6000.3.22f1 的当前本机会在 Edit / Play 两种状态下把最简单的
+`unity_execute_code` 也编译成 `Predefined type 'System.Object' is not defined or imported` / 缺少 `mscorlib` 引用；这不是
+传入代码的语法错误。出现同一组签名时只复核一次简单表达式，然后停止重试：优先已有 `unity_*` 工具、Command、菜单或测试夹具；
+只有必须验证真实 Game View 输入时，才按 `unity-background-automation` 做一次锁定 Unity PID / 窗口的窄 Windows 输入，并立即回到
+语义工具。该限制是已观察的版本状态，不写成永久禁用；插件升级后应先用只读表达式复测并修正本文。
+
 ## 3. 重编译会断连
 
 改 `.cs` 后 `AssetDatabase.Refresh()`（或编辑器自发重编译）进域重载，期间 MCP 可能超时 / 断连——正常，不是失败，别重试同一个写操作。重连后按 §1 重新 select。进 Play / 截图 / 读状态不触发编译，不会断。
@@ -46,22 +52,22 @@ EditorWindow 截图不等于通用交互：可表达的菜单、查询、滚动�
 `testNames/categories/assemblies/groupNames`；MCP schema 虽暴露 `filter` 便利别名，Unity 端并未解析它，可能静默退化成全量运行，
 因此不要使用。任务终态 `succeeded + total=0` 只能说明 Runner 没找到用例，不能算验证通过；它通常意味着 mode 或筛选器写错。
 
-### PlayMode 无弹窗预检（必须先做）
+### Test Runner 无弹窗预检（EditMode / PlayMode 都必须先做）
 
-交互式 Editor 有脏场景时，Test Runner 在进入 PlayMode 前会打开原生保存弹窗。该弹窗阻塞 Unity 主线程，连 MCP 工具发现与队列查询都可能一起卡住；**弹窗出现后不能指望 Unity MCP 点击它**，只能人工或经操作系统 UI 自动化处理。
+交互式 Editor 有脏场景时，当前 Unity Test Framework 会在 EditMode / PlayMode 分支之前无条件执行 `SaveModifiedSceneTask`，其实现调用 `EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()` 并打开原生保存弹窗。该弹窗阻塞 Unity 主线程，连 MCP 工具发现与队列查询都可能一起卡住；**弹窗出现后不能指望 Unity MCP 点击它**，只能人工或经操作系统 UI 自动化处理。
 
-因此 MCP 启动每次 PlayMode 测试前，先调用：
+因此 MCP 启动每个 EditMode 或 PlayMode Test Runner job 前，都先调用：
 
 ```text
 unity_execute_menu_item
 menuPath: SSFramework/诊断/AI 自动化/PlayMode 测试预检（保存脏场景）
 ```
 
-项目侧 `FrameworkAutomationPreflight` 会保存所有“已加载 + 脏 + 已有资产路径”的场景，并打印稳定标记 `[SSFramework.Automation] READY`；若 Editor 正忙、仍在 PlayMode、存在未命名脏场景或保存失败，则打印 `BLOCKED` 并 fail-fast，**不会打开新弹窗，也不会丢弃改动**。只有看到菜单调用成功且 Editor 编译空闲后，才调用 `unity_testing_run_tests`。
+菜单和 `PreparePlayModeTests()` 的名称是为兼容已有 MCP、CI 与文档保留的历史 Interface，不代表它只适用于 PlayMode。项目侧 `FrameworkAutomationPreflight` 会保存所有“已加载 + 脏 + 已有资产路径”的场景，并打印稳定标记 `[SSFramework.Automation] READY`；若 Editor 正忙、仍在 PlayMode、存在未命名脏场景或保存失败，则打印 `BLOCKED` 并 fail-fast，**不会打开新弹窗，也不会丢弃改动**。只有看到菜单调用成功且 Editor 编译空闲后，才调用 `unity_testing_run_tests`。
 
 `READY / BLOCKED` 直写 Unity Console，不依赖当前项目的 `Log.Sinks`；即使测试或业务暂时清空了框架日志接收器，机器协议仍可观察。菜单工具返回 success 只说明命令被调用，仍须读取该标记判断预检结果。
 
-这不是全局自动保存 Hook：人工点击 Play / Test Runner 仍保留 Unity 原有确认语义，只有自动化显式选择预检才会落盘。若弹窗已经出现，先人工点 Save，再从预检重新开始；不要重复提交已经排队的测试命令。
+这不是全局自动保存 Hook：人工点击 Play / Test Runner 仍保留 Unity 原有确认语义，只有自动化显式选择预检才会落盘。若弹窗已经出现，先由用户明确选择 Save / Don't Save / Cancel，再清理已确认的僵尸 job，并从预检重新开始；不要重复提交已经排队的测试命令。
 
 ### AI 自动化菜单为什么点击即执行
 

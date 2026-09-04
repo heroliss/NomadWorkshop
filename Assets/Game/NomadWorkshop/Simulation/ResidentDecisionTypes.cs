@@ -10,7 +10,8 @@ namespace Game.NomadWorkshop.Simulation
         Hunger = 1,
         Fatigue = 2,
         Health = 3,
-        Count = 4,
+        Recreation = 4,
+        Count = 5,
     }
 
     /// <summary>候选在一次决策中的筛选和选择终态，用于测试与开发诊断。</summary>
@@ -96,6 +97,12 @@ namespace Game.NomadWorkshop.Simulation
         public string BlockReason { get; set; } = string.Empty;
         public NeedEffect[] NeedEffects { get; set; } = Array.Empty<NeedEffect>();
         public string[] ReservationKeys { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// 若候选由完整行动方案估算器生成，这里保留其步骤、硬阻塞与命名成本分项；
+        /// 手写的早期 Spike 候选可以为空。
+        /// </summary>
+        public ResidentActionPlanEvaluation PlanEvaluation { get; internal set; }
     }
 
     /// <summary>一次居民决策的不可变输入快照。</summary>

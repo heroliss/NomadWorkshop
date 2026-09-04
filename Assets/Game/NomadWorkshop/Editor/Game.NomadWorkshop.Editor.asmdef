@@ -3,6 +3,10 @@
     "rootNamespace": "Game.NomadWorkshop.Editor",
     "references": [
         "Game.NomadWorkshop",
+        "Game.NomadWorkshop.Simulation",
+        "Game.Framework",
+        "Unity.AI.Navigation",
+        "Unity.ProBuilder",
         "Unity.RenderPipelines.Universal.Runtime",
         "Unity.RenderPipelines.Universal.Editor"
     ],

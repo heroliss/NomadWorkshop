@@ -54,7 +54,7 @@ Demo 教学的内容组织规则放在最窄的 `Assets/Game/Framework/Demo/Scri
 
 能写成行为契约的规则优先靠近事件源：
 
-- PlayMode 测试前的脏场景处理由 `SSFramework/诊断/AI 自动化/PlayMode 测试预检（保存脏场景）` 承担；
+- EditMode / PlayMode Test Runner 前的脏场景处理都由 `SSFramework/诊断/AI 自动化/PlayMode 测试预检（保存脏场景）` 承担；菜单名是为现有自动化保留的历史 Interface；
 - Editor 副作用动作由 `FrameworkEditorOperationGate` 在 UI 与 Implementation 两层校验；
 - Module 依赖、菜单契约、Demo CodeRef、真实构建体积和关键 API 语义都有项目内验证入口；
 - 工程外 Unity 发现与 headless 自动化经 `Tools/UnityAutomation.psm1` 统一，避免每个 Agent 重写机器路径。
@@ -97,7 +97,7 @@ Skill 只收口有稳定触发条件的多步流程。一次性判断、已被�
 
 ### MCP、CLI 与 Harness
 
-[MCP](https://modelcontextprotocol.io) 是可移植协议，不是统一配置文件。稳定契约应保存在 `docs/unity-mcp-tips.md`、Project Skill、项目测试和 `Tools/UnityAutomation.psm1`：例如 PlayMode 预检、测试集合非空、截图后实际检查、超时恢复与清理。新 Agent 只需要按自己的连接方式接到同一个执行层；机器路径、Token、登录态和个人权限留在用户级。
+[MCP](https://modelcontextprotocol.io) 是可移植协议，不是统一配置文件。稳定契约应保存在 `docs/unity-mcp-tips.md`、Project Skill、项目测试和 `Tools/UnityAutomation.psm1`：例如 Test Runner 脏场景预检、测试集合非空、截图后实际检查、超时恢复与清理。新 Agent 只需要按自己的连接方式接到同一个执行层；机器路径、Token、登录态和个人权限留在用户级。
 
 Harness 也不是“让 AI 自动做一切”的另一个框架。它是任务驱动、可观察性、判定标准、恢复/重试和证据汇总的闭环。优先复用现有测试、BattleSim、PlayerPath、截图与性能工具，不另造第二套 Unity Runner。
 

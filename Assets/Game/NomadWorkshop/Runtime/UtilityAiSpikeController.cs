@@ -134,6 +134,7 @@ namespace Game.NomadWorkshop
             _deficits[(int)ResidentNeed.Hunger] = 0.43f;
             _deficits[(int)ResidentNeed.Fatigue] = 0.28f;
             _deficits[(int)ResidentNeed.Health] = 0.06f;
+            _deficits[(int)ResidentNeed.Recreation] = 0.2f;
             _generatorDamage = 0.28f;
             _haulBacklog = 0.42f;
             _repairPriority = 0.2f;
@@ -349,6 +350,8 @@ namespace Game.NomadWorkshop
             _deficits[(int)ResidentNeed.Thirst] = Clamp01(_deficits[(int)ResidentNeed.Thirst] + 0.0022f * deltaTime);
             _deficits[(int)ResidentNeed.Hunger] = Clamp01(_deficits[(int)ResidentNeed.Hunger] + 0.00135f * deltaTime);
             _deficits[(int)ResidentNeed.Fatigue] = Clamp01(_deficits[(int)ResidentNeed.Fatigue] + 0.00105f * deltaTime);
+            _deficits[(int)ResidentNeed.Recreation] = Clamp01(
+                _deficits[(int)ResidentNeed.Recreation] + 0.0008f * deltaTime);
 
             bool physicallyCritical = _deficits[(int)ResidentNeed.Thirst] > 0.96f
                                       || _deficits[(int)ResidentNeed.Hunger] > 0.97f
@@ -450,7 +453,7 @@ namespace Game.NomadWorkshop
                 BlockReason = "动力核心无需维修",
                 ReservationKeys = new[] { "station:generator", "tool:wrench" },
             };
-            var haul = new ResidentActionCandidate("haul", "haul", "整理货物")
+            var haul = new ResidentActionCandidate("haul", "haul", "搬运评分探针（无经济结算）")
             {
                 DurationSeconds = 4.5f,
                 BaseUtility = 0.03f,
@@ -461,7 +464,7 @@ namespace Game.NomadWorkshop
                 TravelCost = DistanceCost("haul"),
                 DurationCost = 0.03f,
                 IsAvailable = _haulBacklog > 0.03f,
-                BlockReason = "没有待整理货物",
+                BlockReason = "没有待评估的搬运候选",
                 ReservationKeys = new[] { "station:cargo", "item:cargo-batch" },
             };
             var lookout = new ResidentActionCandidate("lookout", "leisure", "眺望荒野")
@@ -635,7 +638,8 @@ namespace Game.NomadWorkshop
             DrawNeed("饥饿", ResidentNeed.Hunger);
             DrawNeed("疲劳", ResidentNeed.Fatigue);
             DrawNeed("健康压力", ResidentNeed.Health);
-            GUILayout.Label($"动力损伤 {_generatorDamage:P0}　货物积压 {_haulBacklog:P0}　水 {_waterServings}　食物 {_foodServings}");
+            DrawNeed("娱乐缺口", ResidentNeed.Recreation);
+            GUILayout.Label($"动力损伤 {_generatorDamage:P0}　搬运候选压力 {_haulBacklog:P0}　水 {_waterServings}　食物 {_foodServings}");
             string actionText = _currentAction == null ? "等待下一次决策" : $"{PhaseName(_phase)}：{_currentAction.DisplayName}";
             GUILayout.Label($"当前行动：{actionText}", _selectedStyle);
 

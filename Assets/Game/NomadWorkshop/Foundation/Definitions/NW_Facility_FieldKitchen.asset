@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 275295110a46b4b4e858cbc62c6dbbdf, type: 3}
+  m_Name: NW_Facility_FieldKitchen
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFacilityDefinition
+  id: field-kitchen
+  displayName: "\u91CE\u6218\u53A8\u623F"
+  function: 2
+  buildable: 1
+  footprintParts:
+  - localCenterMeters: {x: 0, y: 0}
+    sizeMeters: {x: 2.1, y: 0.95}
+    localYawDegrees: 0
+  interactionGroups:
+  - groupId: cook
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: left
+      localPositionMeters: {x: -0.62, y: -0.9}
+      localYawDegrees: 0
+    - slotId: center
+      localPositionMeters: {x: 0, y: -0.94}
+      localYawDegrees: 0
+    - slotId: right
+      localPositionMeters: {x: 0.62, y: -0.9}
+      localYawDegrees: 0
+  placeAtStart: 0
+  startPositionMeters: {x: 0, y: 0}
+  startYawDegrees: 0
+  prefab: {fileID: 0}
+  prototypeSize: {x: 2.05, y: 0.9, z: 0.88}
+  prototypeColor: {r: 0.12, g: 0.46, b: 0.44, a: 1}
