@@ -448,7 +448,12 @@ namespace Game.NomadWorkshop
                 WaitingAge = Math.Min(0.24f, _waitingSeconds["repair"] * 0.0018f),
                 TravelCost = DistanceCost("repair"),
                 DurationCost = 0.04f,
-                EmergencyPriority = _generatorDamage,
+                RiskTier = _generatorDamage >= 0.95f
+                    ? ResidentDecisionRiskTier.Critical
+                    : _generatorDamage >= 0.8f
+                        ? ResidentDecisionRiskTier.Severe
+                        : ResidentDecisionRiskTier.Routine,
+                RiskPriority = _generatorDamage,
                 IsAvailable = _generatorDamage > 0.02f,
                 BlockReason = "动力核心无需维修",
                 ReservationKeys = new[] { "station:generator", "tool:wrench" },
@@ -677,7 +682,7 @@ namespace Game.NomadWorkshop
             Rect rect = GUILayoutUtility.GetRect(120f, 16f, GUILayout.ExpandWidth(true));
             GUI.Box(rect, GUIContent.none);
             Color previous = GUI.color;
-            GUI.color = value >= _decisionPolicy.CriticalDeficit
+            GUI.color = value >= _decisionPolicy.UrgentNeedDeficit
                 ? new Color(0.95f, 0.25f, 0.18f)
                 : new Color(0.91f, 0.65f, 0.22f);
             GUI.Box(new Rect(rect.x + 2f, rect.y + 2f, (rect.width - 4f) * value, rect.height - 4f), GUIContent.none);
@@ -689,10 +694,11 @@ namespace Game.NomadWorkshop
         private void DrawTrace(CandidateDecisionTrace trace)
         {
             bool selected = trace.State == CandidateDecisionState.Selected;
-            string marker = selected ? "▶" : trace.IsEmergency ? "!" : "·";
+            string marker = selected ? "▶" : trace.HasElevatedRisk ? "!" : "·";
             GUIStyle style = selected ? _selectedStyle : _smallStyle;
             GUILayout.Label(
-                $"{marker} {trace.Candidate.DisplayName}　U {trace.Score.Total:F3}　P {trace.Probability:P0}　{StateName(trace.State)}",
+                $"{marker} {trace.Candidate.DisplayName}　风险 {RiskTierName(trace.RiskTier)} {trace.RiskPriority:P0}　" +
+                $"U {trace.Score.Total:F3}　P {trace.Probability:P0}　{StateName(trace.State)}",
                 style);
             GUILayout.Label(
                 $"　基础 {trace.Score.BaseBenefit:F2} / 需求 {trace.Score.NeedBenefit:F2} / 工作 {trace.Score.WorkBenefit:F2} / 人格 {trace.Score.PersonalBenefit:F2} / 等待 {trace.Score.PersistenceBenefit:F2} / 成本 {trace.Score.ExecutionCost:F2}　{trace.Reason}",
@@ -737,11 +743,22 @@ namespace Game.NomadWorkshop
             {
                 CandidateDecisionState.Ineligible => "不可执行",
                 CandidateDecisionState.SupersededByIntent => "同意图被替代",
-                CandidateDecisionState.OutsideEmergencyPool => "被紧急层排除",
+                CandidateDecisionState.OutsideRiskPool => "被更高风险层或层内紧迫度排除",
                 CandidateDecisionState.OutsideShortlist => "短名单外",
                 CandidateDecisionState.Shortlisted => "未抽中",
                 CandidateDecisionState.Selected => "已选择",
                 _ => state.ToString(),
+            };
+        }
+
+        private static string RiskTierName(ResidentDecisionRiskTier tier)
+        {
+            return tier switch
+            {
+                ResidentDecisionRiskTier.Urgent => "紧急",
+                ResidentDecisionRiskTier.Severe => "严重",
+                ResidentDecisionRiskTier.Critical => "致命",
+                _ => "日常",
             };
         }
 

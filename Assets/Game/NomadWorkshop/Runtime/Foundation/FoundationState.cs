@@ -164,6 +164,8 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField] private float planCost;
         [SerializeField] private float totalUtility;
         [SerializeField] private float selectionProbability;
+        [SerializeField] private ResidentDecisionRiskTier riskTier;
+        [SerializeField] private float riskPriority;
 
         public FoundationActionPlanProjection(
             string candidateId,
@@ -182,7 +184,9 @@ namespace Game.NomadWorkshop.Foundation
             float expectedRiskCost,
             float planCost,
             float totalUtility,
-            float selectionProbability)
+            float selectionProbability,
+            ResidentDecisionRiskTier riskTier,
+            float riskPriority)
         {
             evaluated = true;
             this.candidateId = candidateId ?? string.Empty;
@@ -202,6 +206,8 @@ namespace Game.NomadWorkshop.Foundation
             this.planCost = Math.Max(0f, planCost);
             this.totalUtility = totalUtility;
             this.selectionProbability = Mathf.Clamp01(selectionProbability);
+            this.riskTier = riskTier;
+            this.riskPriority = Mathf.Clamp01(riskPriority);
         }
 
         public bool Evaluated => evaluated;
@@ -222,6 +228,8 @@ namespace Game.NomadWorkshop.Foundation
         public float PlanCost => planCost;
         public float TotalUtility => totalUtility;
         public float SelectionProbability => selectionProbability;
+        public ResidentDecisionRiskTier RiskTier => riskTier;
+        public float RiskPriority => riskPriority;
 
         public bool Equals(FoundationActionPlanProjection other) =>
             evaluated == other.evaluated &&
@@ -241,7 +249,9 @@ namespace Game.NomadWorkshop.Foundation
             expectedRiskCost.Equals(other.expectedRiskCost) &&
             planCost.Equals(other.planCost) &&
             totalUtility.Equals(other.totalUtility) &&
-            selectionProbability.Equals(other.selectionProbability);
+            selectionProbability.Equals(other.selectionProbability) &&
+            riskTier == other.riskTier &&
+            riskPriority.Equals(other.riskPriority);
 
         public override bool Equals(object obj) =>
             obj is FoundationActionPlanProjection other && Equals(other);
@@ -266,7 +276,12 @@ namespace Game.NomadWorkshop.Foundation
                 effortCost,
                 expectedRiskCost,
                 planCost);
-            return HashCode.Combine(identityHash, routeHash, totalUtility, selectionProbability);
+            int decisionHash = HashCode.Combine(
+                totalUtility,
+                selectionProbability,
+                riskTier,
+                riskPriority);
+            return HashCode.Combine(identityHash, routeHash, decisionHash);
         }
 
         public static FoundationActionPlanProjection None => default;

@@ -187,6 +187,32 @@ namespace Game.NomadWorkshop.Simulation.Tests
             Assert.AreEqual(CandidateDecisionState.Ineligible, FindTrace(result, "wash-eat").State);
         }
 
+        [TestCase(ResidentActionPlanBlockReason.UnsafeEnvironment, "厕所舱室正在燃烧")]
+        [TestCase(ResidentActionPlanBlockReason.CapabilityUnavailable, "居民当前无法站立")]
+        public void SafetyAndCapability_AreHardConstraintsRatherThanLargeUtilityPenalties(
+            ResidentActionPlanBlockReason reason,
+            string detail)
+        {
+            ResidentActionPlanProposal unsafePlan = Proposal(
+                "unsafe", "hazard-response", "危险行动", 1f, 2f, comfort: 1f);
+            unsafePlan.RiskTier = ResidentDecisionRiskTier.Critical;
+            unsafePlan.RiskPriority = 1f;
+            unsafePlan.Feasibility = ResidentActionPlanFeasibility.Blocked(reason, detail);
+            ResidentActionCandidate blocked = Evaluate(unsafePlan);
+
+            ResidentActionPlanProposal fallbackPlan = Proposal(
+                "fallback", "fallback", "可执行退路", 1f, 2f, comfort: 0f);
+            fallbackPlan.RiskTier = ResidentDecisionRiskTier.Severe;
+            fallbackPlan.RiskPriority = 0.8f;
+            ResidentActionCandidate fallback = Evaluate(fallbackPlan);
+
+            ResidentDecisionResult result = Decide(blocked, fallback);
+
+            Assert.AreSame(fallback, result.Selected);
+            Assert.AreEqual(CandidateDecisionState.Ineligible, FindTrace(result, "unsafe").State);
+            Assert.AreEqual(detail, FindTrace(result, "unsafe").Reason);
+        }
+
         private ResidentActionCandidate Evaluate(
             ResidentActionPlanProposal proposal,
             ResidentActionPlanPolicy policy = null,

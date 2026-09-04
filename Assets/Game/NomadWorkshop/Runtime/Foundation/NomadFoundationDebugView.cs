@@ -339,6 +339,11 @@ namespace Game.NomadWorkshop.Foundation
                     $"{_latestActionPlan.TravelSeconds:0.00}s · 效用 {_latestActionPlan.TotalUtility:0.000}",
                     _smallStyle);
                 GUILayout.Label(
+                    $"风险层：{DescribeRiskTier(_latestActionPlan.RiskTier)} · " +
+                    $"层内紧迫度 {_latestActionPlan.RiskPriority:P0} · " +
+                    $"选中概率 {_latestActionPlan.SelectionProbability:P1}",
+                    _smallStyle);
+                GUILayout.Label(
                     $"方案成本：行程 {_latestActionPlan.TravelCost:0.000} + " +
                     $"动作 {_latestActionPlan.ActiveCost:0.000} + " +
                     $"体力 {_latestActionPlan.EffortCost:0.000} + " +
@@ -384,6 +389,14 @@ namespace Game.NomadWorkshop.Foundation
             GUI.color = Color.white;
             GUI.Label(rect, $"  {label}  {value:P0}");
         }
+
+        private static string DescribeRiskTier(ResidentDecisionRiskTier tier) => tier switch
+        {
+            ResidentDecisionRiskTier.Urgent => "紧迫",
+            ResidentDecisionRiskTier.Severe => "严重",
+            ResidentDecisionRiskTier.Critical => "危及生命 / 车辆",
+            _ => "日常",
+        };
 
         private void EnsureStyles()
         {

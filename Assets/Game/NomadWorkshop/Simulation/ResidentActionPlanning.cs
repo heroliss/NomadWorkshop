@@ -28,6 +28,8 @@ namespace Game.NomadWorkshop.Simulation
         CarrierCapacityInsufficient,
         DestinationFull,
         InteractionUnavailable,
+        UnsafeEnvironment,
+        CapabilityUnavailable,
     }
 
     /// <summary>行动方案的硬可行性。软偏好、风险和距离不能伪装成不可执行。</summary>
@@ -185,7 +187,8 @@ namespace Game.NomadWorkshop.Simulation
         public float ContinuityBonus { get; set; }
         public float ResourceCost { get; set; }
         public float SwitchCost { get; set; }
-        public float EmergencyPriority { get; set; }
+        public ResidentDecisionRiskTier RiskTier { get; set; }
+        public float RiskPriority { get; set; }
         public float DelayUrgency { get; set; }
         public float Effort { get; set; }
         public float WorkIntensity { get; set; }
@@ -376,7 +379,8 @@ namespace Game.NomadWorkshop.Simulation
                 ResourceCost = proposal.ResourceCost,
                 RiskCost = breakdown.ExpectedRiskCost,
                 SwitchCost = proposal.SwitchCost,
-                EmergencyPriority = proposal.EmergencyPriority,
+                RiskTier = proposal.RiskTier,
+                RiskPriority = proposal.RiskPriority,
                 IsAvailable = proposal.Feasibility.IsFeasible,
                 BlockReason = blockReason,
                 NeedEffects = proposal.NeedEffects == null
@@ -408,6 +412,8 @@ namespace Game.NomadWorkshop.Simulation
                 ResidentActionPlanBlockReason.CarrierCapacityInsufficient => "搬运容量不足",
                 ResidentActionPlanBlockReason.DestinationFull => "目标储存空间已满",
                 ResidentActionPlanBlockReason.InteractionUnavailable => "交互位置当前不可用",
+                ResidentActionPlanBlockReason.UnsafeEnvironment => "目标或路径环境当前不安全",
+                ResidentActionPlanBlockReason.CapabilityUnavailable => "居民当前不具备执行能力",
                 _ => "行动方案当前不可执行",
             };
         }
@@ -430,7 +436,9 @@ namespace Game.NomadWorkshop.Simulation
             ValidateNonNegative(proposal.ContinuityBonus, nameof(proposal.ContinuityBonus));
             ValidateNonNegative(proposal.ResourceCost, nameof(proposal.ResourceCost));
             ValidateNonNegative(proposal.SwitchCost, nameof(proposal.SwitchCost));
-            ValidateNonNegative(proposal.EmergencyPriority, nameof(proposal.EmergencyPriority));
+            if (!Enum.IsDefined(typeof(ResidentDecisionRiskTier), proposal.RiskTier))
+                throw new ArgumentOutOfRangeException(nameof(proposal.RiskTier));
+            ValidateNormalized(proposal.RiskPriority, nameof(proposal.RiskPriority));
             ValidateNormalized(proposal.DelayUrgency, nameof(proposal.DelayUrgency));
             ValidateNormalized(proposal.Effort, nameof(proposal.Effort));
             ValidateNormalized(proposal.WorkIntensity, nameof(proposal.WorkIntensity));

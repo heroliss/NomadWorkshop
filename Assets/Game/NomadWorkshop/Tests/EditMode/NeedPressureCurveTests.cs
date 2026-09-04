@@ -87,7 +87,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 },
                 new[] { toilet }));
             Assert.That(urgent.Selected, Is.SameAs(toilet));
-            Assert.That(urgent.Traces[0].IsEmergency, Is.True);
+            Assert.That(urgent.Traces[0].HasElevatedRisk, Is.True);
             Assert.That(urgent.Traces[0].Score.NeedBenefit, Is.EqualTo(1f).Within(0.000001f));
         }
 

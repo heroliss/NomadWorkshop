@@ -79,7 +79,7 @@ NomadWorkshop/
     └── PlayMode/     # 回退路径、真实 Humanoid 和可见搬运 / 加工闭环
 ```
 
-`ResidentActionPlanEvaluator` 先把完整步骤与上下文折算为可解释候选，`UtilityDecisionEngine` 再决定“现在做什么”；两者都不拥有寻路、任务进度、资源结算或动画。`CargoTransportPlanner` 只判定货物与徒手 / 容器能力及污染暴露，不越权选择脱离完整路程的局部最优容器。`ReservationLedger` 处理独占键，`ResourceFlowLedger` 在其上增加来源数量、携带容量、目的容量与设施加工的原子语义。`ResidentHumanoidPresentation` 只呈现模拟结果，Animator 不拥有移动或任务完成真值。`FacilityInteractionAnchor` 只声明表现接缝，尚未驱动 IK。
+`ResidentActionPlanEvaluator` 先把完整步骤与上下文折算为可解释候选，`UtilityDecisionEngine` 再决定“现在做什么”；两者都不拥有寻路、任务进度、资源结算或动画。选择器先排除不可执行方案，再按日常 / 紧迫 / 严重 / 危急四级动态后果仲裁，同层只在紧迫度容差内比较完整 Utility；这避免用一个无限膨胀的分数同时表示火灾、重病、膀胱和心情。`CargoTransportPlanner` 只判定货物与徒手 / 容器能力及污染暴露，不越权选择脱离完整路程的局部最优容器。`ReservationLedger` 处理独占键，`ResourceFlowLedger` 在其上增加来源数量、携带容量、目的容量与设施加工的原子语义。`ResidentHumanoidPresentation` 只呈现模拟结果，Animator 不拥有移动或任务完成真值。`FacilityInteractionAnchor` 只声明表现接缝，尚未驱动 IK。
 
 `Game.NomadWorkshop.Simulation` 继续保持无 Unity / Framework 依赖，用于确定性的效用、预留、库存、物质链、连续摆放与版本化存档真值；`Game.NomadWorkshop` Runtime 已显式引用 `Game.Framework`，由 Mono Context / Model / System / View 把纯内核接到 Unity 生命周期、Inspector、Command、NavMesh 和 3D 表现。当前没有为了游戏方便修改 Framework Core；只有产品中反复出现、且跨游戏成立的阻力才考虑回流。
 
@@ -154,7 +154,8 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 居民落地修复：场景生成契约 EditMode 1/1（job `c7c674513621`），完整 Foundation PlayMode 16/16（job `5853d84acfca`）；Game View 已确认胶囊底部接触甲板，本地忽略证据为 `Screenshots/nomad-foundation-resident-grounded.png`；
 - 统一模拟时钟与日历投影 EditMode 6/6（job `76d96758587e`），完整 Foundation PlayMode 17/17（job `865ea8826059`），覆盖小于 1 ms 余量、倍率、存档 Tick 恢复、暂停冻结和同 Tick 日历投影；Game View 已检查两行时间诊断无截断，本地忽略证据为 `Screenshots/nomad-foundation-unified-clock.png`；
 - 本轮 EditMode 扩大回归 744/744（job `d3dd925c4591`），覆盖资源目的地改道成功与交互冲突后的旧预留恢复；最终 Foundation PlayMode 17/17（job `24e665f3a611`），其中双饮水站断路用例证明第一站保持 `0 mL`、第二站收到 `2 L` 并饮用 `300 mL`，水罐锚点同步为第二站；
-- 平滑需求与休闲稳态：最终全量 EditMode 748/748（job `26495d99656e`），覆盖 50% / 90% 曲线接缝、确定性行动机会、Utility 紧急池、接近零娱乐缺口下的 2:1 分布，并确认默认工作 / 生存短名单没有被休闲政策放宽；Foundation + Utility AI PlayMode 19/19（job `fc6fbf39406a`），运行时连续完成至少 12 次休闲且发呆、散步都实际发生；
+- 平滑需求与休闲稳态：最终全量 EditMode 748/748（job `26495d99656e`），覆盖 50% / 90% 曲线接缝、确定性行动机会、旧二级紧急保护、接近零娱乐缺口下的 2:1 分布，并确认默认工作 / 生存短名单没有被休闲政策放宽；Foundation + Utility AI PlayMode 19/19（job `fc6fbf39406a`），运行时连续完成至少 12 次休闲且发呆、散步都实际发生；
+- 统一生活决策与四级风险仲裁：定向 EditMode 20/20（job `55ffbac2272b`），最终完整 Simulation EditMode 109/109（job `be4ff3aeabfb`），覆盖危急火灾与紧迫膀胱的分层冲突、不可行危急方案的降级备选、同层紧迫度容差、负效用最小伤害选择、不安全环境与能力不足硬约束；风险优先诊断、瞬态消息清理与公共命名收口后，最终完整 NomadWorkshop PlayMode 25/25（job `9b586441c81e`）通过；缺少防漏容器时候选会被拒绝并留下诊断，居民仍能执行可行备选，不再永久停在 `Blocked`；
 - Game View 已实际检查“全部饮水站”聚合显示和水罐精确实例锚点无截断，3D 水罐仍位于匹配的车辆水箱旁；本地忽略证据为 `Screenshots/nomad-foundation-instance-inventory-game.png`；
 - 可重建场景管线 EditMode 1/1（job `c3046ae76822`）；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
@@ -167,6 +168,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 三名以上居民同时投标、长时间拥堵、复杂设施队列与 20 人压力；当前正式水循环仍是一人，隔离导航 Harness 只证明两人局部避让和一个柜门的全周期互斥；
 - 行动承诺和任务老化的长时间平衡统计；
 - Foundation 运行时尚未接入独立的身体疲劳、心情、姿势不适，以及主行动 / 微活动 / 检查点绕行执行器；本轮只锁定需求曲线与中断契约，发呆和散步对 Recreation 的恢复仍是灰盒占位；
+- 四级风险仲裁已有纯 C# 火灾 / 生理极端冲突证据，但正式 Foundation 尚未生成火灾、疾病、求援、失禁事故或多居民事件任务；不将仲裁器可测误写成这些玩法已交付；
 - 水罐寻找与最小旱厕使用已接入正式 Foundation；厕所清运、食物容器 / 餐具、洗手、洁净度和晕车仍只有旧 Harness 或纯 C# 方案规则，尚未接入完整设施、动画或长期平衡；
 - 正式废土服装、模块化发型/背包、人物差异、面部与布料；
 - Animation Rigging、手部 IK、工具挂点实际消费与专用交互修正；

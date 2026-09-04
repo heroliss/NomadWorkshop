@@ -66,10 +66,14 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Transform resident = _root.transform.Find("Resident_Ada");
             Assert.IsNotNull(resident);
             Vector3 start = resident.position;
-            yield return null;
-            yield return null;
+            const int movementFrameLimit = 60;
+            for (var i = 0;
+                 i < movementFrameLimit && Vector3.Distance(start, resident.position) <= 0.001f;
+                 i++)
+                yield return null;
             Assert.Greater(Vector3.Distance(start, resident.position), 0.001f,
-                "选出行动后，展示层应开始向设施交互位移动。 ");
+                "选出行动后，展示层应在有界时间内开始向设施交互位移动。 " +
+                $"Action={_controller.CurrentActionId}; UnscaledDelta={Time.unscaledDeltaTime:0.000000}s");
         }
 
 #if UNITY_EDITOR

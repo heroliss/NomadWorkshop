@@ -754,7 +754,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
-        public IEnumerator FullBodyWater_BecomesTransientPressureAndRecoversThroughRealToilet()
+        public IEnumerator SingleServingBodyCapacity_RecoversThroughRealToiletWithoutPermanentBlock()
         {
             _worldView.enabled = false;
             _context.ExecuteCommand(new SetFoundationPausedCommand(true));
@@ -771,7 +771,6 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             yield return BuildFacility("toilet", 2000, 0);
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
 
-            var observedDestinationFull = false;
             const int frameLimit = 720;
             for (var i = 0;
                  i < frameLimit &&
@@ -779,7 +778,6 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                  i++)
             {
                 yield return null;
-                observedDestinationFull |= _model.LastBlocker.Value.Contains("DestinationFull");
                 Assert.That(
                     _model.ResidentPhase.Value,
                     Is.Not.EqualTo(FoundationResidentPhase.Blocked),
@@ -787,7 +785,6 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     $"Task={_model.CurrentTask.Value}; Blocker={_model.LastBlocker.Value}");
             }
 
-            Assert.That(observedDestinationFull, Is.True, "测试应实际经过用户报告的 DestinationFull 窗口。 ");
             Assert.That(
                 _model.CompletedDrinkCount.Value,
                 Is.GreaterThanOrEqualTo(2),
@@ -800,10 +797,14 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(
                 _model.ToiletHoldingWasteMilliliters.Value,
                 Is.GreaterThanOrEqualTo(ResidentWaterCycle.DefaultDrinkServingMilliliters));
+            StringAssert.DoesNotContain(
+                "DestinationFull",
+                _model.LastBlocker.Value,
+                "有限身体容量可以产生短暂背压，但饮水—代谢—如厕闭环完成后不应留下永久阻塞。");
         }
 
         [UnityTest]
-        public IEnumerator WaterCanWithoutLiquidTightCapability_BlocksBeforePickup()
+        public IEnumerator WaterCanWithoutLiquidTightCapability_RejectsCandidateWithoutFreezingResident()
         {
             _worldView.enabled = false;
             _system.ConfigureWaterCanForTests(CargoContainerCapability.Sealable, 1f);
@@ -818,16 +819,16 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             const int decisionFrameLimit = 60;
             for (var i = 0;
                  i < decisionFrameLimit &&
-                 _model.ResidentPhase.Value != FoundationResidentPhase.Blocked;
+                 !_model.LastBlocker.Value.Contains("防漏");
                  i++)
                 yield return null;
 
             FoundationActionPlanProjection plan = _model.LatestActionPlan.Value;
-            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Blocked));
+            Assert.That(_model.ResidentPhase.Value, Is.Not.EqualTo(FoundationResidentPhase.Blocked));
             Assert.That(plan.Evaluated, Is.True);
-            Assert.That(plan.Feasible, Is.False);
-            Assert.That(plan.Selected, Is.False);
-            StringAssert.Contains("防漏", plan.Blocker);
+            Assert.That(plan.Feasible, Is.True, "不可执行的补水候选应被过滤，并允许居民选择安全退路。 ");
+            Assert.That(plan.Selected, Is.True);
+            StringAssert.Contains("防漏", _model.LastBlocker.Value);
             Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(60_000));
             Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
             Assert.That(

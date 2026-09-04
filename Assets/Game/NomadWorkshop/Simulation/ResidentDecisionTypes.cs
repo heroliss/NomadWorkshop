@@ -20,10 +20,30 @@ namespace Game.NomadWorkshop.Simulation
     {
         Ineligible,
         SupersededByIntent,
-        OutsideEmergencyPool,
+        OutsideRiskPool,
         OutsideShortlist,
         Shortlisted,
         Selected,
+    }
+
+    /// <summary>
+    /// 候选能够缓解的最高后果层。层级描述当前情境下“不处理会发生什么”，而不是给行动类型
+    /// 写死永久顺序：同一个故障在可隔离时可能是 <see cref="Severe"/>，即将危及生命时则是
+    /// <see cref="Critical"/>。硬不可执行条件仍由行动方案可行性表达，不能靠提高层级绕过。
+    /// </summary>
+    public enum ResidentDecisionRiskTier
+    {
+        /// <summary>日常需求、工作和休闲，可在多个合理选择间保留自然随机。</summary>
+        Routine = 0,
+
+        /// <summary>即将失禁、严重口渴等可逆但需要尽快处理的生理或任务失败。</summary>
+        Urgent = 1,
+
+        /// <summary>可能造成重伤、显著病情恶化、火势扩散或不可逆资产损失。</summary>
+        Severe = 2,
+
+        /// <summary>短时间内可能死亡、窒息或造成车辆毁灭的立即安全威胁。</summary>
+        Critical = 3,
     }
 
     /// <summary>
@@ -103,7 +123,17 @@ namespace Game.NomadWorkshop.Simulation
         public float ResourceCost { get; set; }
         public float RiskCost { get; set; }
         public float SwitchCost { get; set; }
-        public float EmergencyPriority { get; set; }
+        /// <summary>
+        /// 本方案能够缓解的最高风险层。需求达到自己的紧急点时，选择器会至少自动提升为
+        /// <see cref="ResidentDecisionRiskTier.Urgent"/>；火灾等环境风险由候选生成器显式赋值。
+        /// </summary>
+        public ResidentDecisionRiskTier RiskTier { get; set; }
+
+        /// <summary>
+        /// 同一风险层内的情境紧迫度，范围 [0, 1]。它先用于带容差的风险比较，而不是直接混入
+        /// Utility 总分；例如同为 Critical 的两个方案可以先比较预计失效时间，再比较行动成本。
+        /// </summary>
+        public float RiskPriority { get; set; }
         public bool IsAvailable { get; set; } = true;
         public string BlockReason { get; set; } = string.Empty;
         public NeedEffect[] NeedEffects { get; set; } = Array.Empty<NeedEffect>();
@@ -144,13 +174,22 @@ namespace Game.NomadWorkshop.Simulation
     public sealed class UtilityDecisionPolicy
     {
         public float NeedPressureExponent { get; set; } = 2.4f;
-        public float CriticalDeficit { get; set; } = 0.82f;
-        public float CriticalPressureBoost { get; set; } = 2.5f;
-        public float EmergencyWorkThreshold { get; set; } = 0.8f;
+        /// <summary>未配置专属曲线的需求在达到该缺口后，可行恢复候选至少进入 Urgent 层。</summary>
+        public float UrgentNeedDeficit { get; set; } = 0.82f;
+        /// <summary>默认需求曲线越过紧迫点后的附加非线性压力。</summary>
+        public float UrgentPressureBoost { get; set; } = 2.5f;
+        /// <summary>
+        /// 同一非日常风险层内允许作为“近似等价”继续比较 Utility 的紧迫度差值。
+        /// 超出容差时更紧迫方案先验支配；容差内才允许时间、健康和资源等后果进行取舍。
+        /// </summary>
+        public float RiskPrioritySlack { get; set; } = 0.05f;
         public float RelativeShortlistThreshold { get; set; } = 0.62f;
         public int MaxShortlistCount { get; set; } = 4;
         public float NormalTemperature { get; set; } = 0.16f;
-        public float EmergencyTemperature { get; set; } = 0.035f;
+        /// <summary>Urgent / Severe 层的低温度；仍允许近似等价方案有少量变化。</summary>
+        public float ElevatedRiskTemperature { get; set; } = 0.035f;
+        /// <summary>Critical 层默认确定性选择；只在风险与 Utility 都相同时用稳定 id 打破平局。</summary>
+        public float CriticalRiskTemperature { get; set; }
         public float MinimumUtility { get; set; } = 0.0001f;
     }
 
@@ -193,7 +232,9 @@ namespace Game.NomadWorkshop.Simulation
         public ResidentActionCandidate Candidate { get; }
         public UtilityScoreBreakdown Score { get; internal set; }
         public CandidateDecisionState State { get; internal set; }
-        public bool IsEmergency { get; internal set; }
+        public ResidentDecisionRiskTier RiskTier { get; internal set; }
+        public float RiskPriority { get; internal set; }
+        public bool HasElevatedRisk => RiskTier != ResidentDecisionRiskTier.Routine;
         public double Probability { get; internal set; }
         public string Reason { get; internal set; } = string.Empty;
     }

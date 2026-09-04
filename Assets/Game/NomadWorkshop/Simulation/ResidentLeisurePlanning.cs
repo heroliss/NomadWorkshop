@@ -12,8 +12,9 @@ namespace Game.NomadWorkshop.Simulation
         public const string DaydreamCandidateId = "leisure:daydream-in-place";
 
         /// <summary>
-        /// 低风险休闲允许比工作 / 生存决策更宽的合理候选池；Softmax 仍会按成本连续降低概率。
-        /// 这项政策不能用于紧急任务，否则可能让本应排除的高风险行为重新进入抽样。
+        /// 日常选择允许比单一工作决策更宽的合理候选池；Softmax 仍会按成本连续降低概率。
+        /// 风险层会在短名单形成前排除更低层候选，因此该宽度也可用于包含休闲与生存候选的
+        /// 统一决策入口，不会让休闲重新混入紧急抽样。
         /// </summary>
         public static UtilityDecisionPolicy CreateSelectionPolicy() => new()
         {

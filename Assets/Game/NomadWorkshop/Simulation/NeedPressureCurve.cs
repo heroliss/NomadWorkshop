@@ -42,7 +42,7 @@ namespace Game.NomadWorkshop.Simulation
         /// <summary>低于或等于该缺口时，本需求不会单独推动行动。</summary>
         public float OnsetDeficit { get; }
 
-        /// <summary>达到该缺口时，行动机会为 100%，并进入 Utility 的紧急候选池。</summary>
+        /// <summary>达到该缺口时，行动机会为 100%，且能缓解该需求的可行候选至少进入紧迫风险层。</summary>
         public float UrgentDeficit { get; }
 
         /// <summary>大于 1 会压低中段早期响应，使需求先缓慢、后快速上升。</summary>

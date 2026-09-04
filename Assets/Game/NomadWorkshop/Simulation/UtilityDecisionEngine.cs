@@ -12,8 +12,9 @@ namespace Game.NomadWorkshop.Simulation
         private const string DecisionRandomStreamId = "resident-decision";
 
         /// <summary>
-        /// 在不可变快照上完成候选过滤、同意图归并、紧急保护、短名单与确定性 Softmax 抽样。
-        /// 配置错误抛出异常；没有正效用候选时返回无选择结果，并保留全部诊断轨迹。
+        /// 在不可变快照上完成候选过滤、同意图归并、四级风险仲裁、短名单与确定性 Softmax 抽样。
+        /// 配置错误抛出异常；没有达到最小效用的日常候选、也没有可行风险缓解方案时，
+        /// 返回无选择结果并保留全部诊断轨迹。
         /// </summary>
         public ResidentDecisionResult Decide(ResidentDecisionContext context, UtilityDecisionPolicy policy = null)
         {
@@ -38,6 +39,9 @@ namespace Game.NomadWorkshop.Simulation
                 ResidentActionCandidate candidate = orderedCandidates[i];
                 var trace = new CandidateDecisionTrace(candidate);
                 traces.Add(trace);
+                ValidateCandidateRisk(candidate);
+                trace.RiskTier = candidate.RiskTier;
+                trace.RiskPriority = candidate.RiskPriority;
 
                 if (!candidate.IsAvailable)
                 {
@@ -48,41 +52,69 @@ namespace Game.NomadWorkshop.Simulation
                     continue;
                 }
 
-                trace.Score = ScoreCandidate(candidate, needs, policy, out bool criticalNeed);
-                trace.IsEmergency = criticalNeed || candidate.EmergencyPriority >= policy.EmergencyWorkThreshold;
-                trace.State = trace.Score.Total >= policy.MinimumUtility
+                trace.Score = ScoreCandidate(
+                    candidate,
+                    needs,
+                    policy,
+                    out bool urgentNeed,
+                    out float urgentNeedPriority);
+                trace.RiskTier = urgentNeed && candidate.RiskTier < ResidentDecisionRiskTier.Urgent
+                    ? ResidentDecisionRiskTier.Urgent
+                    : candidate.RiskTier;
+                trace.RiskPriority = Math.Max(candidate.RiskPriority, urgentNeedPriority);
+                // 可行的风险缓解方案即使代价很高，也必须作为“最小伤害”候选留下；
+                // MinimumUtility 只阻止没有足够收益的日常行为。
+                trace.State = trace.HasElevatedRisk || trace.Score.Total >= policy.MinimumUtility
                     ? CandidateDecisionState.Shortlisted
                     : CandidateDecisionState.OutsideShortlist;
                 if (trace.State == CandidateDecisionState.OutsideShortlist)
                     trace.Reason = "总效用低于最小阈值";
             }
 
-            List<CandidateDecisionTrace> intentWinners = SelectIntentWinners(traces);
+            List<CandidateDecisionTrace> intentWinners = SelectIntentWinners(traces, policy);
             if (intentWinners.Count == 0)
                 return new ResidentDecisionResult(null, SampleDecisionRoll(context), traces);
 
-            var emergencyPool = new List<CandidateDecisionTrace>();
+            ResidentDecisionRiskTier highestRiskTier = ResidentDecisionRiskTier.Routine;
             for (int i = 0; i < intentWinners.Count; i++)
             {
-                if (intentWinners[i].IsEmergency) emergencyPool.Add(intentWinners[i]);
+                if (intentWinners[i].RiskTier > highestRiskTier)
+                    highestRiskTier = intentWinners[i].RiskTier;
             }
 
-            List<CandidateDecisionTrace> selectionPool;
-            bool emergencyDecision = emergencyPool.Count > 0;
-            if (emergencyDecision)
+            var selectionPool = new List<CandidateDecisionTrace>(intentWinners.Count);
+            for (int i = 0; i < intentWinners.Count; i++)
             {
-                selectionPool = emergencyPool;
-                for (int i = 0; i < intentWinners.Count; i++)
+                CandidateDecisionTrace trace = intentWinners[i];
+                if (trace.RiskTier == highestRiskTier)
                 {
-                    CandidateDecisionTrace trace = intentWinners[i];
-                    if (trace.IsEmergency) continue;
-                    trace.State = CandidateDecisionState.OutsideEmergencyPool;
-                    trace.Reason = "存在可执行的紧急候选";
+                    selectionPool.Add(trace);
+                    continue;
                 }
+
+                trace.State = CandidateDecisionState.OutsideRiskPool;
+                trace.Reason = $"存在更高风险层候选：{highestRiskTier}";
             }
-            else
+
+            if (highestRiskTier != ResidentDecisionRiskTier.Routine)
             {
-                selectionPool = intentWinners;
+                float highestRiskPriority = 0f;
+                for (int i = 0; i < selectionPool.Count; i++)
+                    highestRiskPriority = Math.Max(
+                        highestRiskPriority,
+                        selectionPool[i].RiskPriority);
+                float minimumComparablePriority = Math.Max(
+                    0f,
+                    highestRiskPriority - policy.RiskPrioritySlack);
+                for (int i = selectionPool.Count - 1; i >= 0; i--)
+                {
+                    CandidateDecisionTrace trace = selectionPool[i];
+                    if (trace.RiskPriority >= minimumComparablePriority) continue;
+                    trace.State = CandidateDecisionState.OutsideRiskPool;
+                    trace.Reason =
+                        $"同为 {highestRiskTier}，紧迫度 {trace.RiskPriority:F3} 低于可比较边界 {minimumComparablePriority:F3}";
+                    selectionPool.RemoveAt(i);
+                }
             }
 
             selectionPool.Sort(CompareByUtilityThenId);
@@ -90,7 +122,7 @@ namespace Game.NomadWorkshop.Simulation
             double roll = SampleDecisionRoll(context);
             ResidentActionCandidate selected = SelectBySoftmax(
                 shortlist,
-                emergencyDecision ? policy.EmergencyTemperature : policy.NormalTemperature,
+                SelectTemperature(highestRiskTier, policy),
                 roll);
 
             for (int i = 0; i < shortlist.Count; i++)
@@ -152,11 +184,11 @@ namespace Game.NomadWorkshop.Simulation
             ResidentActionCandidate candidate,
             IReadOnlyList<ResidentNeedState> needs,
             UtilityDecisionPolicy policy,
-            out bool criticalNeed)
+            out bool urgentNeed,
+            out float urgentNeedPriority)
         {
             if (candidate.DurationSeconds < 0f)
                 throw new ArgumentOutOfRangeException(nameof(candidate), candidate.DurationSeconds, "行动时长不能为负。");
-
             int needCount = (int)ResidentNeed.Count;
             NeedEffect[] effects = candidate.NeedEffects ?? Array.Empty<NeedEffect>();
             for (int i = 0; i < effects.Length; i++)
@@ -170,7 +202,8 @@ namespace Game.NomadWorkshop.Simulation
             }
 
             float needBenefit = 0f;
-            criticalNeed = false;
+            urgentNeed = false;
+            urgentNeedPriority = 0f;
             for (int i = 0; i < needCount; i++)
             {
                 float restore = 0f;
@@ -186,10 +219,14 @@ namespace Game.NomadWorkshop.Simulation
                 float beforePressure = EvaluatePressure(predicted, state, policy);
                 float afterPressure = EvaluatePressure(after, state, policy);
                 needBenefit += Math.Max(0f, beforePressure - afterPressure) * state.Importance;
-                if (state.PressureCurve.IsConfigured
-                        ? state.PressureCurve.IsUrgent(predicted)
-                        : predicted >= policy.CriticalDeficit)
-                    criticalNeed = true;
+                bool isUrgent = state.PressureCurve.IsConfigured
+                    ? state.PressureCurve.IsUrgent(predicted)
+                    : predicted >= policy.UrgentNeedDeficit;
+                if (isUrgent)
+                {
+                    urgentNeed = true;
+                    urgentNeedPriority = Math.Max(urgentNeedPriority, predicted);
+                }
             }
 
             float workBenefit = candidate.WorkUrgency + candidate.PlayerPriority + candidate.DependencyValue;
@@ -216,16 +253,18 @@ namespace Game.NomadWorkshop.Simulation
 
             float value = Clamp01(deficit);
             double pressure = Math.Pow(value, policy.NeedPressureExponent);
-            if (value > policy.CriticalDeficit)
+            if (value > policy.UrgentNeedDeficit)
             {
-                float criticalRange = 1f - policy.CriticalDeficit;
-                float normalized = (value - policy.CriticalDeficit) / criticalRange;
-                pressure += policy.CriticalPressureBoost * normalized * normalized;
+                float urgentRange = 1f - policy.UrgentNeedDeficit;
+                float normalized = (value - policy.UrgentNeedDeficit) / urgentRange;
+                pressure += policy.UrgentPressureBoost * normalized * normalized;
             }
             return (float)pressure;
         }
 
-        private static List<CandidateDecisionTrace> SelectIntentWinners(IReadOnlyList<CandidateDecisionTrace> traces)
+        private static List<CandidateDecisionTrace> SelectIntentWinners(
+            IReadOnlyList<CandidateDecisionTrace> traces,
+            UtilityDecisionPolicy policy)
         {
             var winnersByIntent = new Dictionary<string, CandidateDecisionTrace>(StringComparer.Ordinal);
             for (int i = 0; i < traces.Count; i++)
@@ -239,7 +278,7 @@ namespace Game.NomadWorkshop.Simulation
                     continue;
                 }
 
-                if (IsBetter(candidate, current))
+                if (IsBetter(candidate, current, policy.RiskPrioritySlack))
                 {
                     current.State = CandidateDecisionState.SupersededByIntent;
                     current.Reason = $"同意图存在更优目标：{candidate.Candidate.DisplayName}";
@@ -263,7 +302,8 @@ namespace Game.NomadWorkshop.Simulation
         {
             var shortlist = new List<CandidateDecisionTrace>(Math.Min(policy.MaxShortlistCount, orderedPool.Count));
             float best = orderedPool[0].Score.Total;
-            float threshold = best * policy.RelativeShortlistThreshold;
+            float allowedDrop = Math.Abs(best) * (1f - policy.RelativeShortlistThreshold);
+            float threshold = best - allowedDrop;
             for (int i = 0; i < orderedPool.Count; i++)
             {
                 CandidateDecisionTrace trace = orderedPool[i];
@@ -321,28 +361,68 @@ namespace Game.NomadWorkshop.Simulation
             return score != 0 ? score : string.CompareOrdinal(left.Candidate.Id, right.Candidate.Id);
         }
 
-        private static bool IsBetter(CandidateDecisionTrace candidate, CandidateDecisionTrace current)
+        private static bool IsBetter(
+            CandidateDecisionTrace candidate,
+            CandidateDecisionTrace current,
+            float riskPrioritySlack)
         {
+            int tier = candidate.RiskTier.CompareTo(current.RiskTier);
+            if (tier != 0) return tier > 0;
+            if (candidate.RiskTier != ResidentDecisionRiskTier.Routine)
+            {
+                float priorityDifference = candidate.RiskPriority - current.RiskPriority;
+                if (Math.Abs(priorityDifference) > riskPrioritySlack)
+                    return priorityDifference > 0f;
+            }
             int score = candidate.Score.Total.CompareTo(current.Score.Total);
             return score > 0 || score == 0 && string.CompareOrdinal(candidate.Candidate.Id, current.Candidate.Id) < 0;
+        }
+
+        private static float SelectTemperature(
+            ResidentDecisionRiskTier riskTier,
+            UtilityDecisionPolicy policy)
+        {
+            return riskTier switch
+            {
+                ResidentDecisionRiskTier.Critical => policy.CriticalRiskTemperature,
+                ResidentDecisionRiskTier.Severe or ResidentDecisionRiskTier.Urgent =>
+                    policy.ElevatedRiskTemperature,
+                _ => policy.NormalTemperature,
+            };
         }
 
         private static void ValidatePolicy(UtilityDecisionPolicy policy)
         {
             if (policy.NeedPressureExponent <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(policy), "需求压力指数必须大于零。");
-            if (policy.CriticalDeficit <= 0f || policy.CriticalDeficit >= 1f)
-                throw new ArgumentOutOfRangeException(nameof(policy), "危险需求阈值必须在 (0, 1) 内。");
-            if (policy.CriticalPressureBoost < 0f)
-                throw new ArgumentOutOfRangeException(nameof(policy), "危险压力增益不能为负。");
-            if (policy.EmergencyWorkThreshold < 0f)
-                throw new ArgumentOutOfRangeException(nameof(policy), "紧急工作阈值不能为负。");
+            if (policy.UrgentNeedDeficit <= 0f || policy.UrgentNeedDeficit >= 1f)
+                throw new ArgumentOutOfRangeException(nameof(policy), "紧迫需求阈值必须在 (0, 1) 内。");
+            if (policy.UrgentPressureBoost < 0f)
+                throw new ArgumentOutOfRangeException(nameof(policy), "紧迫压力增益不能为负。");
+            if (policy.RiskPrioritySlack < 0f || policy.RiskPrioritySlack > 1f)
+                throw new ArgumentOutOfRangeException(nameof(policy), "风险紧迫度容差必须在 [0, 1] 内。");
             if (policy.RelativeShortlistThreshold < 0f || policy.RelativeShortlistThreshold > 1f)
                 throw new ArgumentOutOfRangeException(nameof(policy), "短名单相对阈值必须在 [0, 1] 内。");
             if (policy.MaxShortlistCount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(policy), "短名单数量必须大于零。");
-            if (policy.NormalTemperature < 0f || policy.EmergencyTemperature < 0f)
+            if (policy.NormalTemperature < 0f || policy.ElevatedRiskTemperature < 0f ||
+                policy.CriticalRiskTemperature < 0f)
                 throw new ArgumentOutOfRangeException(nameof(policy), "随机温度不能为负。");
+        }
+
+        private static void ValidateCandidateRisk(ResidentActionCandidate candidate)
+        {
+            if (!Enum.IsDefined(typeof(ResidentDecisionRiskTier), candidate.RiskTier))
+                throw new ArgumentOutOfRangeException(
+                    nameof(candidate),
+                    candidate.RiskTier,
+                    "未知的居民决策风险层。");
+            if (!float.IsFinite(candidate.RiskPriority) ||
+                candidate.RiskPriority < 0f || candidate.RiskPriority > 1f)
+                throw new ArgumentOutOfRangeException(
+                    nameof(candidate),
+                    candidate.RiskPriority,
+                    "风险紧迫度必须位于 [0, 1]。");
         }
 
         private static float Clamp01(float value)

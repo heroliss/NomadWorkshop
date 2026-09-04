@@ -9,7 +9,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
         private readonly UtilityDecisionEngine _engine = new();
 
         [Test]
-        public void CriticalThirst_RestrictsSelectionToEmergencyRecovery()
+        public void UrgentThirst_RestrictsSelectionToUrgentRecovery()
         {
             ResidentActionCandidate drink = Candidate("drink", "drink", "饮水", 0.02f);
             drink.DurationSeconds = 3f;
@@ -27,8 +27,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
 
             Assert.AreSame(drink, result.Selected);
             Assert.AreEqual(CandidateDecisionState.Selected, Trace(result, "drink").State);
-            Assert.AreEqual(CandidateDecisionState.OutsideEmergencyPool, Trace(result, "repair").State);
-            Assert.AreEqual(CandidateDecisionState.OutsideEmergencyPool, Trace(result, "paint").State);
+            Assert.AreEqual(CandidateDecisionState.OutsideRiskPool, Trace(result, "repair").State);
+            Assert.AreEqual(CandidateDecisionState.OutsideRiskPool, Trace(result, "paint").State);
         }
 
         [Test]
@@ -137,6 +137,146 @@ namespace Game.NomadWorkshop.Simulation.Tests
             Assert.IsFalse(result.HasSelection);
             Assert.AreEqual("缺少零件", Trace(result, "blocked").Reason);
             Assert.AreEqual(CandidateDecisionState.OutsideShortlist, Trace(result, "costly").State);
+        }
+
+        [Test]
+        public void CriticalFire_DominatesFullBladderWithoutUsingOneGiantScalarScore()
+        {
+            ResidentActionCandidate toilet = Candidate("toilet", "toilet", "立即如厕", 0.02f);
+            toilet.NeedEffects = new[] { new NeedEffect(ResidentNeed.Bladder, 1f) };
+
+            ResidentActionCandidate evacuate = Candidate("evacuate", "fire-safety", "撤离着火舱室", 0.04f);
+            evacuate.RiskTier = ResidentDecisionRiskTier.Critical;
+            evacuate.RiskPriority = 0.94f;
+            evacuate.RiskCost = 0.2f;
+
+            ResidentDecisionResult result = _engine.Decide(Context(
+                23,
+                4,
+                new[]
+                {
+                    new ResidentNeedState(
+                        ResidentNeed.Bladder,
+                        1f,
+                        0f,
+                        pressureCurve: new NeedPressureCurve(0.5f, 0.9f, 2f, 3.5f)),
+                },
+                toilet,
+                evacuate));
+
+            Assert.AreSame(evacuate, result.Selected);
+            Assert.AreEqual(ResidentDecisionRiskTier.Urgent, Trace(result, "toilet").RiskTier);
+            Assert.AreEqual(CandidateDecisionState.OutsideRiskPool, Trace(result, "toilet").State);
+            Assert.AreEqual(ResidentDecisionRiskTier.Critical, Trace(result, "evacuate").RiskTier);
+        }
+
+        [Test]
+        public void InfeasibleCriticalResponse_DoesNotSuppressFeasibleUrgentFallback()
+        {
+            ResidentActionCandidate fightFire = Candidate("fight-fire", "fire-safety", "病中灭火", 1f);
+            fightFire.RiskTier = ResidentDecisionRiskTier.Critical;
+            fightFire.RiskPriority = 1f;
+            fightFire.IsAvailable = false;
+            fightFire.BlockReason = "病情过重，无法安全使用灭火器";
+
+            ResidentActionCandidate toilet = Candidate("toilet", "toilet", "前往安全厕所", 0.01f);
+            toilet.NeedEffects = new[] { new NeedEffect(ResidentNeed.Bladder, 1f) };
+
+            ResidentDecisionResult result = _engine.Decide(Context(
+                29,
+                2,
+                new[]
+                {
+                    new ResidentNeedState(
+                        ResidentNeed.Bladder,
+                        1f,
+                        0f,
+                        pressureCurve: new NeedPressureCurve(0.5f, 0.9f, 2f, 3.5f)),
+                },
+                fightFire,
+                toilet));
+
+            Assert.AreSame(toilet, result.Selected);
+            Assert.AreEqual(CandidateDecisionState.Ineligible, Trace(result, "fight-fire").State);
+            Assert.AreEqual("病情过重，无法安全使用灭火器", Trace(result, "fight-fire").Reason);
+        }
+
+        [Test]
+        public void SameRiskTier_UsesSlackBeforeComparingUtility()
+        {
+            ResidentActionCandidate urgentEvacuation = Candidate(
+                "urgent-evacuation",
+                "evacuate-a",
+                "最近出口",
+                0.05f);
+            urgentEvacuation.RiskTier = ResidentDecisionRiskTier.Critical;
+            urgentEvacuation.RiskPriority = 0.96f;
+
+            ResidentActionCandidate slowComfortableExit = Candidate(
+                "slow-exit",
+                "evacuate-b",
+                "舒适但过慢的出口",
+                5f);
+            slowComfortableExit.RiskTier = ResidentDecisionRiskTier.Critical;
+            slowComfortableExit.RiskPriority = 0.7f;
+
+            ResidentDecisionResult result = _engine.Decide(Context(
+                31,
+                8,
+                Needs(0.2f, 0.2f, 0.2f),
+                urgentEvacuation,
+                slowComfortableExit));
+
+            Assert.AreSame(urgentEvacuation, result.Selected);
+            Assert.AreEqual(
+                CandidateDecisionState.OutsideRiskPool,
+                Trace(result, "slow-exit").State);
+            StringAssert.Contains("紧迫度", Trace(result, "slow-exit").Reason);
+        }
+
+        [Test]
+        public void SameCriticalTier_WithinSlackUsesDeterministicOutcomeUtility()
+        {
+            ResidentActionCandidate routeA = Candidate("route-a", "evacuate-a", "出口 A", 0.25f);
+            routeA.RiskTier = ResidentDecisionRiskTier.Critical;
+            routeA.RiskPriority = 0.96f;
+
+            ResidentActionCandidate routeB = Candidate("route-b", "evacuate-b", "出口 B", 0.7f);
+            routeB.RiskTier = ResidentDecisionRiskTier.Critical;
+            routeB.RiskPriority = 0.93f;
+
+            ResidentDecisionResult result = _engine.Decide(Context(
+                37,
+                5,
+                Needs(0.2f, 0.2f, 0.2f),
+                routeA,
+                routeB));
+
+            Assert.AreSame(routeB, result.Selected);
+            Assert.AreEqual(1d, Trace(result, "route-b").Probability);
+            Assert.AreEqual(0d, Trace(result, "route-a").Probability);
+        }
+
+        [Test]
+        public void FeasibleRiskFallback_RemainsSelectableEvenWhenUtilityIsNegative()
+        {
+            ResidentActionCandidate costlyEscape = Candidate(
+                "costly-escape",
+                "escape",
+                "代价很高但能活下来的撤离",
+                0.01f);
+            costlyEscape.RiskTier = ResidentDecisionRiskTier.Critical;
+            costlyEscape.RiskPriority = 1f;
+            costlyEscape.RiskCost = 2f;
+
+            ResidentDecisionResult result = _engine.Decide(Context(
+                41,
+                1,
+                Needs(0.1f, 0.1f, 0.1f),
+                costlyEscape));
+
+            Assert.AreSame(costlyEscape, result.Selected);
+            Assert.Less(Trace(result, "costly-escape").Score.Total, 0f);
         }
 
         private static ResidentActionCandidate Candidate(string id, string intent, string displayName, float baseUtility)

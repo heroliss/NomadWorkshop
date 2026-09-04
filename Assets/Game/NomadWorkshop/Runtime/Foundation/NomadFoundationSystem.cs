@@ -124,10 +124,11 @@ namespace Game.NomadWorkshop.Foundation
         private DeckPose _previewPose;
         private int _placementBeganFrame;
         private int _nextFacilitySequence;
-        private int _waterTaskSequence;
+        private int _residentActionSequence;
         private int _leisureSequence;
         private long _residentDecisionSequence;
         private long _bladderOpportunitySequence;
+        private string _lastPublishedDecisionDiagnostic = string.Empty;
         private int _residentClearanceMillimeters;
         private bool _previewResidentOriginResolved;
         private DeckPose _previewResolvedResidentOrigin;
@@ -151,7 +152,7 @@ namespace Game.NomadWorkshop.Foundation
         private readonly ResidentActionPlanEvaluator _actionPlanEvaluator = new();
         private readonly ResidentActionPlanPolicy _actionPlanPolicy = new();
         private readonly UtilityDecisionEngine _decisionEngine = new();
-        private readonly UtilityDecisionPolicy _leisureDecisionPolicy =
+        private readonly UtilityDecisionPolicy _residentDecisionPolicy =
             ResidentLeisurePlanFactory.CreateSelectionPolicy();
         private readonly NomadSimulationClock _simulationClock = new();
         private HaulTaskLease _activeHaul;
@@ -636,10 +637,11 @@ namespace Game.NomadWorkshop.Foundation
             _model.RotationSnapDeciDegrees.Value = _snapSettings.RotationStepDeciDegrees;
             _model.ShowPlacementGrid.Value = true;
             _nextFacilitySequence = 1;
-            _waterTaskSequence = 0;
+            _residentActionSequence = 0;
             _leisureSequence = 0;
             _residentDecisionSequence = 0;
             _bladderOpportunitySequence = 0;
+            _lastPublishedDecisionDiagnostic = string.Empty;
             _routeRetryRemaining = 0f;
             _residentDecisionRetryRemaining = 0f;
             _simulationClock.Restore(0L);
@@ -1567,59 +1569,144 @@ namespace Game.NomadWorkshop.Foundation
 
         private void TryStartResidentRoutine()
         {
-            // 如厕意图一旦由平滑压力曲线生成，就优先于继续摄入水；未到紧急点时仍可能
-            // 暂缓一次。这样“身体库存满”会稳定升级成厕所需求，而不是永久 DestinationFull。
-            if (TryStartToiletRoutine()) return;
-            TryStartWaterRoutine();
+            var options = new List<FoundationResidentDecisionOption>(7);
+            var pendingDiagnostic = new PendingDecisionDiagnostic();
+            AddToiletDecisionOption(options, ref pendingDiagnostic);
+            AddWaterDecisionOptions(options, ref pendingDiagnostic);
+            AddLeisureDecisionOptions(options);
+
+            var candidates = new ResidentActionCandidate[options.Count];
+            for (var i = 0; i < options.Count; i++)
+                candidates[i] = options[i].Evaluation.Candidate;
+            var context = new ResidentDecisionContext(
+                worldSeed: 1729,
+                residentId: ResidentOwnerId,
+                decisionSequence: ++_residentDecisionSequence,
+                needs: CreateResidentNeedSnapshot(),
+                candidates: candidates);
+            ResidentDecisionResult decision = _decisionEngine.Decide(
+                context,
+                _residentDecisionPolicy);
+            FoundationResidentDecisionOption selected = FindSelectedOption(
+                options,
+                decision.Selected);
+
+            PublishPendingDecisionDiagnostic(pendingDiagnostic);
+
+            if (selected == null)
+            {
+                SetResidentPhase(
+                    FoundationResidentPhase.Idle,
+                    "当前没有净效用足够且可执行的行动，稍后重新评估");
+                return;
+            }
+
+            WriteLatestActionPlan(selected.Evaluation, decision);
+            BeginSelectedResidentOption(selected);
         }
 
-        private bool TryStartToiletRoutine()
+        private ResidentNeedState[] CreateResidentNeedSnapshot() => new ResidentNeedState[]
+        {
+            new ResidentNeedState(
+                ResidentNeed.Thirst,
+                _residentWaterCycle.Thirst,
+                0.004f),
+            new ResidentNeedState(
+                ResidentNeed.Bladder,
+                _residentWaterCycle.ExcretionPressure,
+                0f,
+                pressureCurve: BladderPressureCurve),
+            new ResidentNeedState(
+                ResidentNeed.Recreation,
+                _residentRecreation,
+                recreationGrowthPerSecond,
+                importance: 0.75f),
+        };
+
+        private void AddToiletDecisionOption(
+            ICollection<FoundationResidentDecisionOption> options,
+            ref PendingDecisionDiagnostic pendingDiagnostic)
         {
             int waste = _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
-            float excretionPressure = _residentWaterCycle.ExcretionPressure;
-            if (waste <= 0 || !ShouldOfferBladderAction(excretionPressure))
-                return false;
+            float pressure = _residentWaterCycle.ExcretionPressure;
+            if (waste <= 0 || !ShouldOfferBladderAction(pressure)) return;
 
-            if (!TryFindPlacedFacility(
+            bool urgent = BladderPressureCurve.IsUrgent(pressure);
+            ResidentDecisionRiskTier tier = urgent
+                ? ResidentDecisionRiskTier.Urgent
+                : ResidentDecisionRiskTier.Routine;
+            if (!TrySelectReachableFacility(
                     NomadFacilityFunction.Toilet,
                     out FoundationFacilityState toilet,
-                    out _))
+                    out float pathLength))
             {
-                if (!BladderPressureCurve.IsUrgent(excretionPressure)) return false;
-
-                _model.LastBlocker.Value =
-                    "PhysiologyBackpressure · 膀胱接近满载，需要建造可达旱厕";
-                TryStartLeisureRoutine();
-                return true;
+                options.Add(CreateBlockedNeedOption(
+                    FoundationResidentDecisionKind.Toilet,
+                    $"toilet:{_residentActionSequence + 1}:unavailable",
+                    "use-toilet",
+                    "寻找可达旱厕",
+                    ResidentActionPlanBlockReason.InteractionUnavailable,
+                    "没有可达旱厕",
+                    new NeedEffect(ResidentNeed.Bladder, 1f),
+                    tier,
+                    urgent ? pressure : 0f));
+                if (urgent)
+                    pendingDiagnostic.Consider(
+                        "PhysiologyBackpressure · 膀胱接近满载，需要建造可达旱厕",
+                        tier,
+                        pressure);
+                return;
             }
 
-            if (!_residentWaterCycle.TryReserveToiletUse(
-                    _resourceFlow,
-                    _toiletHolding,
-                    $"toilet:{_waterTaskSequence + 1}",
-                    $"facility:{toilet.InstanceId}:toilet-use",
-                    waste,
-                    out _activeResidentAction,
-                    out ResourceFlowBlocker blocker))
+            if (_toiletHolding.FreeCapacity < waste)
             {
-                if (blocker.Reason == ResourceFlowBlockReason.DestinationFull)
+                options.Add(CreateBlockedNeedOption(
+                    FoundationResidentDecisionKind.Toilet,
+                    $"toilet:{_residentActionSequence + 1}:holding-full",
+                    "use-toilet",
+                    "使用旱厕",
+                    ResidentActionPlanBlockReason.DestinationFull,
+                    "旱厕暂存桶已满，需要先清运",
+                    new NeedEffect(ResidentNeed.Bladder, 1f),
+                    tier,
+                    urgent ? pressure : 0f));
+                pendingDiagnostic.Consider(
+                    $"DestinationFull · {_toiletHolding.Id} · 旱厕暂存桶需要清运",
+                    tier,
+                    urgent ? pressure : 0f);
+                return;
+            }
+
+            var proposal = new ResidentActionPlanProposal(
+                $"toilet:{_residentActionSequence + 1}",
+                "use-toilet",
+                "前往旱厕并排空膀胱")
+            {
+                Steps = new[]
                 {
-                    _model.LastBlocker.Value =
-                        $"{blocker.Reason} · {blocker.InventoryId} · 旱厕暂存桶需要清运";
-                    TryStartLeisureRoutine();
-                    return true;
-                }
-
-                Block("无法开始如厕", blocker);
-                return true;
-            }
-
-            _model.LastBlocker.Value = string.Empty;
-            TryBeginMove(
-                FoundationResidentPhase.MovingToToilet,
-                "排泄压力升高：前往可达旱厕",
-                toilet);
-            return true;
+                    CreateTravelStep(pathLength, "前往旱厕"),
+                    new ResidentActionStepEstimate(
+                        ResidentActionStepKind.UseFacility,
+                        toiletSeconds,
+                        label: "使用旱厕"),
+                },
+                BaseUtility = 0.035f,
+                DelayUrgency = pressure,
+                RiskTier = tier,
+                RiskPriority = urgent ? pressure : 0f,
+                NeedEffects = new[] { new NeedEffect(ResidentNeed.Bladder, 1f) },
+                ReservationKeys = new[] { $"facility:{toilet.InstanceId}:toilet-use" },
+            };
+            ResidentActionPlanEvaluation evaluation = _actionPlanEvaluator.Evaluate(
+                proposal,
+                new ResidentDecisionCondition(motionSickness: 0f),
+                _actionPlanPolicy);
+            options.Add(new FoundationResidentDecisionOption(
+                FoundationResidentDecisionKind.Toilet,
+                evaluation)
+            {
+                TargetFacility = toilet,
+            });
         }
 
         private bool ShouldOfferBladderAction(float excretionPressure)
@@ -1636,162 +1723,122 @@ namespace Game.NomadWorkshop.Foundation
             return BladderPressureCurve.ShouldOfferAction(excretionPressure, roll);
         }
 
-        private void TryStartWaterRoutine()
+        private void AddWaterDecisionOptions(
+            ICollection<FoundationResidentDecisionOption> options,
+            ref PendingDecisionDiagnostic pendingDiagnostic)
         {
             bool needsDrink = _residentWaterCycle.Thirst >= DrinkNeedThreshold;
-            if (needsDrink && _residentWaterCycle.BodyWater.FreeCapacity <= 0)
+            bool bodyCanDrink = _residentWaterCycle.BodyWater.FreeCapacity >=
+                                ResidentWaterCycle.DefaultDrinkServingMilliliters;
+            bool hasFeasibleRecovery = false;
+            if (needsDrink && !bodyCanDrink)
             {
                 bool bladderFull = _residentWaterCycle.Bladder.FreeCapacity <= 0;
-                _model.LastBlocker.Value = bladderFull
+                bool urgentThirst =
+                    _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
+                pendingDiagnostic.Consider(
+                    bladderFull
                     ? "DestinationFull · resident-01:body-water · 膀胱已满，需要可达旱厕"
-                    : "DestinationFull · resident-01:body-water · 正在等待体内水继续代谢";
-                TryStartLeisureRoutine();
-                return;
-            }
-            if (!HasPlacedFacility(NomadFacilityFunction.DrinkingStation))
-            {
-                if (needsDrink)
-                    SetResidentPhase(
-                        FoundationResidentPhase.WaitingForFacility,
-                        "口渴：等待玩家建造可达的饮水站");
-                else
-                    TryStartLeisureRoutine();
-                return;
+                    : "DestinationFull · resident-01:body-water · 正在等待体内水继续代谢",
+                    urgentThirst
+                        ? ResidentDecisionRiskTier.Urgent
+                        : ResidentDecisionRiskTier.Routine,
+                    urgentThirst ? _residentWaterCycle.Thirst : 0f);
             }
 
-            if (needsDrink && TrySelectDrinkingStation(
+            if (needsDrink && bodyCanDrink && TrySelectDrinkingStation(
                     requireDrinkServing: true,
                     requireRestock: false,
                     out FoundationFacilityState stockedStation,
-                    out _))
+                    out _,
+                    out float stockedPathLength))
             {
-                _model.LastBlocker.Value = string.Empty;
-                BeginDrink(stockedStation);
-                return;
+                options.Add(CreateDirectDrinkOption(stockedStation, stockedPathLength));
+                hasFeasibleRecovery = true;
             }
 
-            if (!TrySelectDrinkingStation(
+            bool hasRestockStation = TrySelectDrinkingStation(
                     requireDrinkServing: false,
                     requireRestock: true,
                     out FoundationFacilityState station,
-                    out ResourceInventory stationInventory))
-            {
-                if (needsDrink)
-                    _model.LastBlocker.Value =
-                        "RouteUnavailable · 没有可补水的可达饮水站实例 · 将继续代谢并重新评估";
-                TryStartLeisureRoutine();
-                return;
-            }
-
-            if (!TryFindPlacedFacility(
+                    out ResourceInventory stationInventory,
+                    out _);
+            bool hasWaterSource = TryFindPlacedFacility(
                     NomadFacilityFunction.VehicleWaterTank,
                     out FoundationFacilityState source,
-                    out _))
+                    out _);
+            bool sourceHasWater = _vehicleWater.GetAmount(NomadResourceIds.Water) > 0;
+            bool drinkAfterDelivery = needsDrink && bodyCanDrink && !hasFeasibleRecovery;
+            if (hasRestockStation && hasWaterSource && sourceHasWater)
             {
-                if (needsDrink) Block("找不到车辆水箱设施", ResourceFlowBlocker.None);
-                else TryStartLeisureRoutine();
-                return;
-            }
-
-            if (_vehicleWater.GetAmount(NomadResourceIds.Water) <= 0)
-            {
-                if (needsDrink) Block("车辆水箱已经没有可饮用水", ResourceFlowBlocker.None);
-                else TryStartLeisureRoutine();
-                return;
-            }
-
-            TryStartWaterRestock(source, station, stationInventory, needsDrink);
-        }
-
-        private void TryStartWaterRestock(
-            in FoundationFacilityState source,
-            in FoundationFacilityState station,
-            ResourceInventory stationInventory,
-            bool drinkAfterDelivery)
-        {
-            int haulMilliliters = CalculateWaterHaulMilliliters(
-                stationInventory,
-                drinkAfterDelivery);
-            if (haulMilliliters <= 0)
-            {
-                if (drinkAfterDelivery)
-                    Block("当前没有可装入水罐并送达饮水站的水量", ResourceFlowBlocker.None);
-                else
-                    TryStartLeisureRoutine();
-                return;
-            }
-
-            ResidentActionPlanEvaluation plan = EvaluateWaterRestockPlan(
-                source,
-                station,
-                stationInventory,
-                drinkAfterDelivery,
-                haulMilliliters,
-                out FoundationFacilityState waterCanFacility,
-                out bool waterCanAtSource);
-            ResidentDecisionResult decision = DecideWaterRestockPlan(plan);
-            WriteLatestActionPlan(plan, decision);
-
-            if (!plan.Feasibility.IsFeasible)
-            {
-                Block(plan.Candidate.BlockReason, ResourceFlowBlocker.None);
-                return;
-            }
-
-            if (!decision.HasSelection)
-            {
-                SetResidentPhase(
-                    FoundationResidentPhase.Idle,
-                    "补水完整方案的净效用暂时不足，稍后重新评估");
-                return;
-            }
-
-            _waterTaskSequence++;
-            var request = new HaulTaskRequest(
-                $"water-haul:{_waterTaskSequence}",
-                ResidentOwnerId,
-                _vehicleWater,
-                _waterCan,
-                stationInventory,
-                NomadResourceIds.Water,
-                haulMilliliters,
-                drinkAfterDelivery
-                    ? "居民为迫切饮水取得防漏水罐，把水从车辆水箱搬到饮水站"
-                    : "居民在空闲时取得防漏水罐，低优先级补充饮水站库存",
-                new[]
+                int haulMilliliters = CalculateWaterHaulMilliliters(
+                    stationInventory,
+                    drinkAfterDelivery);
+                if (haulMilliliters > 0)
                 {
-                    $"facility:{source.InstanceId}:water-pickup",
-                    $"facility:{station.InstanceId}:water-delivery",
-                    $"carrier:{_waterCan.Id}",
-                });
-
-            if (!_resourceFlow.TryReserveHaul(request, out _activeHaul, out ResourceFlowBlocker blocker))
-            {
-                if (drinkAfterDelivery) Block("无法领取紧急搬水任务", blocker);
-                else SetResidentPhase(FoundationResidentPhase.Idle, "例行补水当前不可领取，稍后重试");
-                return;
+                    ResidentActionPlanEvaluation evaluation = EvaluateWaterRestockPlan(
+                        source,
+                        station,
+                        stationInventory,
+                        drinkAfterDelivery,
+                        haulMilliliters,
+                        out FoundationFacilityState waterCanFacility,
+                        out bool waterCanAtSource);
+                    options.Add(new FoundationResidentDecisionOption(
+                        FoundationResidentDecisionKind.WaterRestock,
+                        evaluation)
+                    {
+                        SourceFacility = source,
+                        TargetFacility = station,
+                        TargetInventory = stationInventory,
+                        TransferMilliliters = haulMilliliters,
+                        DrinkAfterDelivery = drinkAfterDelivery,
+                        WaterCanFacility = waterCanFacility,
+                        WaterCanAtSource = waterCanAtSource,
+                    });
+                    if (drinkAfterDelivery && evaluation.Feasibility.IsFeasible)
+                        hasFeasibleRecovery = true;
+                    else if (drinkAfterDelivery)
+                        pendingDiagnostic.Consider(
+                            evaluation.Candidate.BlockReason,
+                            evaluation.Candidate.RiskTier,
+                            evaluation.Candidate.RiskPriority);
+                }
             }
 
-            _activeWaterSourceFacilityInstanceId = source.InstanceId;
-            _activeWaterTargetFacilityInstanceId = station.InstanceId;
-            _drinkAfterActiveHaul = drinkAfterDelivery;
-            _waterCanPickupWasAtSource = waterCanAtSource;
-            if (_waterCanLocation == FoundationWaterCanLocation.Resident)
-            {
-                TryBeginMove(
-                    FoundationResidentPhase.MovingToWaterSource,
-                    "已持有空水罐：沿连续 NavMesh 路径前往车辆水箱",
-                    source);
-                return;
-            }
+            if (!needsDrink || hasFeasibleRecovery) return;
 
-            TryBeginMove(
-                FoundationResidentPhase.MovingToWaterCan,
-                drinkAfterDelivery
-                    ? "紧急补水：先前往唯一防漏水罐所在位置"
-                    : "低优先级补货：先前往唯一防漏水罐所在位置",
-                waterCanFacility,
-                allowAlternativeFacility: false);
+            string reason = !bodyCanDrink
+                ? "体内待代谢水已满，需要等待代谢或如厕"
+                : !hasRestockStation
+                    ? "没有可补水的可达饮水站实例"
+                    : !hasWaterSource
+                        ? "找不到车辆水箱设施"
+                        : !sourceHasWater
+                            ? "车辆水箱已经没有可饮用水"
+                            : "当前没有可装入水罐并送达饮水站的水量";
+            options.Add(CreateBlockedNeedOption(
+                FoundationResidentDecisionKind.DirectDrink,
+                $"drink:{_residentActionSequence + 1}:unavailable",
+                "drink-water",
+                "寻找可执行饮水方案",
+                ResidentActionPlanBlockReason.PrerequisiteUnavailable,
+                reason,
+                new NeedEffect(ResidentNeed.Thirst, 0.72f),
+                _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit
+                    ? ResidentDecisionRiskTier.Urgent
+                    : ResidentDecisionRiskTier.Routine,
+                _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit
+                    ? _residentWaterCycle.Thirst
+                    : 0f));
+            bool urgent =
+                _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
+            pendingDiagnostic.Consider(
+                $"RouteUnavailable · {reason}",
+                urgent
+                    ? ResidentDecisionRiskTier.Urgent
+                    : ResidentDecisionRiskTier.Routine,
+                urgent ? _residentWaterCycle.Thirst : 0f);
         }
 
         private int CalculateWaterHaulMilliliters(
@@ -1811,76 +1858,285 @@ namespace Game.NomadWorkshop.Foundation
                     Math.Min(_waterCan.FreeCapacity, stationInventory.FreeCapacity)));
         }
 
-        private void TryStartLeisureRoutine()
+        private FoundationResidentDecisionOption CreateDirectDrinkOption(
+            in FoundationFacilityState station,
+            float pathLength)
+        {
+            bool urgent = _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
+            var proposal = new ResidentActionPlanProposal(
+                $"drink:{_residentActionSequence + 1}",
+                "drink-water",
+                "前往饮水站直接饮水")
+            {
+                Steps = new[]
+                {
+                    CreateTravelStep(pathLength, "前往有水的饮水站"),
+                    new ResidentActionStepEstimate(
+                        ResidentActionStepKind.Consume,
+                        drinkingSeconds,
+                        label: "在饮水站饮水"),
+                },
+                BaseUtility = 0.035f,
+                DelayUrgency = _residentWaterCycle.Thirst,
+                RiskTier = urgent
+                    ? ResidentDecisionRiskTier.Urgent
+                    : ResidentDecisionRiskTier.Routine,
+                RiskPriority = urgent ? _residentWaterCycle.Thirst : 0f,
+                NeedEffects = new[] { new NeedEffect(ResidentNeed.Thirst, 0.72f) },
+                ReservationKeys = new[] { $"facility:{station.InstanceId}:drink" },
+            };
+            return new FoundationResidentDecisionOption(
+                FoundationResidentDecisionKind.DirectDrink,
+                _actionPlanEvaluator.Evaluate(
+                    proposal,
+                    new ResidentDecisionCondition(motionSickness: 0f),
+                    _actionPlanPolicy))
+            {
+                TargetFacility = station,
+            };
+        }
+
+        private void AddLeisureDecisionOptions(
+            ICollection<FoundationResidentDecisionOption> options)
         {
             var condition = new ResidentDecisionCondition(motionSickness: 0f);
-            var evaluations = new List<ResidentActionPlanEvaluation>(2);
             bool hasWanderTarget = TrySelectWanderTarget(
                 out Vector3 wanderTarget,
                 out DeckNavPathProbe wanderPath,
                 out string wanderLabel);
             if (hasWanderTarget)
             {
-                evaluations.Add(_actionPlanEvaluator.Evaluate(
-                    ResidentLeisurePlanFactory.CreateWander(
-                        wanderPath.PathLength,
-                        Mathf.Max(0.1f, residentMoveSpeed),
-                        leisureSeconds,
-                        recreationRestore: 0.32f,
-                        targetLabel: wanderLabel),
-                    condition,
-                    _actionPlanPolicy));
-            }
-            evaluations.Add(_actionPlanEvaluator.Evaluate(
-                ResidentLeisurePlanFactory.CreateDaydream(
-                    leisureSeconds,
-                    recreationRestore: 0.22f),
-                condition,
-                _actionPlanPolicy));
-
-            var candidates = new ResidentActionCandidate[evaluations.Count];
-            for (var i = 0; i < evaluations.Count; i++)
-                candidates[i] = evaluations[i].Candidate;
-            var decision = new ResidentDecisionContext(
-                worldSeed: 1729,
-                residentId: ResidentOwnerId,
-                decisionSequence: ++_residentDecisionSequence,
-                needs: new[]
+                options.Add(new FoundationResidentDecisionOption(
+                    FoundationResidentDecisionKind.Wander,
+                    _actionPlanEvaluator.Evaluate(
+                        ResidentLeisurePlanFactory.CreateWander(
+                            wanderPath.PathLength,
+                            Mathf.Max(0.1f, residentMoveSpeed),
+                            leisureSeconds,
+                            recreationRestore: 0.32f,
+                            targetLabel: wanderLabel),
+                        condition,
+                        _actionPlanPolicy))
                 {
-                    new ResidentNeedState(
-                        ResidentNeed.Recreation,
-                        _residentRecreation,
-                        recreationGrowthPerSecond,
-                        importance: 0.75f),
-                },
-                candidates: candidates);
-            ResidentDecisionResult result = _decisionEngine.Decide(
-                decision,
-                _leisureDecisionPolicy);
-            ResidentActionPlanEvaluation selectedPlan = FindSelectedPlan(
-                evaluations,
-                result.Selected);
-            if (selectedPlan == null)
+                    WanderTarget = wanderTarget,
+                    WanderLabel = wanderLabel,
+                });
+            }
+            options.Add(new FoundationResidentDecisionOption(
+                FoundationResidentDecisionKind.Daydream,
+                _actionPlanEvaluator.Evaluate(
+                    ResidentLeisurePlanFactory.CreateDaydream(
+                        leisureSeconds,
+                        recreationRestore: 0.22f),
+                    condition,
+                    _actionPlanPolicy)));
+        }
+
+        private FoundationResidentDecisionOption CreateBlockedNeedOption(
+            FoundationResidentDecisionKind kind,
+            string id,
+            string intentId,
+            string displayName,
+            ResidentActionPlanBlockReason blockReason,
+            string detail,
+            NeedEffect needEffect,
+            ResidentDecisionRiskTier riskTier,
+            float riskPriority)
+        {
+            var proposal = new ResidentActionPlanProposal(id, intentId, displayName)
             {
-                SetResidentPhase(
-                    FoundationResidentPhase.Idle,
-                    "休闲候选的净效用暂时不足，稍后重新评估");
+                Feasibility = ResidentActionPlanFeasibility.Blocked(blockReason, detail),
+                BaseUtility = 0.01f,
+                RiskTier = riskTier,
+                RiskPriority = riskPriority,
+                NeedEffects = new[] { needEffect },
+            };
+            return new FoundationResidentDecisionOption(
+                kind,
+                _actionPlanEvaluator.Evaluate(
+                    proposal,
+                    new ResidentDecisionCondition(motionSickness: 0f),
+                    _actionPlanPolicy));
+        }
+
+        private ResidentActionStepEstimate CreateTravelStep(
+            float distanceMeters,
+            string label) => new(
+            ResidentActionStepKind.Travel,
+            distanceMeters / Mathf.Max(0.1f, residentMoveSpeed),
+            distanceMeters,
+            label);
+
+        private void PublishPendingDecisionDiagnostic(
+            in PendingDecisionDiagnostic pendingDiagnostic)
+        {
+            if (pendingDiagnostic.HasValue)
+            {
+                _lastPublishedDecisionDiagnostic = pendingDiagnostic.Message;
+                _model.LastBlocker.Value = pendingDiagnostic.Message;
                 return;
             }
 
-            WriteLatestActionPlan(selectedPlan, result);
+            bool ownsVisibleDiagnostic = string.Equals(
+                _model.LastBlocker.Value,
+                _lastPublishedDecisionDiagnostic,
+                StringComparison.Ordinal);
+            bool isPhysiologyBackpressure = _model.LastBlocker.Value.StartsWith(
+                "PhysiologyBackpressure",
+                StringComparison.Ordinal);
+            if (ownsVisibleDiagnostic || isPhysiologyBackpressure)
+                _model.LastBlocker.Value = string.Empty;
+            _lastPublishedDecisionDiagnostic = string.Empty;
+        }
+
+        private static FoundationResidentDecisionOption FindSelectedOption(
+            IReadOnlyList<FoundationResidentDecisionOption> options,
+            ResidentActionCandidate selected)
+        {
+            if (selected == null) return null;
+            for (var i = 0; i < options.Count; i++)
+            {
+                if (ReferenceEquals(options[i].Evaluation.Candidate, selected))
+                    return options[i];
+            }
+            return null;
+        }
+
+        private void BeginSelectedResidentOption(FoundationResidentDecisionOption option)
+        {
+            switch (option.Kind)
+            {
+                case FoundationResidentDecisionKind.Toilet:
+                    BeginToiletUse(option.TargetFacility);
+                    return;
+                case FoundationResidentDecisionKind.DirectDrink:
+                    _residentActionSequence++;
+                    _model.LastBlocker.Value = string.Empty;
+                    BeginDrink(option.TargetFacility);
+                    return;
+                case FoundationResidentDecisionKind.WaterRestock:
+                    BeginWaterRestock(option);
+                    return;
+                case FoundationResidentDecisionKind.Wander:
+                case FoundationResidentDecisionKind.Daydream:
+                    BeginLeisure(option);
+                    return;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(option.Kind), option.Kind, null);
+            }
+        }
+
+        private void BeginToiletUse(in FoundationFacilityState toilet)
+        {
+            int waste = _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
+            if (waste <= 0)
+            {
+                SetResidentPhase(
+                    FoundationResidentPhase.Idle,
+                    "如厕方案开始前膀胱已经排空，重新评估");
+                return;
+            }
+
+            _residentActionSequence++;
+            if (!_residentWaterCycle.TryReserveToiletUse(
+                    _resourceFlow,
+                    _toiletHolding,
+                    $"toilet:{_residentActionSequence}",
+                    $"facility:{toilet.InstanceId}:toilet-use",
+                    waste,
+                    out _activeResidentAction,
+                    out ResourceFlowBlocker blocker))
+            {
+                if (blocker.Reason == ResourceFlowBlockReason.DestinationFull)
+                {
+                    _model.LastBlocker.Value =
+                        $"{blocker.Reason} · {blocker.InventoryId} · 旱厕暂存桶需要清运";
+                    SetResidentPhase(
+                        FoundationResidentPhase.Idle,
+                        "如厕方案在预留时失效，稍后重新决策");
+                }
+                else
+                {
+                    Block("无法开始如厕", blocker);
+                }
+                return;
+            }
+
+            _model.LastBlocker.Value = string.Empty;
+            TryBeginMove(
+                FoundationResidentPhase.MovingToToilet,
+                "统一 Utility 已选择如厕：前往可达旱厕",
+                toilet);
+        }
+
+        private void BeginWaterRestock(FoundationResidentDecisionOption option)
+        {
+            _residentActionSequence++;
+            var request = new HaulTaskRequest(
+                $"water-haul:{_residentActionSequence}",
+                ResidentOwnerId,
+                _vehicleWater,
+                _waterCan,
+                option.TargetInventory,
+                NomadResourceIds.Water,
+                option.TransferMilliliters,
+                option.DrinkAfterDelivery
+                    ? "居民为迫切饮水取得防漏水罐，把水从车辆水箱搬到饮水站"
+                    : "居民在空闲时取得防漏水罐，低优先级补充饮水站库存",
+                new[]
+                {
+                    $"facility:{option.SourceFacility.InstanceId}:water-pickup",
+                    $"facility:{option.TargetFacility.InstanceId}:water-delivery",
+                    $"carrier:{_waterCan.Id}",
+                });
+
+            if (!_resourceFlow.TryReserveHaul(
+                    request,
+                    out _activeHaul,
+                    out ResourceFlowBlocker blocker))
+            {
+                if (option.DrinkAfterDelivery)
+                    Block("无法领取紧急搬水任务", blocker);
+                else
+                    SetResidentPhase(
+                        FoundationResidentPhase.Idle,
+                        "例行补水候选在预留时失效，稍后重试");
+                return;
+            }
+
+            _model.LastBlocker.Value = string.Empty;
+            _activeWaterSourceFacilityInstanceId = option.SourceFacility.InstanceId;
+            _activeWaterTargetFacilityInstanceId = option.TargetFacility.InstanceId;
+            _drinkAfterActiveHaul = option.DrinkAfterDelivery;
+            _waterCanPickupWasAtSource = option.WaterCanAtSource;
+            if (_waterCanLocation == FoundationWaterCanLocation.Resident)
+            {
+                TryBeginMove(
+                    FoundationResidentPhase.MovingToWaterSource,
+                    "已持有空水罐：沿连续 NavMesh 路径前往车辆水箱",
+                    option.SourceFacility);
+                return;
+            }
+
+            TryBeginMove(
+                FoundationResidentPhase.MovingToWaterCan,
+                option.DrinkAfterDelivery
+                    ? "统一 Utility 选择紧急补水：先前往唯一防漏水罐"
+                    : "统一 Utility 选择例行补货：先前往唯一防漏水罐",
+                option.WaterCanFacility,
+                allowAlternativeFacility: false);
+        }
+
+        private void BeginLeisure(FoundationResidentDecisionOption option)
+        {
             _activeLeisureRestore = GetNeedRestore(
-                selectedPlan.Candidate,
+                option.Evaluation.Candidate,
                 ResidentNeed.Recreation);
             _leisureSequence++;
-            if (string.Equals(
-                    selectedPlan.Candidate.Id,
-                    ResidentLeisurePlanFactory.WanderCandidateId,
-                    StringComparison.Ordinal) &&
-                hasWanderTarget)
+            if (option.Kind == FoundationResidentDecisionKind.Wander)
             {
                 _activeLeisureKind = FoundationLeisureKind.Wander;
-                if (!TryAssignTravelPath(wanderTarget))
+                if (!TryAssignTravelPath(option.WanderTarget))
                 {
                     _activeLeisureRestore = 0f;
                     _activeLeisureKind = FoundationLeisureKind.None;
@@ -1891,7 +2147,7 @@ namespace Game.NomadWorkshop.Foundation
                 }
                 SetResidentPhase(
                     FoundationResidentPhase.MovingToLeisure,
-                    $"没有必要任务：沿连续 NavMesh 散步到 {wanderLabel}");
+                    $"统一 Utility 选择休闲：沿连续 NavMesh 散步到 {option.WanderLabel}");
                 return;
             }
 
@@ -1899,7 +2155,7 @@ namespace Game.NomadWorkshop.Foundation
             BeginTimedPhase(
                 FoundationResidentPhase.Relaxing,
                 leisureSeconds,
-                "没有必要任务：在原地发呆并观察四周");
+                "统一 Utility 选择休闲：在原地发呆并观察四周");
         }
 
         private bool TrySelectWanderTarget(
@@ -1942,18 +2198,6 @@ namespace Game.NomadWorkshop.Foundation
             selectedPath = default;
             label = string.Empty;
             return false;
-        }
-
-        private static ResidentActionPlanEvaluation FindSelectedPlan(
-            IReadOnlyList<ResidentActionPlanEvaluation> evaluations,
-            ResidentActionCandidate selected)
-        {
-            if (selected == null) return null;
-            for (var i = 0; i < evaluations.Count; i++)
-            {
-                if (ReferenceEquals(evaluations[i].Candidate, selected)) return evaluations[i];
-            }
-            return null;
         }
 
         private static float GetNeedRestore(
@@ -2040,8 +2284,8 @@ namespace Game.NomadWorkshop.Foundation
                  stationInventory.GetAmount(NomadResourceIds.Water)) /
                 (float)DrinkingStationRestockTargetMilliliters);
             var proposal = new ResidentActionPlanProposal(
-                $"water-restock:{_waterTaskSequence + 1}",
-                "restock-drinking-station",
+                $"water-restock:{_residentActionSequence + 1}",
+                drinkAfterDelivery ? "drink-water" : "restock-drinking-station",
                 drinkAfterDelivery ? "取防漏水罐、补水并饮用" : "取防漏水罐并例行补水")
             {
                 Steps = steps.ToArray(),
@@ -2051,9 +2295,10 @@ namespace Game.NomadWorkshop.Foundation
                     ? 0.32f + _residentWaterCycle.Thirst * 0.32f
                     : 0.18f + stockDeficit * 0.18f,
                 DependencyValue = drinkAfterDelivery ? 0.18f : 0.04f,
-                EmergencyPriority = drinkAfterDelivery && _residentWaterCycle.Thirst >= 0.82f
-                    ? 1f
-                    : 0f,
+                RiskTier = drinkAfterDelivery && _residentWaterCycle.Thirst >= 0.82f
+                    ? ResidentDecisionRiskTier.Urgent
+                    : ResidentDecisionRiskTier.Routine,
+                RiskPriority = drinkAfterDelivery ? _residentWaterCycle.Thirst : 0f,
                 DelayUrgency = drinkAfterDelivery ? _residentWaterCycle.Thirst : stockDeficit * 0.25f,
                 Effort = 0.24f,
                 WorkIntensity = 0.3f,
@@ -2180,23 +2425,6 @@ namespace Game.NomadWorkshop.Foundation
                 label));
         }
 
-        private ResidentDecisionResult DecideWaterRestockPlan(ResidentActionPlanEvaluation plan)
-        {
-            var context = new ResidentDecisionContext(
-                worldSeed: 1729,
-                residentId: ResidentOwnerId,
-                decisionSequence: ++_residentDecisionSequence,
-                needs: new[]
-                {
-                    new ResidentNeedState(
-                        ResidentNeed.Thirst,
-                        _residentWaterCycle.Thirst,
-                        0.004f),
-                },
-                candidates: new[] { plan.Candidate });
-            return _decisionEngine.Decide(context);
-        }
-
         private void WriteLatestActionPlan(
             ResidentActionPlanEvaluation plan,
             ResidentDecisionResult decision)
@@ -2226,7 +2454,9 @@ namespace Game.NomadWorkshop.Foundation
                 utility.ExpectedRiskCost,
                 utility.PlanCost,
                 trace?.Score.Total ?? 0f,
-                trace == null ? 0f : (float)trace.Probability);
+                trace == null ? 0f : (float)trace.Probability,
+                trace?.RiskTier ?? ResidentDecisionRiskTier.Routine,
+                trace?.RiskPriority ?? 0f);
         }
 
         private static ResidentActionPlanFeasibility MapCargoFeasibility(
@@ -2299,8 +2529,10 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteWaterDelivery()
         {
-            bool shouldDrink = _drinkAfterActiveHaul ||
-                               _residentWaterCycle.Thirst >= DrinkNeedThreshold;
+            bool shouldDrink = (_drinkAfterActiveHaul ||
+                                _residentWaterCycle.Thirst >= DrinkNeedThreshold) &&
+                               _residentWaterCycle.BodyWater.FreeCapacity >=
+                               ResidentWaterCycle.DefaultDrinkServingMilliliters;
             string deliveredStationInstanceId = _activeWaterTargetFacilityInstanceId;
             _activeHaul.Deliver();
             _activeHaul = null;
@@ -2346,7 +2578,7 @@ namespace Game.NomadWorkshop.Foundation
             if (!_residentWaterCycle.TryReserveDrink(
                     _resourceFlow,
                     stationInventory,
-                    $"drink:{_waterTaskSequence}",
+                    $"drink:{_residentActionSequence}",
                     $"facility:{station.InstanceId}:drink",
                     ResidentWaterCycle.DefaultDrinkServingMilliliters,
                     out _activeResidentAction,
@@ -2356,7 +2588,11 @@ namespace Game.NomadWorkshop.Foundation
                 {
                     _model.LastBlocker.Value =
                         $"{blocker.Reason} · {blocker.InventoryId} · 等待代谢或如厕后再饮水";
-                    TryStartLeisureRoutine();
+                    _activeWaterTargetFacilityInstanceId = string.Empty;
+                    ReleaseActiveInteractionSpace(publishProjection: true);
+                    SetResidentPhase(
+                        FoundationResidentPhase.Idle,
+                        "饮水候选在预留时发现体内容量不足，稍后统一重新决策");
                 }
                 else
                 {
@@ -2953,11 +3189,12 @@ namespace Game.NomadWorkshop.Foundation
             bool requireDrinkServing,
             bool requireRestock,
             out FoundationFacilityState selectedStation,
-            out ResourceInventory selectedInventory)
+            out ResourceInventory selectedInventory,
+            out float bestPathLength)
         {
             selectedStation = default;
             selectedInventory = null;
-            float bestPathLength = float.PositiveInfinity;
+            bestPathLength = float.PositiveInfinity;
             Vector3 residentPosition = ToNavigationPoint(_model.ResidentLocalPosition.Value);
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
             for (var i = 0; i < facilities.Count; i++)
@@ -2995,6 +3232,36 @@ namespace Game.NomadWorkshop.Foundation
                 selectedInventory = inventory;
             }
             return selectedInventory != null;
+        }
+
+        private bool TrySelectReachableFacility(
+            NomadFacilityFunction function,
+            out FoundationFacilityState selected,
+            out float bestPathLength)
+        {
+            selected = default;
+            bestPathLength = float.PositiveInfinity;
+            Vector3 residentPosition = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
+            for (var i = 0; i < facilities.Count; i++)
+            {
+                FoundationFacilityState candidate = facilities[i];
+                if (!_definitions.TryGetValue(
+                        candidate.DefinitionId,
+                        out NomadFacilityDefinition definition) ||
+                    definition.Function != function ||
+                    !TryMeasureFacilityPath(
+                        residentPosition,
+                        candidate,
+                        definition,
+                        out float pathLength) ||
+                    pathLength >= bestPathLength)
+                    continue;
+
+                bestPathLength = pathLength;
+                selected = candidate;
+            }
+            return bestPathLength < float.PositiveInfinity;
         }
 
         /// <summary>
@@ -3228,6 +3495,35 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationPlacementFailure.FootprintOverlapsFacility,
             _ => throw new ArgumentOutOfRangeException(nameof(failure), failure, null),
         };
+
+        /// <summary>
+        /// 一次决策可能同时发现多个不可执行方案。这里只选择最值得展示的一条诊断，
+        /// 不改变候选可行性或 Utility；同层紧迫度相同则保留稳定的候选构造顺序。
+        /// </summary>
+        private struct PendingDecisionDiagnostic
+        {
+            public string Message { get; private set; }
+            public ResidentDecisionRiskTier RiskTier { get; private set; }
+            public float RiskPriority { get; private set; }
+            public bool HasValue => !string.IsNullOrEmpty(Message);
+
+            public void Consider(
+                string message,
+                ResidentDecisionRiskTier riskTier,
+                float riskPriority)
+            {
+                if (string.IsNullOrWhiteSpace(message)) return;
+                float normalizedPriority = Mathf.Clamp01(riskPriority);
+                if (HasValue &&
+                    (riskTier < RiskTier ||
+                     riskTier == RiskTier && normalizedPriority <= RiskPriority))
+                    return;
+
+                Message = message;
+                RiskTier = riskTier;
+                RiskPriority = normalizedPriority;
+            }
+        }
 
         private readonly struct FacilityAccessEvaluation
         {
