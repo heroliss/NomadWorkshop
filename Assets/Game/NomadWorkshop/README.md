@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**统一模拟 Tick / 生活日投影 + 居民脚底根节点 + mL 水循环 / 饮水站实例库存 + 正向娱乐 / 心情 / 疲劳 / 压力连续状态 + 可建造观景画架 / 真实爱好恢复 + 平滑需求压力 / 确定性随机 + 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 原子资源改道 + Framework 分层连续建造 / 可回滚 NavMesh + 显式 URP 3D Renderer / PBR 灯光 + 自主休整 + 折叠式居民 HUD + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.31**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 平滑产生如厕意图 → 空闲时漫步、发呆或前往观景画架作画 → 施工切路后按设施功能恢复或改道”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**统一模拟 Tick / 生活日投影 + 居民脚底根节点 + mL 水循环 / 饮水站实例库存 + 正向娱乐 / 心情 / 疲劳 / 压力连续状态 + 可建造观景画架 / 真实爱好恢复 + 平滑需求压力 / 确定性随机 + 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 原子资源改道 + Framework 分层连续建造 / 可回滚 NavMesh + 默认 URP 3D / 显式 2D 兼容 / HDR-PBR 图形基线 + 自主休整 + 折叠式居民 HUD + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.32**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 平滑产生如厕意图 → 空闲时漫步、发呆或前往观景画架作画 → 施工切路后按设施功能恢复或改道”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -20,7 +20,7 @@
 - 居民移动保存“任务 + 设施功能 + 首选设施”语义而非一次性坐标；施工切断携水目标后，会把目的库存容量、资源交互键和语义路径原子迁移到另一实例；尚未取货的任务则释放预留后重选，不再以“建造后无法重新规划”为永久 Block；
 - 居民已拥有正向娱乐满足与心情、负向疲劳与压力四项独立连续状态；发呆和闲逛只缓慢降低疲劳 / 压力并略微改善心情，不补充娱乐。可建造观景画架提供三个共享容量的备选 Slot；居民把实际路程、作画偏好与娱乐收益放进同一 Utility 方案，只有精确到位后的作画阶段才连续恢复娱乐；
 - 无必要水任务时，可达空地闲逛、原地发呆与已建爱好设施共同参与确定性 Utility / Softmax；没有画架时前两者的基础比仍约为 1:2，画架会按需求、个人倾向与路程自然分走概率。行动效果差异在开始时按命名随机流固定采样一次，不逐帧抖动；
-- Foundation 主相机显式选择共享 Universal 3D Renderer，不再以 `m_RendererIndex = -1` 回落到默认 Renderer2D；因此 URP/Lit 会真实响应 Key / Fill Directional Light、高光和阴影。深色金属同时改用可读参数与稳定环境补光；这仍只是灰盒基线，不冒充正式 Reflection Probe、后处理或最终 Art Bible；
+- 项目默认 Renderer 已切到共享 Universal 3D Renderer；Foundation 主相机仍显式选择它，三个既有 2D 场景则显式固定 Renderer2D，避免默认迁移静默改画面。Foundation 已有内部 HDR、ACES / 克制 Bloom、降采样 SSAO、两级软阴影、程序化天空与首帧一次性局部 Reflection Probe；实际 Game View 已校准深色甲板可读性，但仍只是灰盒图形基线，不冒充最终 Art Bible；
 - 运行界面默认只显示居民 01 的紧凑状态卡与水分 / 精力 / 心情进度条；角落按钮展开娱乐、压力、膀胱与行动详情，完整建造、方案和 Harness 数据收入可滚动开发控制台，不再常驻遮住约三分之一 Game View；
 - `NeedPressureCurve` 提供可复用的平滑需求曲线；当前膀胱在 50% 及以下不产生如厕驱动力，之后非线性上升，90% 起成为必处理的紧急需求。意图概率只在行动边界用领域隔离 Seed 采样，不会因每帧重试把小概率放大成必然；
 - 已锁定官方 AI Navigation 2.0.14；隔离 `NavigationInteractionSpike` 中 `DeckNavigationUtility : MonoUtilityBase` 同步构建小型甲板 NavMesh，空旷路径长度比为 1.000，穿过 27° 旋转柜体的路径长度比为 1.058；
@@ -58,10 +58,10 @@
 - Rodin 野战厨房在 Unity 中是 1 Mesh / 1 Material Slot、18,924 Source Vertex / 22,058 Runtime Vertex、37,903 Triangle；Bounds、URP/Lit 通道、Prefab、BoxCollider 与预览场景审计成立，固定相机能看见青色旧漆、不锈钢、橙色安全件、织物与软管；源候选仍有 5 个重复面、6 个几何岛和不可拆分部件，保持人工复核且未批准为生产资产；
 - 同一野战厨房另有一条 Unity 参数化代理路线：Profile 确定 `2.30 × 2.00 × 0.88 m` 玩法尺寸，用 ProBuilder 6.1.2 在 Editor 临时生成并按材质合并，落盘为 1 个静态主体 + 3 个独立门的普通 Mesh（4,856 Vertex / 2,172 Triangle），运行时不保留 `ProBuilderMesh`；
 - 参数化 Prefab 把根 Collider、工作 / 手部 / 储物 / 进水 / 排污 Anchor 与 `Visual_Prototype` / `Visual_Final` 分离，三扇门有稳定 Pivot；版本化预览场景避免重复生成造成 local fileID 漂移，连续生成的资产 GUID 与 Dependency Hash 已稳定；
-- 项目默认 `Renderer2D` 保持为 Universal RP Asset 的 index 0；游牧工坊共享一份由 URP 官方模板生成的 `UniversalRendererData`（index 1），正式 Foundation 与 3D 预览相机都必须显式选择它；
+- Universal RP Asset 保留 `Renderer2D` 为 index 0，并把共享 `UniversalRendererData`（index 1）设为项目默认；框架 Demo、Outpost 与 2D Scene Template 的 Camera 已显式固定 index 0，正式 Foundation 与 3D 预览相机显式固定 index 1；
 - 固定 3D Game View 已实际看到两个道具的体积、阴影、金属高光和青 / 橙 / 黑材质层级；水循环设施的划痕、细微法线与裸露金属响应可读，没有粉材质、黑屏或错误姿态。自动审计仍把最终审美结论留给人工。
 
-这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。实体物流当前只有一名居民和固定任务链；3D Renderer 虽已接入正式 Foundation，但目前只成立了灰盒渲染路径。程序磨损仍缺少基于 Mesh 边缘、遮挡、重力与用途的细节，正式车辆镜头、后处理、Shader / VFX、目标平台性能和统一艺术指导仍未成立。
+这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。实体物流当前只有一名居民和固定任务链；现有后处理、SSAO 与反射只证明代表性灰盒渲染链路成立。程序磨损仍缺少基于 Mesh 边缘、遮挡、重力与用途的细节，正式车辆镜头、Surface Shader / VFX、目标平台质量分层、性能预算和统一艺术指导仍未成立。
 
 ## 目录与边界
 
@@ -134,7 +134,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/参数化道具/创建或定位�
 
 Rodin Smart Mesh 的下柜可动化 Spike 已用 Blender 无头 `bpy` 跑通。首轮中央门矩形裁剪因融合大面误伤两侧柜体和台面，已判定无效并废弃；修正版不删除 Rodin 面，保留左侧通风/控制区与右侧抽屉为静态主体，在三个门区前重建内衬和独立门件，分别建立 `LeftLower`、`Center`、`RightLower` 铰链 Pivot。资产不含烘焙动画，FBX / GLB 往返均保留 4 个 Empty、44 个 Mesh 与 47 条父子关系，目标是在 Unity 由设施状态直接旋转 Pivot。它当前仍是被忽略目录内的 rigging Spike，不替换上述静态 Unity 候选；若玩法需要真实储物深度，再正式重拓扑整个下柜模块。
 
-Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3D Renderer` 会从当前 URP 包的官方模板幂等生成共享 3D Renderer，并重建可删除的材质与隔离预览场景。它拒绝覆盖未知默认 Renderer，审计默认 index 与相机 index，并把报告写到被忽略的 `ArtPipelineOutput/`。共享配置与可删预览的边界见 [`Spikes/Rendering/Urp3D/README.md`](Spikes/Rendering/Urp3D/README.md)。
+Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3D Renderer` 会从当前 URP 包的官方模板幂等生成共享 3D Renderer 与保守 SSAO，迁移默认 index、显式固定既有 2D Camera，并维护天空盒、Volume Profile 和可删除的隔离预览。它拒绝覆盖未知 Renderer，审计项目 / 场景 / 子资产契约，并把报告写到被忽略的 `ArtPipelineOutput/`。正式基线见 [`docs/nomad-workshop-rendering-baseline.md`](../../../docs/nomad-workshop-rendering-baseline.md)，共享配置与可删预览的边界见 [`Spikes/Rendering/Urp3D/README.md`](Spikes/Rendering/Urp3D/README.md)。
 
 ## 第三方资产边界
 
@@ -182,6 +182,6 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 目前只把饮水站拆成实例库存；多座旱厕仍共用一个暂存桶，厨房等复合设施也尚未迁入正式 Foundation 的逐实例多隔间库存；
 - 正式 UGUI / UI Toolkit、艺术指导、音效、性能采样、Player Build 与玩家体验验证；当前 IMGUI 是首版信息架构与开发 Harness，不是最终 UI 资产；
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
-- 项目默认 Renderer 仍是 `Renderer2D`，以保持框架其他 2D 场景不变；Foundation 相机已显式选择共享 3D Renderer。后处理、VFX、正式灯光风格和目标平台性能预算仍未定型。
+- 当前所有 Quality 仍共用一份 URP Asset；内部 HDR、后处理、SSAO、软阴影和局部反射已经形成桌面灰盒基线，但尚未拆成 Desktop / Mobile 质量资产。VFX、正式灯光风格、HDR 显示输出和目标设备性能预算仍未定型。
 
 下一步让统一 `SimulationTick`、行动开始样本、不足 1 mL 的代谢余量、饮水站实例库存、水罐锚点与新增身心状态真正进入运行检查点；随后用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”。首个真实爱好已经成立，下一轮可补最薄的姿势不适或微活动契约，并观察画架在正常娱乐区间内是否会自然分走而非垄断基础休整；再以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。昼夜光照和一种沙尘压力要从同一日历投影消费，但完整四季仍不抢跑；之后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。

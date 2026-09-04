@@ -58,6 +58,10 @@ namespace Game.NomadWorkshop.Editor
                 RequireAsset<NomadFacilityDefinition>(ToiletPath),
                 RequireAsset<NomadFacilityDefinition>(ObservationEaselPath),
             };
+            Material skyboxMaterial = RequireAsset<Material>(
+                NomadRenderingSpikePipeline.FoundationSkyboxMaterialPath);
+            VolumeProfile volumeProfile = RequireAsset<VolumeProfile>(
+                NomadRenderingSpikePipeline.FoundationVolumeProfilePath);
 
             var rootObject = new GameObject("Nomad Workshop · Foundation Slice");
             rootObject.AddComponent<NomadFoundationContext>();
@@ -75,10 +79,13 @@ namespace Game.NomadWorkshop.Editor
             GameObject deck = CreateChild(presentation.transform, "Vehicle Deck Root");
             Camera camera = CreateCamera(
                 presentation.transform,
-                NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow());
+                NomadRenderingSpikePipeline.GetGame3DRendererIndexOrThrow());
             Light keyLight = CreateLight(presentation.transform, "Key Light");
             Light fillLight = CreateLight(presentation.transform, "Fill Light");
             ConfigureLightRig(keyLight, fillLight);
+            CreateGlobalVolume(presentation.transform, volumeProfile);
+            ReflectionProbe reflectionProbe =
+                CreateReflectionProbe(presentation.transform, layout);
             NomadFoundationWorldView worldView = presentation.AddComponent<NomadFoundationWorldView>();
             WireWorldView(
                 worldView,
@@ -87,8 +94,10 @@ namespace Game.NomadWorkshop.Editor
                 deck.transform,
                 camera,
                 keyLight,
-                fillLight);
-            ConfigureEnvironmentLighting(keyLight);
+                fillLight,
+                skyboxMaterial,
+                reflectionProbe);
+            ConfigureEnvironmentLighting(keyLight, skyboxMaterial);
 
             GameObject debug = CreateChild(rootObject.transform, "Debug · Command View");
             debug.AddComponent<NomadFoundationDebugView>();
@@ -106,6 +115,7 @@ namespace Game.NomadWorkshop.Editor
         {
             EnsureFolder("Assets/Game/NomadWorkshop/Foundation");
             EnsureFolder(DefinitionRoot);
+            NomadRenderingSpikePipeline.EnsureGameGraphicsAssets();
 
             DeckLayoutDefinition layout = LoadOrCreate<DeckLayoutDefinition>(DeckLayoutPath);
             var layoutSerialized = new SerializedObject(layout);
@@ -367,7 +377,9 @@ namespace Game.NomadWorkshop.Editor
             Transform deck,
             Camera camera,
             Light keyLight,
-            Light fillLight)
+            Light fillLight,
+            Material skyboxMaterial,
+            ReflectionProbe reflectionProbe)
         {
             var serialized = new SerializedObject(view);
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
@@ -376,6 +388,8 @@ namespace Game.NomadWorkshop.Editor
             serialized.FindProperty("worldCamera").objectReferenceValue = camera;
             serialized.FindProperty("keyLight").objectReferenceValue = keyLight;
             serialized.FindProperty("fillLight").objectReferenceValue = fillLight;
+            serialized.FindProperty("skyboxMaterial").objectReferenceValue = skyboxMaterial;
+            serialized.FindProperty("reflectionProbe").objectReferenceValue = reflectionProbe;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -384,11 +398,63 @@ namespace Game.NomadWorkshop.Editor
             GameObject cameraObject = CreateChild(parent, "Main Camera");
             cameraObject.tag = "MainCamera";
             Camera camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.Skybox;
+            camera.backgroundColor = new Color(0.055f, 0.075f, 0.085f);
+            camera.fieldOfView = 42f;
+            camera.nearClipPlane = 0.1f;
+            camera.farClipPlane = 120f;
+            camera.allowHDR = true;
             UniversalAdditionalCameraData cameraData =
                 camera.GetUniversalAdditionalCameraData();
             cameraData.SetRenderer(rendererIndex);
+            cameraData.renderPostProcessing = true;
+            cameraData.antialiasing =
+                AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            cameraData.antialiasingQuality = AntialiasingQuality.High;
+            cameraData.stopNaN = true;
+            cameraData.dithering = true;
+            cameraData.allowXRRendering = false;
+            cameraData.requiresDepthTexture = true;
+            cameraData.requiresColorTexture = false;
             cameraObject.AddComponent<AudioListener>();
             return camera;
+        }
+
+        private static void CreateGlobalVolume(Transform parent, VolumeProfile profile)
+        {
+            GameObject volumeObject = CreateChild(parent, "Graphics · Global Volume");
+            Volume volume = volumeObject.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 0f;
+            volume.weight = 1f;
+            volume.sharedProfile = profile;
+        }
+
+        private static ReflectionProbe CreateReflectionProbe(
+            Transform parent,
+            DeckLayoutDefinition layout)
+        {
+            GameObject probeObject =
+                CreateChild(parent, "Graphics · Vehicle Reflection Probe");
+            ReflectionProbe probe = probeObject.AddComponent<ReflectionProbe>();
+            probe.mode = ReflectionProbeMode.Realtime;
+            probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+            probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.AllFacesAtOnce;
+            probe.clearFlags = ReflectionProbeClearFlags.Skybox;
+            probe.hdr = true;
+            probe.resolution = 128;
+            probe.boxProjection = true;
+            probe.blendDistance = 1.5f;
+            probe.intensity = 0.9f;
+            probe.importance = 1;
+            probe.nearClipPlane = 0.1f;
+            probe.farClipPlane = 80f;
+            probe.center = layout.DeckCenterLocal + Vector3.up * 1.4f;
+            probe.size = new Vector3(
+                layout.DeckSize.x + 4f,
+                6f,
+                layout.DeckSize.z + 4f);
+            return probe;
         }
 
         private static Light CreateLight(Transform parent, string name)
@@ -397,13 +463,15 @@ namespace Game.NomadWorkshop.Editor
             return lightObject.AddComponent<Light>();
         }
 
-        private static void ConfigureEnvironmentLighting(Light keyLight)
+        private static void ConfigureEnvironmentLighting(
+            Light keyLight,
+            Material skyboxMaterial)
         {
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.235f, 0.255f, 0.265f);
-            RenderSettings.ambientIntensity = 1f;
-            RenderSettings.skybox = null;
-            RenderSettings.reflectionIntensity = 0.55f;
+            RenderSettings.ambientMode = AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 1.02f;
+            RenderSettings.skybox = skyboxMaterial;
+            RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+            RenderSettings.reflectionIntensity = 0.95f;
             RenderSettings.sun = keyLight;
             RenderSettings.fog = false;
         }
@@ -412,13 +480,13 @@ namespace Game.NomadWorkshop.Editor
         {
             keyLight.type = LightType.Directional;
             keyLight.color = new Color(1f, 0.89f, 0.72f);
-            keyLight.intensity = 1.25f;
+            keyLight.intensity = 1.6f;
             keyLight.shadows = LightShadows.Soft;
             keyLight.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
 
             fillLight.type = LightType.Directional;
             fillLight.color = new Color(0.52f, 0.68f, 1f);
-            fillLight.intensity = 0.34f;
+            fillLight.intensity = 0.52f;
             fillLight.shadows = LightShadows.None;
             fillLight.transform.rotation = Quaternion.Euler(42f, 145f, 0f);
         }

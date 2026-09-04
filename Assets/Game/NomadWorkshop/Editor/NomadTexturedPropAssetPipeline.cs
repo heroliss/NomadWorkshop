@@ -90,11 +90,11 @@ namespace Game.NomadWorkshop.Editor
             int rendererIndex = -1;
             try
             {
-                rendererIndex = NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow();
+                rendererIndex = NomadRenderingSpikePipeline.GetGame3DRendererIndexOrThrow();
             }
             catch (Exception exception)
             {
-                issues.Add($"次级 3D Renderer 不可用：{exception.Message}");
+                issues.Add($"共享 3D Renderer 不可用：{exception.Message}");
             }
 
             bool previewMatches = rendererIndex >= 0 &&
@@ -317,7 +317,7 @@ namespace Game.NomadWorkshop.Editor
 
         private static void EnsurePreviewScene()
         {
-            int rendererIndex = NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow();
+            int rendererIndex = NomadRenderingSpikePipeline.GetGame3DRendererIndexOrThrow();
             var drift = new List<string>();
             if (AuditPreviewScene(rendererIndex, drift)) return;
 
@@ -856,7 +856,7 @@ namespace Game.NomadWorkshop.Editor
                                Mathf.Approximately(RenderSettings.ambientIntensity, 1.05f) &&
                                Mathf.Approximately(RenderSettings.reflectionIntensity, 1.00f);
                 if (!matches)
-                    issues.Add("代表性场景的 Prefab、次级 Renderer、灯光或 Skybox 契约不成立。");
+                    issues.Add("代表性场景的 Prefab、共享 3D Renderer、灯光或 Skybox 契约不成立。");
                 return matches;
             }
             catch (Exception exception)

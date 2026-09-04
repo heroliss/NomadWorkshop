@@ -30,6 +30,14 @@ namespace Game.NomadWorkshop.Foundation
         private Light keyLight;
         [SerializeField, Tooltip("灰盒冷色补光；用于保留背光面和深色部件的轮廓，不参与玩法逻辑。")]
         private Light fillLight;
+        [SerializeField, Tooltip("Foundation 的程序化天空盒；同时提供环境漫反射和 PBR 高光的远景反射。留空时回退到稳定纯色灰盒。")]
+        private Material skyboxMaterial;
+        [SerializeField, Tooltip("覆盖车辆甲板的局部反射探针。灰盒几何在运行时生成，因此由本 View 在首帧完成后主动捕获一次。")]
+        private ReflectionProbe reflectionProbe;
+
+        [Header("图形基线")]
+        [SerializeField, Tooltip("进入场景后是否为实时 Reflection Probe 捕获一次车辆周围环境。只捕获一次，不会每帧更新；低端平台可关闭。")]
+        private bool captureReflectionProbeOnStart = true;
 
         [Header("输入保护")]
         [SerializeField, Min(0f), Tooltip("左上开发面板占用的屏幕宽度；该区域不向 3D 世界透传点击和滚轮。")]
@@ -99,7 +107,9 @@ namespace Game.NomadWorkshop.Foundation
             Transform configuredDeckRoot,
             Camera configuredCamera,
             Light configuredLight,
-            Light configuredFillLight = null)
+            Light configuredFillLight = null,
+            Material configuredSkyboxMaterial = null,
+            ReflectionProbe configuredReflectionProbe = null)
         {
             deckLayout = configuredLayout;
             facilityDefinitions = configuredDefinitions;
@@ -107,6 +117,8 @@ namespace Game.NomadWorkshop.Foundation
             worldCamera = configuredCamera;
             keyLight = configuredLight;
             fillLight = configuredFillLight;
+            skyboxMaterial = configuredSkyboxMaterial;
+            reflectionProbe = configuredReflectionProbe;
         }
 #endif
 
@@ -162,6 +174,18 @@ namespace Game.NomadWorkshop.Foundation
                 if (_waterCanFillVisual != null)
                     _waterCanFillVisual.gameObject.SetActive(amount > 0);
             });
+        }
+
+        private void Start()
+        {
+            // 甲板、设施和居民都是 Awake 时生成；延迟到 Start 才抓取，避免探针只看见空场景。
+            // Null Graphics Device（例如纯逻辑测试）不做 GPU 捕获，保持验证稳定。
+            if (!captureReflectionProbeOnStart || reflectionProbe == null ||
+                !reflectionProbe.isActiveAndEnabled ||
+                reflectionProbe.mode != ReflectionProbeMode.Realtime ||
+                SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+                return;
+            reflectionProbe.RenderProbe();
         }
 
         private void Update()
@@ -337,24 +361,37 @@ namespace Game.NomadWorkshop.Foundation
                 deckLayout.DeckCenterLocal,
                 new Vector3(11f, 13f, -12f));
             worldCamera.fieldOfView = 42f;
-            worldCamera.clearFlags = CameraClearFlags.SolidColor;
+            worldCamera.clearFlags = skyboxMaterial != null
+                ? CameraClearFlags.Skybox
+                : CameraClearFlags.SolidColor;
             worldCamera.backgroundColor = new Color(0.055f, 0.075f, 0.085f);
             worldCamera.nearClipPlane = 0.1f;
             worldCamera.farClipPlane = 120f;
 
-            // 纯色背景不会提供天空盒反射。灰盒阶段用稳定的环境漫反射与冷色补光保证材质可读，
-            // 不依赖某台机器尚未烘焙的 GI / Reflection Probe；正式美术场景可整体替换这组表现设置。
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.235f, 0.255f, 0.265f);
-            RenderSettings.ambientIntensity = 1f;
-            RenderSettings.skybox = null;
-            RenderSettings.reflectionIntensity = 0.55f;
+            // 正式 Foundation 场景使用程序化天空提供漫反射与远景高光，局部探针再补车辆周围环境。
+            // 隔离测试不必装配图形资产，因此仍保留纯色 + Flat Ambient 的可预测回退。
+            if (skyboxMaterial != null)
+            {
+                RenderSettings.ambientMode = AmbientMode.Skybox;
+                RenderSettings.ambientIntensity = 1.02f;
+                RenderSettings.skybox = skyboxMaterial;
+                RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+                RenderSettings.reflectionIntensity = 0.95f;
+            }
+            else
+            {
+                RenderSettings.ambientMode = AmbientMode.Flat;
+                RenderSettings.ambientLight = new Color(0.235f, 0.255f, 0.265f);
+                RenderSettings.ambientIntensity = 1f;
+                RenderSettings.skybox = null;
+                RenderSettings.reflectionIntensity = 0.55f;
+            }
 
             if (keyLight != null)
             {
                 keyLight.type = LightType.Directional;
                 keyLight.color = new Color(1f, 0.89f, 0.72f);
-                keyLight.intensity = 1.25f;
+                keyLight.intensity = 1.6f;
                 keyLight.shadows = LightShadows.Soft;
                 keyLight.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
                 RenderSettings.sun = keyLight;
@@ -364,20 +401,24 @@ namespace Game.NomadWorkshop.Foundation
             {
                 fillLight.type = LightType.Directional;
                 fillLight.color = new Color(0.52f, 0.68f, 1f);
-                fillLight.intensity = 0.34f;
+                fillLight.intensity = 0.52f;
                 fillLight.shadows = LightShadows.None;
                 fillLight.transform.rotation = Quaternion.Euler(42f, 145f, 0f);
             }
 
             Material deckMaterial = CreateLitMaterial(
                 "M_Deck",
-                new Color(0.13f, 0.17f, 0.18f));
+                new Color(0.18f, 0.23f, 0.24f),
+                0.42f,
+                0.36f);
             Material gridMaterial = CreateLitMaterial(
                 "M_Grid",
                 new Color(0.24f, 0.34f, 0.35f));
             Material groundMaterial = CreateLitMaterial(
                 "M_Ground",
-                new Color(0.22f, 0.14f, 0.09f));
+                new Color(0.25f, 0.15f, 0.09f),
+                0f,
+                0.14f);
             _ghostValidMaterial = CreateTransparentMaterial(
                 "M_GhostValid",
                 new Color(0.18f, 0.95f, 0.55f, 0.48f));
@@ -1022,12 +1063,17 @@ namespace Game.NomadWorkshop.Foundation
             return instance;
         }
 
-        private Material CreateLitMaterial(string materialName, Color color)
+        private Material CreateLitMaterial(
+            string materialName,
+            Color color,
+            float metallic = 0f,
+            float smoothness = 0.22f)
         {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             var material = new Material(shader) { name = materialName, color = color };
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
-            material.SetFloat("_Smoothness", 0.22f);
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
             _runtimeMaterials.Add(material);
             return material;
         }

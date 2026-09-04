@@ -37,7 +37,7 @@ namespace Game.NomadWorkshop.Editor
             if (camera == null)
                 throw new InvalidOperationException("连续导航场景缺少 Camera。");
             camera.GetUniversalAdditionalCameraData().SetRenderer(
-                NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow());
+                NomadRenderingSpikePipeline.GetGame3DRendererIndexOrThrow());
             Selection.activeGameObject = composition.Root;
             EditorSceneManager.MarkSceneDirty(scene);
             if (!EditorSceneManager.SaveScene(scene, ScenePath))

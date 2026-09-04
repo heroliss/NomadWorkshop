@@ -52,7 +52,7 @@ Editor 工具会幂等配置并审计：
 - Contact Sheet 使用 sRGB、无 Mip、Clamp、Bilinear 和无压缩的证据导入策略，不进入运行时材质；
 - 三个项目自有 `Universal Render Pipeline/Lit` 材质按源材质名显式 Remap；
 - Prefab Root / Visual 保持 Identity，只创建一个 Root BoxCollider，不创建 MeshCollider；
-- 预览相机复用游戏 Spike 中唯一的次级 Universal Renderer，不复制或改写默认 Renderer2D。
+- 预览相机显式复用游戏共享 Universal 3D Renderer；不会复制 Renderer，项目中的 2D Camera 另行显式固定 Renderer2D。
 
 对应 EditMode 契约测试：
 

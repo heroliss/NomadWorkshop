@@ -666,7 +666,7 @@ namespace Game.NomadWorkshop.Editor
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
             if (prefab == null) throw new InvalidOperationException($"无法加载 Prefab：{PrefabPath}");
 
-            int rendererIndex = NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow();
+            int rendererIndex = NomadRenderingSpikePipeline.GetGame3DRendererIndexOrThrow();
             Material groundMaterial = AssetDatabase.LoadAssetAtPath<Material>(
                 NomadRenderingSpikePipeline.GroundMaterialPath);
             if (groundMaterial == null)

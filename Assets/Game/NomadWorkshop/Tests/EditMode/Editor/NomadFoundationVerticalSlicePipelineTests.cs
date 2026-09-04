@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 namespace Game.NomadWorkshop.Editor.Tests
@@ -47,6 +48,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                 DeckNavigationUtility navigation = FindOne<DeckNavigationUtility>(scene);
                 NavMeshSurface surface = FindOne<NavMeshSurface>(scene);
                 Camera worldCamera = FindOne<Camera>(scene);
+                Volume globalVolume = FindOne<Volume>(scene);
+                ReflectionProbe reflectionProbe = FindOne<ReflectionProbe>(scene);
 
                 Assert.IsNotNull(context);
                 Assert.IsNotNull(model);
@@ -56,6 +59,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Assert.IsNotNull(navigation);
                 Assert.IsNotNull(surface);
                 Assert.IsNotNull(worldCamera);
+                Assert.IsNotNull(globalVolume);
+                Assert.IsNotNull(reflectionProbe);
                 Assert.That(model.transform.IsChildOf(context.transform), Is.True);
                 Assert.That(system.transform.IsChildOf(context.transform), Is.True);
                 Assert.That(worldView.transform.IsChildOf(context.transform), Is.True);
@@ -115,21 +120,54 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Assert.That(
                     viewSerialized.FindProperty("fillLight").objectReferenceValue,
                     Is.SameAs(fillLight));
-                Assert.That(RenderSettings.ambientMode, Is.EqualTo(AmbientMode.Flat));
+                Assert.That(RenderSettings.ambientMode, Is.EqualTo(AmbientMode.Skybox));
                 Assert.That(RenderSettings.sun, Is.SameAs(keyLight));
+                Assert.That(
+                    RenderSettings.skybox,
+                    Is.SameAs(AssetDatabase.LoadAssetAtPath<Material>(
+                        NomadRenderingSpikePipeline.FoundationSkyboxMaterialPath)));
+                Assert.That(RenderSettings.reflectionIntensity, Is.EqualTo(0.95f).Within(0.001f));
 
-                Component cameraData = worldCamera.GetComponent("UniversalAdditionalCameraData");
+                Assert.That(globalVolume.isGlobal, Is.True);
+                Assert.That(globalVolume.weight, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(
+                    globalVolume.sharedProfile,
+                    Is.SameAs(AssetDatabase.LoadAssetAtPath<VolumeProfile>(
+                        NomadRenderingSpikePipeline.FoundationVolumeProfilePath)));
+                Assert.That(reflectionProbe.mode, Is.EqualTo(ReflectionProbeMode.Realtime));
+                Assert.That(
+                    reflectionProbe.refreshMode,
+                    Is.EqualTo(ReflectionProbeRefreshMode.ViaScripting));
+                Assert.That(reflectionProbe.boxProjection, Is.True);
+                Assert.That(reflectionProbe.resolution, Is.EqualTo(128));
+                Assert.That(
+                    viewSerialized.FindProperty("skyboxMaterial").objectReferenceValue,
+                    Is.SameAs(RenderSettings.skybox));
+                Assert.That(
+                    viewSerialized.FindProperty("reflectionProbe").objectReferenceValue,
+                    Is.SameAs(reflectionProbe));
+
+                UniversalAdditionalCameraData cameraData =
+                    worldCamera.GetComponent<UniversalAdditionalCameraData>();
                 Assert.That(
                     cameraData,
                     Is.Not.Null,
-                    "3D Foundation 相机必须显式持有 URP 相机数据，不能默认回落 Renderer2D。 ");
+                    "3D Foundation 相机必须显式持有 URP 相机数据。 ");
                 SerializedProperty rendererIndex = new SerializedObject(cameraData)
                     .FindProperty("m_RendererIndex");
                 Assert.That(rendererIndex, Is.Not.Null);
                 Assert.That(
                     rendererIndex.intValue,
-                    Is.EqualTo(NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow()),
+                    Is.EqualTo(NomadRenderingSpikePipeline.GetGame3DRendererIndexOrThrow()),
                     "URP/Lit 与 3D Directional Light 只有在 Universal 3D Renderer 下才会按预期响应。 ");
+                Assert.That(worldCamera.clearFlags, Is.EqualTo(CameraClearFlags.Skybox));
+                Assert.That(worldCamera.allowHDR, Is.True);
+                Assert.That(cameraData.renderPostProcessing, Is.True);
+                Assert.That(
+                    cameraData.antialiasing,
+                    Is.EqualTo(AntialiasingMode.SubpixelMorphologicalAntiAliasing));
+                Assert.That(cameraData.antialiasingQuality, Is.EqualTo(AntialiasingQuality.High));
+                Assert.That(cameraData.requiresDepthTexture, Is.True);
             }
             finally
             {
