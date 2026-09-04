@@ -78,6 +78,47 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     }
 
     /// <summary>
+    /// 物品相对 PlacementRegion 中心的二维量化姿态。它不携带甲板层；区域所有者与区域 id
+    /// 已经确定支撑面，世界姿态在加载后重建。
+    /// </summary>
+    [Serializable]
+    public struct QuantizedPlacementPose : IEquatable<QuantizedPlacementPose>
+    {
+        public int LocalXMillimeters;
+        public int LocalZMillimeters;
+        public int LocalYawDeciDegrees;
+
+        public QuantizedPlacementPose(
+            int localXMillimeters,
+            int localZMillimeters,
+            int localYawDeciDegrees)
+        {
+            LocalXMillimeters = localXMillimeters;
+            LocalZMillimeters = localZMillimeters;
+            LocalYawDeciDegrees = DeckPose.NormalizeYaw(localYawDeciDegrees);
+        }
+
+        public static QuantizedPlacementPose FromPlacementPose(in PlacementRegionPose pose) =>
+            new(
+                pose.LocalXMillimeters,
+                pose.LocalZMillimeters,
+                pose.LocalYawDeciDegrees);
+
+        public PlacementRegionPose ToPlacementPose() =>
+            new(LocalXMillimeters, LocalZMillimeters, LocalYawDeciDegrees);
+
+        public bool Equals(QuantizedPlacementPose other) =>
+            LocalXMillimeters == other.LocalXMillimeters &&
+            LocalZMillimeters == other.LocalZMillimeters &&
+            LocalYawDeciDegrees == other.LocalYawDeciDegrees;
+
+        public override bool Equals(object obj) =>
+            obj is QuantizedPlacementPose other && Equals(other);
+        public override int GetHashCode() =>
+            HashCode.Combine(LocalXMillimeters, LocalZMillimeters, LocalYawDeciDegrees);
+    }
+
+    /// <summary>
     /// 一次完整、可恢复的游戏进度快照。它只保存业务真值；NavMesh 路径、局部避让速度、材质实例、
     /// 响应式订阅和调试指标均在加载后由 Adapter / View 重建。
     /// </summary>
@@ -194,6 +235,12 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     {
         public string InventoryId = string.Empty;
         public string OwnerEntityId = string.Empty;
+        /// <summary>
+        /// 可搬动实体当前占用的全局 PlacementRegion id；空表示固定库存或由居民携带。
+        /// 该字段为可选扩展，旧 v4 存档会由领域加载器依据 Owner 推导中心姿态。
+        /// </summary>
+        public string PlacementRegionId = string.Empty;
+        public QuantizedPlacementPose PlacementLocalPose;
         public ResourceMeasure Measure;
         public int CapacityBaseUnits;
         public int ContaminationPermille;
@@ -588,6 +635,11 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                 if (inventory.CapacityBaseUnits < 0)
                     throw new InvalidOperationException($"库存 {inventory.InventoryId} 容量不能为负数。");
                 ValidateRange(inventory.ContaminationPermille, $"库存 {inventory.InventoryId} 污染");
+                if (!string.IsNullOrWhiteSpace(inventory.PlacementRegionId) &&
+                    (inventory.PlacementLocalPose.LocalYawDeciDegrees < 0 ||
+                     inventory.PlacementLocalPose.LocalYawDeciDegrees >= 3600))
+                    throw new InvalidOperationException(
+                        $"库存 {inventory.InventoryId} 的区域局部角度必须位于 [0, 3600)。");
                 if (inventory.Contents == null)
                     throw new InvalidOperationException($"库存 {inventory.InventoryId} 内容不能为 null。");
 

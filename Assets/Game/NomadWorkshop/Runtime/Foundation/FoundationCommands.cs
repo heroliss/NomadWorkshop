@@ -38,6 +38,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<bool> ResidentCarryingWater;
         public readonly ReadOnlyReactiveProperty<FoundationWaterCanLocation> WaterCanLocation;
         public readonly ReadOnlyReactiveProperty<string> WaterCanAnchorFacilityInstanceId;
+        public readonly ReadOnlyReactiveProperty<FoundationItemPlacementState> WaterCanPlacement;
         public readonly ReadOnlyReactiveProperty<int> WaterCanWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> WaterCanCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<FoundationActionPlanProjection> LatestActionPlan;
@@ -101,6 +102,7 @@ namespace Game.NomadWorkshop.Foundation
             ResidentCarryingWater = model.ResidentCarryingWater;
             WaterCanLocation = model.WaterCanLocation;
             WaterCanAnchorFacilityInstanceId = model.WaterCanAnchorFacilityInstanceId;
+            WaterCanPlacement = model.WaterCanPlacement;
             WaterCanWaterMilliliters = model.WaterCanWaterMilliliters;
             WaterCanCapacityMilliliters = model.WaterCanCapacityMilliliters;
             LatestActionPlan = model.LatestActionPlan;

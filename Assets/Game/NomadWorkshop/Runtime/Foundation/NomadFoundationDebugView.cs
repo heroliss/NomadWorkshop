@@ -39,6 +39,7 @@ namespace Game.NomadWorkshop.Foundation
         private string _activePathSummary = string.Empty;
         private FoundationWaterCanLocation _waterCanLocation;
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
+        private FoundationItemPlacementState _waterCanPlacement;
         private FoundationFacilityInventoryState[] _facilityInventories =
             Array.Empty<FoundationFacilityInventoryState>();
         private FoundationFacilityConditionState[] _facilityConditions =
@@ -129,6 +130,7 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(
                 readModel.WaterCanAnchorFacilityInstanceId,
                 value => _waterCanAnchorFacilityInstanceId = value ?? string.Empty);
+            Bag.Subscribe(readModel.WaterCanPlacement, value => _waterCanPlacement = value);
             Bag.Subscribe(
                 readModel.WaterCanWaterMilliliters,
                 value => _waterCanWaterMilliliters = value);
@@ -293,9 +295,7 @@ namespace Game.NomadWorkshop.Foundation
                     new GUIContent("居民详情", "查看居民的健康、水分、精力、心情、娱乐、压力与生理状态。"),
                     _openPanel == FoundationHudPanel.Resident))
             {
-                _openPanel = FoundationHudLayout.Toggle(
-                    _openPanel,
-                    FoundationHudPanel.Resident);
+                TogglePanel(FoundationHudPanel.Resident);
             }
 
             if (DrawToolbarButton(
@@ -304,31 +304,44 @@ namespace Game.NomadWorkshop.Foundation
                         "进入建造模式并打开设施、吸附与可达性控制。"),
                     _openPanel == FoundationHudPanel.Build))
             {
-                if (_interactionMode == FoundationInteractionMode.Build &&
-                    _openPanel == FoundationHudPanel.Build)
-                {
-                    this.ExecuteCommand(new ExitFoundationBuildModeCommand());
-                    _openPanel = FoundationHudPanel.None;
-                }
-                else
-                {
-                    if (_interactionMode != FoundationInteractionMode.Build)
-                        this.ExecuteCommand(new EnterFoundationBuildModeCommand());
-                    _openPanel = FoundationHudPanel.Build;
-                }
+                TogglePanel(FoundationHudPanel.Build);
             }
 
             if (DrawToolbarButton(
                     new GUIContent("开发", "打开完整的方案、资源、建造与 Harness 诊断。"),
                     _openPanel == FoundationHudPanel.Developer))
             {
-                _openPanel = FoundationHudLayout.Toggle(
-                    _openPanel,
-                    FoundationHudPanel.Developer);
+                TogglePanel(FoundationHudPanel.Developer);
             }
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
         }
+
+        /// <summary>
+        /// 统一右上角互斥面板与世界交互模式的切换顺序。领域 Command 必须先执行，
+        /// 让幽灵、网格、停靠点和预留状态由 System 统一清理；本地枚举只负责最终显示哪个面板。
+        /// </summary>
+        private void TogglePanel(FoundationHudPanel requestedPanel)
+        {
+            FoundationHudPanel nextPanel = FoundationHudLayout.Toggle(
+                _openPanel,
+                requestedPanel);
+
+            if (FoundationHudLayout.ShouldExitBuildMode(_interactionMode, nextPanel))
+                this.ExecuteCommand(new ExitFoundationBuildModeCommand());
+            else if (FoundationHudLayout.ShouldEnterBuildMode(_interactionMode, nextPanel))
+                this.ExecuteCommand(new EnterFoundationBuildModeCommand());
+
+            _openPanel = nextPanel;
+        }
+
+#if UNITY_EDITOR
+        /// <summary>PlayMode 回归入口：与按钮点击共用同一方法，不伪造第二套面板状态机。</summary>
+        public void TogglePanelForTests(FoundationHudPanel requestedPanel) =>
+            TogglePanel(requestedPanel);
+
+        public FoundationHudPanel OpenPanelForTests => _openPanel;
+#endif
 
         private void DrawResidentDetailsPanel()
         {
@@ -769,6 +782,17 @@ namespace Game.NomadWorkshop.Foundation
                 $"锚点 {DescribeAnchor(_waterCanAnchorFacilityInstanceId)} · " +
                 $"内含水 {FormatVolume(_waterCanWaterMilliliters, _waterCanCapacityMilliliters)}",
                 _smallStyle);
+            if (_waterCanPlacement.Active)
+            {
+                PlacementRegionPose localPose = _waterCanPlacement.LocalPose;
+                DeckPose worldPose = _waterCanPlacement.WorldPose;
+                GUILayout.Label(
+                    $"  区域 {_waterCanPlacement.RegionId} · " +
+                    $"局部 ({localPose.LocalXMillimeters}, {localPose.LocalZMillimeters})mm / " +
+                    $"{localPose.LocalYawDeciDegrees / 10f:0.#}° · " +
+                    $"甲板 ({worldPose.XMillimeters}, {worldPose.ZMillimeters})mm",
+                    _smallStyle);
+            }
 
             GUILayout.Space(7f);
             GUILayout.Label("车辆水箱状态", _sectionStyle);
@@ -988,6 +1012,8 @@ namespace Game.NomadWorkshop.Foundation
         {
             FoundationPlacementFailure.FootprintOutOfBounds => "设施超出甲板",
             FoundationPlacementFailure.FootprintOverlapsFacility => "设施连续占地重叠",
+            FoundationPlacementFailure.FunctionalClearanceOutOfBounds => "设施物品停放区超出甲板",
+            FoundationPlacementFailure.FunctionalClearanceOverlapsFacility => "设施物品停放区被其他设施侵占",
             FoundationPlacementFailure.DeckLevelUnavailable => "甲板层不可用",
             FoundationPlacementFailure.RequiredInteractionUnreachable =>
                 "候选或既有设施存在不可达功能点",

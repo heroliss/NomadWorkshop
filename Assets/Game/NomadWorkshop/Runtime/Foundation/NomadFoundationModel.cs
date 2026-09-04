@@ -61,6 +61,8 @@ namespace Game.NomadWorkshop.Foundation
             new(FoundationWaterCanLocation.VehicleWaterTank);
         [field: SerializeField, Tooltip("水罐不在居民手中时所依附的精确设施实例；不能只靠设施类型猜测。")]
         public RP<string> WaterCanAnchorFacilityInstanceId { get; private set; } = new(string.Empty);
+        [field: SerializeField, Tooltip("水罐在设施放置区域中的精确局部姿态；居民携带时为空。")]
+        public RP<FoundationItemPlacementState> WaterCanPlacement { get; private set; } = new(default);
         [field: SerializeField] public RP<int> WaterCanWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> WaterCanCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationActionPlanProjection> LatestActionPlan { get; private set; } =

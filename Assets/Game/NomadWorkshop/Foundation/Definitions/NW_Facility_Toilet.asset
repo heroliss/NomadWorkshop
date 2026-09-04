@@ -33,6 +33,7 @@ MonoBehaviour:
     - slotId: right
       localPositionMeters: {x: 0.2, y: -0.88}
       localYawDegrees: 0
+  placementRegions: []
   placeAtStart: 0
   startPositionMeters: {x: 0, y: 0}
   startYawDegrees: 0

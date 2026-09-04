@@ -61,5 +61,32 @@ namespace Game.NomadWorkshop.Editor.Tests
             current = FoundationHudLayout.Toggle(current, FoundationHudPanel.Developer);
             Assert.That(current, Is.EqualTo(FoundationHudPanel.None));
         }
+
+        [TestCase(FoundationHudPanel.None)]
+        [TestCase(FoundationHudPanel.Resident)]
+        [TestCase(FoundationHudPanel.Developer)]
+        public void LeavingBuildPanel_RequiresBuildModeExit(FoundationHudPanel nextPanel)
+        {
+            Assert.That(
+                FoundationHudLayout.ShouldExitBuildMode(
+                    FoundationInteractionMode.Build,
+                    nextPanel),
+                Is.True);
+        }
+
+        [Test]
+        public void StayingOnBuildPanel_DoesNotExitAndObserveModeMustEnter()
+        {
+            Assert.That(
+                FoundationHudLayout.ShouldExitBuildMode(
+                    FoundationInteractionMode.Build,
+                    FoundationHudPanel.Build),
+                Is.False);
+            Assert.That(
+                FoundationHudLayout.ShouldEnterBuildMode(
+                    FoundationInteractionMode.Observe,
+                    FoundationHudPanel.Build),
+                Is.True);
+        }
     }
 }

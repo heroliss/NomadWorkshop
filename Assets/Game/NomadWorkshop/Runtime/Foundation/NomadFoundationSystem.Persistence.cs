@@ -50,6 +50,23 @@ namespace Game.NomadWorkshop.Foundation
                 ? FindRequiredFacilityInstanceId(NomadFacilityFunction.VehicleWaterTank)
                 : ResolveWaterCanSaveOwner();
             int checkpointWaterCanWater = rewindCarriedWater ? 0 : liveWaterCanWater;
+            string waterCanRegionId;
+            PlacementRegionPose waterCanLocalPose;
+            if (rewindCarriedWater)
+            {
+                waterCanRegionId = PlacementRegionLedger.ComposeRegionId(
+                    waterCanOwner,
+                    WaterCanParkingRegionLocalId);
+                waterCanLocalPose = PlacementRegionPose.Centered;
+            }
+            else
+            {
+                if (_waterCanPlacement == null)
+                    throw new InvalidOperationException(
+                        "非携带状态的水罐缺少 PlacementRegion 姿态，无法形成完整检查点。");
+                waterCanRegionId = _waterCanPlacement.Region.RegionId;
+                waterCanLocalPose = _waterCanPlacement.LocalPose;
+            }
 
             var data = new NomadWorkshopSaveData
             {
@@ -100,10 +117,14 @@ namespace Game.NomadWorkshop.Foundation
                 _vehicleWater,
                 "vehicle-01",
                 checkpointVehicleWater));
-            data.Inventories.Add(CreateInventorySaveData(
+            NomadInventorySaveData waterCanSave = CreateInventorySaveData(
                 _waterCan,
                 waterCanOwner,
-                checkpointWaterCanWater));
+                checkpointWaterCanWater);
+            waterCanSave.PlacementRegionId = waterCanRegionId;
+            waterCanSave.PlacementLocalPose =
+                QuantizedPlacementPose.FromPlacementPose(waterCanLocalPose);
+            data.Inventories.Add(waterCanSave);
             data.Inventories.Add(CreateInventorySaveData(
                 _toiletHolding,
                 "vehicle-01"));
@@ -240,6 +261,8 @@ namespace Game.NomadWorkshop.Foundation
             _drinkingStationInventories.Clear();
             _facilityInventoryProjection.Clear();
             _placementLedger = deckLayout.CreatePlacementLedger();
+            _worldItemPlacementLedger = new PlacementRegionLedger();
+            _waterCanPlacement = null;
 
             var restoredFacilities = new List<FoundationFacilityState>(data.Facilities.Count);
             for (var i = 0; i < data.Facilities.Count; i++)
@@ -251,7 +274,8 @@ namespace Game.NomadWorkshop.Foundation
                     saved.InstanceId,
                     saved.DefinitionId,
                     pose,
-                    definition.CreateFootprint());
+                    definition.CreateFootprint(),
+                    definition.CreateFunctionalClearanceFootprint());
                 if (!_placementLedger.TryPlace(
                         request,
                         out _,
@@ -271,10 +295,12 @@ namespace Game.NomadWorkshop.Foundation
                     saved,
                     definition.Function);
                 _facilityConditions.Add(saved.InstanceId, condition);
-                restoredFacilities.Add(new FoundationFacilityState(
+                var restoredFacility = new FoundationFacilityState(
                     saved.InstanceId,
                     saved.DefinitionId,
-                    pose));
+                    pose);
+                restoredFacilities.Add(restoredFacility);
+                RegisterFacilityPlacementRegions(restoredFacility);
             }
             _model.ReplaceFacilities(restoredFacilities);
 
@@ -425,7 +451,11 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedWanderCount.Value = 0;
             _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
-            SetWaterCanLocation(waterCanLocation, waterCanAnchor);
+            SetWaterCanLocation(
+                waterCanLocation,
+                waterCanAnchor,
+                restore.WaterCanRegionId,
+                restore.WaterCanLocalPose);
             ClearPlacementSelection(exitBuildMode: true);
             SetResidentPhase(
                 _residentWellbeing.IsAlive
@@ -491,7 +521,8 @@ namespace Game.NomadWorkshop.Foundation
                     facility.InstanceId,
                     facility.DefinitionId,
                     facility.Pose.ToDeckPose(),
-                    definition.CreateFootprint());
+                    definition.CreateFootprint(),
+                    definition.CreateFunctionalClearanceFootprint());
                 if (!validationLedger.TryPlace(
                         request,
                         out _,
@@ -614,6 +645,23 @@ namespace Game.NomadWorkshop.Foundation
                 facilityFunctions,
                 out FoundationWaterCanLocation waterCanLocation,
                 out string waterCanAnchor);
+            string expectedWaterCanRegionId = waterCanLocation ==
+                                              FoundationWaterCanLocation.Resident
+                ? string.Empty
+                : PlacementRegionLedger.ComposeRegionId(
+                    waterCanAnchor,
+                    WaterCanParkingRegionLocalId);
+            string waterCanRegionId = string.IsNullOrWhiteSpace(waterCan.PlacementRegionId)
+                ? expectedWaterCanRegionId
+                : waterCan.PlacementRegionId.Trim();
+            if (!string.Equals(
+                    waterCanRegionId,
+                    expectedWaterCanRegionId,
+                    StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"水罐区域 {waterCanRegionId} 与所有者 {waterCan.OwnerEntityId} 不匹配。");
+            PlacementRegionPose waterCanLocalPose =
+                waterCan.PlacementLocalPose.ToPlacementPose();
             return new FoundationRestoreData(
                 resident,
                 vehicleWater,
@@ -628,6 +676,8 @@ namespace Game.NomadWorkshop.Foundation
                 bladderAmount,
                 waterCanLocation,
                 waterCanAnchor,
+                waterCanRegionId,
+                waterCanLocalPose,
                 stations);
         }
 
@@ -970,6 +1020,8 @@ namespace Game.NomadWorkshop.Foundation
                 int bladderAmount,
                 FoundationWaterCanLocation waterCanLocation,
                 string waterCanAnchor,
+                string waterCanRegionId,
+                PlacementRegionPose waterCanLocalPose,
                 Dictionary<string, NomadInventorySaveData> stationInventories)
             {
                 Resident = resident;
@@ -985,6 +1037,8 @@ namespace Game.NomadWorkshop.Foundation
                 BladderAmount = bladderAmount;
                 WaterCanLocation = waterCanLocation;
                 WaterCanAnchor = waterCanAnchor;
+                WaterCanRegionId = waterCanRegionId;
+                WaterCanLocalPose = waterCanLocalPose;
                 StationInventories = stationInventories;
             }
 
@@ -1001,6 +1055,8 @@ namespace Game.NomadWorkshop.Foundation
             public int BladderAmount { get; }
             public FoundationWaterCanLocation WaterCanLocation { get; }
             public string WaterCanAnchor { get; }
+            public string WaterCanRegionId { get; }
+            public PlacementRegionPose WaterCanLocalPose { get; }
             public Dictionary<string, NomadInventorySaveData> StationInventories { get; }
         }
     }

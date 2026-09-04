@@ -12,6 +12,8 @@ namespace Game.NomadWorkshop.Simulation
         DeckLevelUnavailable,
         FootprintOutOfBounds,
         FootprintOverlapsFacility,
+        FunctionalClearanceOutOfBounds,
+        FunctionalClearanceOverlapsFacility,
     }
 
     /// <summary>
@@ -148,17 +150,20 @@ namespace Game.NomadWorkshop.Simulation
         public readonly string DefinitionId;
         public readonly DeckPose Pose;
         public readonly ContinuousFacilityFootprint Footprint;
+        public readonly ContinuousFacilityFootprint FunctionalClearance;
 
         public ContinuousFacilityPlacementRequest(
             string instanceId,
             string definitionId,
             DeckPose pose,
-            ContinuousFacilityFootprint footprint)
+            ContinuousFacilityFootprint footprint,
+            ContinuousFacilityFootprint functionalClearance = null)
         {
             InstanceId = instanceId;
             DefinitionId = definitionId;
             Pose = pose;
             Footprint = footprint;
+            FunctionalClearance = functionalClearance;
         }
     }
 
@@ -173,12 +178,17 @@ namespace Game.NomadWorkshop.Simulation
             DefinitionId = request.DefinitionId;
             Pose = request.Pose;
             Footprint = request.Footprint;
+            FunctionalClearance = request.FunctionalClearance;
         }
 
         public string InstanceId { get; }
         public string DefinitionId { get; }
         public DeckPose Pose { get; }
         public ContinuousFacilityFootprint Footprint { get; }
+        /// <summary>
+        /// 不生成 NavMesh 障碍、但其他设施不得侵占的功能净空，例如水罐停放区。
+        /// </summary>
+        public ContinuousFacilityFootprint FunctionalClearance { get; }
     }
 
     /// <summary>
@@ -230,7 +240,8 @@ namespace Game.NomadWorkshop.Simulation
             if (!_boundsByLevel.TryGetValue(request.Pose.DeckLevel, out DeckBounds bounds))
                 return ContinuousPlacementFailure.DeckLevelUnavailable;
 
-            OrientedRectangle[] candidateRectangles = BuildRectangles(
+            PlanarOrientedRectangle[] candidateRectangles =
+                PlanarOrientedRectangleGeometry.BuildRectangles(
                 request.Pose,
                 request.Footprint);
             for (var partIndex = 0; partIndex < candidateRectangles.Length; partIndex++)
@@ -239,27 +250,38 @@ namespace Game.NomadWorkshop.Simulation
                     return ContinuousPlacementFailure.FootprintOutOfBounds;
             }
 
+            PlanarOrientedRectangle[] candidateClearance = request.FunctionalClearance == null
+                ? Array.Empty<PlanarOrientedRectangle>()
+                : PlanarOrientedRectangleGeometry.BuildRectangles(
+                    request.Pose,
+                    request.FunctionalClearance);
+            for (var partIndex = 0; partIndex < candidateClearance.Length; partIndex++)
+            {
+                if (!IsInsideBounds(candidateClearance[partIndex], bounds))
+                    return ContinuousPlacementFailure.FunctionalClearanceOutOfBounds;
+            }
+
             foreach (ContinuousPlacedFacility existing in _placements.Values)
             {
                 if (existing.Pose.DeckLevel != request.Pose.DeckLevel) continue;
 
-                OrientedRectangle[] existingRectangles = BuildRectangles(
+                PlanarOrientedRectangle[] existingRectangles =
+                    PlanarOrientedRectangleGeometry.BuildRectangles(
                     existing.Pose,
                     existing.Footprint);
-                for (var candidateIndex = 0;
-                     candidateIndex < candidateRectangles.Length;
-                     candidateIndex++)
-                {
-                    for (var existingIndex = 0;
-                         existingIndex < existingRectangles.Length;
-                         existingIndex++)
-                    {
-                        if (Overlaps(
-                                candidateRectangles[candidateIndex],
-                                existingRectangles[existingIndex]))
-                            return ContinuousPlacementFailure.FootprintOverlapsFacility;
-                    }
-                }
+                if (AnyOverlap(candidateRectangles, existingRectangles))
+                    return ContinuousPlacementFailure.FootprintOverlapsFacility;
+
+                PlanarOrientedRectangle[] existingClearance =
+                    existing.FunctionalClearance == null
+                        ? Array.Empty<PlanarOrientedRectangle>()
+                        : PlanarOrientedRectangleGeometry.BuildRectangles(
+                            existing.Pose,
+                            existing.FunctionalClearance);
+                if (AnyOverlap(candidateClearance, existingRectangles) ||
+                    AnyOverlap(candidateRectangles, existingClearance) ||
+                    AnyOverlap(candidateClearance, existingClearance))
+                    return ContinuousPlacementFailure.FunctionalClearanceOverlapsFacility;
             }
 
             return ContinuousPlacementFailure.None;
@@ -324,38 +346,9 @@ namespace Game.NomadWorkshop.Simulation
                 string.Compare(left.InstanceId, right.InstanceId, StringComparison.Ordinal));
         }
 
-        private static OrientedRectangle[] BuildRectangles(
-            in DeckPose pose,
-            ContinuousFacilityFootprint footprint)
-        {
-            var result = new OrientedRectangle[footprint.Parts.Count];
-            double poseRadians = DegreesToRadians(pose.YawDegrees);
-            double poseCosine = Math.Cos(poseRadians);
-            double poseSine = Math.Sin(poseRadians);
-
-            for (var i = 0; i < footprint.Parts.Count; i++)
-            {
-                DeckFootprintPart part = footprint.Parts[i];
-                double centerX = pose.XMillimeters +
-                    poseCosine * part.LocalCenterXMillimeters +
-                    poseSine * part.LocalCenterZMillimeters;
-                double centerZ = pose.ZMillimeters -
-                    poseSine * part.LocalCenterXMillimeters +
-                    poseCosine * part.LocalCenterZMillimeters;
-                double worldYawDegrees = pose.YawDegrees +
-                    part.LocalYawDeciDegrees / 10d;
-                result[i] = new OrientedRectangle(
-                    centerX,
-                    centerZ,
-                    part.WidthMillimeters / 2d,
-                    part.DepthMillimeters / 2d,
-                    DegreesToRadians(worldYawDegrees));
-            }
-
-            return result;
-        }
-
-        private static bool IsInsideBounds(in OrientedRectangle rectangle, in DeckBounds bounds)
+        private static bool IsInsideBounds(
+            in PlanarOrientedRectangle rectangle,
+            in DeckBounds bounds)
         {
             double extentX = Math.Abs(rectangle.AxisXX) * rectangle.HalfWidth +
                 Math.Abs(rectangle.AxisZX) * rectangle.HalfDepth;
@@ -371,68 +364,21 @@ namespace Game.NomadWorkshop.Simulation
                        GeometryToleranceMillimeters);
         }
 
-        private static bool Overlaps(
-            in OrientedRectangle left,
-            in OrientedRectangle right)
+        private static bool AnyOverlap(
+            IReadOnlyList<PlanarOrientedRectangle> left,
+            IReadOnlyList<PlanarOrientedRectangle> right)
         {
-            double deltaX = right.CenterX - left.CenterX;
-            double deltaZ = right.CenterZ - left.CenterZ;
-            return OverlapsOnAxis(left.AxisXX, left.AxisXZ, deltaX, deltaZ, left, right) &&
-                   OverlapsOnAxis(left.AxisZX, left.AxisZZ, deltaX, deltaZ, left, right) &&
-                   OverlapsOnAxis(right.AxisXX, right.AxisXZ, deltaX, deltaZ, left, right) &&
-                   OverlapsOnAxis(right.AxisZX, right.AxisZZ, deltaX, deltaZ, left, right);
-        }
-
-        private static bool OverlapsOnAxis(
-            double axisX,
-            double axisZ,
-            double deltaX,
-            double deltaZ,
-            in OrientedRectangle left,
-            in OrientedRectangle right)
-        {
-            double distance = Math.Abs(deltaX * axisX + deltaZ * axisZ);
-            double leftRadius =
-                left.HalfWidth * Math.Abs(left.AxisXX * axisX + left.AxisXZ * axisZ) +
-                left.HalfDepth * Math.Abs(left.AxisZX * axisX + left.AxisZZ * axisZ);
-            double rightRadius =
-                right.HalfWidth * Math.Abs(right.AxisXX * axisX + right.AxisXZ * axisZ) +
-                right.HalfDepth * Math.Abs(right.AxisZX * axisX + right.AxisZZ * axisZ);
-            return distance + GeometryToleranceMillimeters < leftRadius + rightRadius;
-        }
-
-        private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180d;
-
-        private readonly struct OrientedRectangle
-        {
-            public readonly double CenterX;
-            public readonly double CenterZ;
-            public readonly double HalfWidth;
-            public readonly double HalfDepth;
-            public readonly double AxisXX;
-            public readonly double AxisXZ;
-            public readonly double AxisZX;
-            public readonly double AxisZZ;
-
-            public OrientedRectangle(
-                double centerX,
-                double centerZ,
-                double halfWidth,
-                double halfDepth,
-                double yawRadians)
+            for (var leftIndex = 0; leftIndex < left.Count; leftIndex++)
             {
-                CenterX = centerX;
-                CenterZ = centerZ;
-                HalfWidth = halfWidth;
-                HalfDepth = halfDepth;
-
-                double cosine = Math.Cos(yawRadians);
-                double sine = Math.Sin(yawRadians);
-                AxisXX = cosine;
-                AxisXZ = -sine;
-                AxisZX = sine;
-                AxisZZ = cosine;
+                for (var rightIndex = 0; rightIndex < right.Count; rightIndex++)
+                {
+                    if (PlanarOrientedRectangleGeometry.Overlaps(
+                            left[leftIndex],
+                            right[rightIndex]))
+                        return true;
+                }
             }
+            return false;
         }
     }
 }

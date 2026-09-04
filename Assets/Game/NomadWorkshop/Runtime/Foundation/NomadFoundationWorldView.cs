@@ -77,6 +77,7 @@ namespace Game.NomadWorkshop.Foundation
         private Transform _waterCanFillVisual;
         private FoundationWaterCanLocation _waterCanLocation;
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
+        private FoundationItemPlacementState _waterCanPlacement;
         private Material _ghostValidMaterial;
         private Material _ghostInvalidMaterial;
         private Material _ghostPartialMaterial;
@@ -86,6 +87,7 @@ namespace Game.NomadWorkshop.Foundation
         private Material _slotPendingMaterial;
         private Material _slotSharedMaterial;
         private Material _slotOccupiedMaterial;
+        private Material _placementRegionMaterial;
         private string _previewVisualDefinitionId = string.Empty;
         private FoundationInteractionMode _interactionMode;
         private FoundationPlacementGridVisual _placementGrid;
@@ -172,6 +174,11 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.WaterCanAnchorFacilityInstanceId, instanceId =>
             {
                 _waterCanAnchorFacilityInstanceId = instanceId ?? string.Empty;
+                UpdateWaterCanVisual();
+            });
+            Bag.Subscribe(readModel.WaterCanPlacement, placement =>
+            {
+                _waterCanPlacement = placement;
                 UpdateWaterCanVisual();
             });
             Bag.Subscribe(readModel.WaterCanWaterMilliliters, amount =>
@@ -459,6 +466,9 @@ namespace Game.NomadWorkshop.Foundation
             _slotOccupiedMaterial = CreateLitMaterial(
                 "M_InteractionSlotOccupied",
                 new Color(0.72f, 0.28f, 1f));
+            _placementRegionMaterial = CreateTransparentMaterial(
+                "M_PlacementRegion",
+                new Color(0.12f, 0.78f, 1f, 0.34f));
 
             CreatePrimitive(
                 PrimitiveType.Cube,
@@ -605,6 +615,15 @@ namespace Game.NomadWorkshop.Foundation
                 var slotRenderers = new List<Renderer[]>();
                 BuildInteractionSlotVisuals(interactionRoot, definition, slotRenderers);
                 interactionRoot.gameObject.SetActive(false);
+                var placementRegionRoot = new GameObject(
+                    "Placement Regions (build mode)").transform;
+                placementRegionRoot.SetParent(root, false);
+                BuildPlacementRegionVisuals(
+                    placementRegionRoot,
+                    definition,
+                    _placementRegionMaterial,
+                    null);
+                placementRegionRoot.gameObject.SetActive(false);
                 var functionWarningRoot = new GameObject(
                     "Inaccessible Function Warnings (build mode)").transform;
                 functionWarningRoot.SetParent(root, false);
@@ -619,6 +638,7 @@ namespace Game.NomadWorkshop.Foundation
                         state,
                         root,
                         interactionRoot,
+                        placementRegionRoot,
                         bodyRenderers,
                         slotRenderers.ToArray(),
                         groupVisuals.ToArray()));
@@ -783,6 +803,7 @@ namespace Game.NomadWorkshop.Foundation
                 }
 
                 visual.InteractionRoot.gameObject.SetActive(inBuildMode);
+                visual.PlacementRegionRoot.gameObject.SetActive(inBuildMode);
             }
         }
 
@@ -814,36 +835,23 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            NomadFacilityFunction expectedFunction =
-                _waterCanLocation == FoundationWaterCanLocation.VehicleWaterTank
-                    ? NomadFacilityFunction.VehicleWaterTank
-                    : NomadFacilityFunction.DrinkingStation;
-            for (var i = 0; i < _facilityStates.Length; i++)
+            if (!_waterCanPlacement.Active ||
+                !string.Equals(
+                    _waterCanPlacement.OwnerEntityId,
+                    _waterCanAnchorFacilityInstanceId,
+                    StringComparison.Ordinal))
             {
-                FoundationFacilityState state = _facilityStates[i];
-                if (!_definitions.TryGetValue(
-                        state.DefinitionId,
-                        out NomadFacilityDefinition definition) ||
-                    definition.Function != expectedFunction ||
-                    (!string.IsNullOrEmpty(_waterCanAnchorFacilityInstanceId) &&
-                     !string.Equals(
-                         state.InstanceId,
-                         _waterCanAnchorFacilityInstanceId,
-                         StringComparison.Ordinal)))
-                    continue;
-
-                Quaternion rotation = Quaternion.Euler(0f, (float)state.Pose.YawDegrees, 0f);
-                Vector3 sideOffset = expectedFunction == NomadFacilityFunction.VehicleWaterTank
-                    ? new Vector3(definition.PrototypeSize.x * 0.72f + 0.22f, 0.02f, 0f)
-                    : new Vector3(definition.PrototypeSize.x * 0.62f + 0.22f, 0.02f, 0f);
-                _waterCanVisual.SetParent(deckRoot, false);
-                _waterCanVisual.localPosition = deckLayout.PoseToLocal(state.Pose) + rotation * sideOffset;
-                _waterCanVisual.localRotation = rotation;
-                _waterCanVisual.gameObject.SetActive(true);
+                _waterCanVisual.gameObject.SetActive(false);
                 return;
             }
 
-            _waterCanVisual.gameObject.SetActive(false);
+            DeckPose pose = _waterCanPlacement.WorldPose;
+            _waterCanVisual.SetParent(deckRoot, false);
+            _waterCanVisual.localPosition = deckLayout.PoseToLocal(
+                pose,
+                _waterCanPlacement.SupportHeightMillimeters / 1000f);
+            _waterCanVisual.localRotation = Quaternion.Euler(0f, (float)pose.YawDegrees, 0f);
+            _waterCanVisual.gameObject.SetActive(true);
         }
 
         private void OnPreviewChanged(FoundationPlacementPreviewState preview)
@@ -995,6 +1003,12 @@ namespace Game.NomadWorkshop.Foundation
                     _ghostRenderers.Add(renderer);
             }
 
+            BuildPlacementRegionVisuals(
+                _ghostRoot,
+                definition,
+                _ghostInvalidMaterial,
+                _ghostRenderers);
+
             BuildInteractionSlotVisuals(
                 _interactionPreviewRoot,
                 definition,
@@ -1049,6 +1063,36 @@ namespace Game.NomadWorkshop.Foundation
                     });
                     flattenedSlotIndex++;
                 }
+            }
+        }
+
+        private void BuildPlacementRegionVisuals(
+            Transform parent,
+            NomadFacilityDefinition definition,
+            Material material,
+            ICollection<Renderer> destination)
+        {
+            IReadOnlyList<NomadPlacementRegionDefinition> regions =
+                definition.PlacementRegions;
+            for (var i = 0; i < regions.Count; i++)
+            {
+                NomadPlacementRegionDefinition region = regions[i];
+                GameObject visual = CreatePrimitive(
+                    PrimitiveType.Cube,
+                    $"Region {i + 1:D2} · {region.RegionId}",
+                    parent,
+                    new Vector3(
+                        region.LocalCenterMeters.x,
+                        region.SupportHeightMeters + 0.018f,
+                        region.LocalCenterMeters.y),
+                    new Vector3(region.SizeMeters.x, 0.025f, region.SizeMeters.y),
+                    material);
+                visual.transform.localRotation = Quaternion.Euler(
+                    0f,
+                    region.LocalYawDegrees,
+                    0f);
+                if (destination != null && visual.TryGetComponent(out Renderer renderer))
+                    destination.Add(renderer);
             }
         }
 
@@ -1215,6 +1259,7 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationFacilityState state,
                 Transform root,
                 Transform interactionRoot,
+                Transform placementRegionRoot,
                 Renderer[] bodyRenderers,
                 Renderer[][] slotRenderers,
                 InteractionGroupVisual[] interactionGroups)
@@ -1222,6 +1267,7 @@ namespace Game.NomadWorkshop.Foundation
                 State = state;
                 Root = root;
                 InteractionRoot = interactionRoot;
+                PlacementRegionRoot = placementRegionRoot;
                 BodyRenderers = bodyRenderers ?? Array.Empty<Renderer>();
                 SlotRenderers = slotRenderers ?? Array.Empty<Renderer[]>();
                 InteractionGroups = interactionGroups ??
@@ -1231,6 +1277,7 @@ namespace Game.NomadWorkshop.Foundation
             public FoundationFacilityState State { get; }
             public Transform Root { get; }
             public Transform InteractionRoot { get; }
+            public Transform PlacementRegionRoot { get; }
             public Renderer[] BodyRenderers { get; }
             public Renderer[][] SlotRenderers { get; }
             public InteractionGroupVisual[] InteractionGroups { get; }

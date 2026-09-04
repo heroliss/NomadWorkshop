@@ -5,6 +5,44 @@ namespace Game.NomadWorkshop.Simulation.Tests
     /// <summary>锁定自由姿态、独立吸附、复合占地和连续摆放的原子语义。</summary>
     public sealed class ContinuousFacilityPlacementTests
     {
+        [Test]
+        public void FunctionalClearance_IsReservedWithoutExpandingPhysicalFootprint()
+        {
+            var ledger = new ContinuousFacilityPlacementLedger(
+                new DeckBounds(-2000, -2000, 2000, 2000));
+            var body = new ContinuousFacilityFootprint(new[]
+            {
+                new DeckFootprintPart(0, 0, 500, 500),
+            });
+            var sideParking = new ContinuousFacilityFootprint(new[]
+            {
+                new DeckFootprintPart(500, 0, 400, 300),
+            });
+            Assert.That(
+                ledger.TryPlace(
+                    new ContinuousFacilityPlacementRequest(
+                        "station-a",
+                        "station",
+                        default,
+                        body,
+                        sideParking),
+                    out ContinuousPlacedFacility placed,
+                    out ContinuousPlacementFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(placed.Footprint, Is.SameAs(body));
+            Assert.That(placed.FunctionalClearance, Is.SameAs(sideParking));
+
+            // 新设施本体没有碰到 station-a 的实体 0.5m 方块，却侵入了右侧水罐停放净空。
+            Assert.That(
+                ledger.Evaluate(new ContinuousFacilityPlacementRequest(
+                    "station-b",
+                    "station",
+                    new DeckPose(700, 0, 0),
+                    body)),
+                Is.EqualTo(ContinuousPlacementFailure.FunctionalClearanceOverlapsFacility));
+        }
+
         private static readonly DeckBounds MainDeck = new(-5000, -4000, 5000, 4000);
 
         private static readonly ContinuousFacilityFootprint TwoByOne = new(

@@ -67,6 +67,138 @@ namespace Game.NomadWorkshop.Foundation
         }
     }
 
+    /// <summary>
+    /// 设施在自身局部空间提供的一片物品放置区域。它描述桌面、柜台或地面停放区，
+    /// 不替代居民为了操作设施而使用的 <see cref="NomadFacilityInteractionGroupDefinition"/>。
+    /// </summary>
+    [Serializable]
+    public struct NomadPlacementRegionDefinition
+    {
+        [SerializeField, Tooltip("设施内部稳定且唯一的区域 id；存档发布后不要随意改名。")]
+        private string regionId;
+        [SerializeField, Tooltip("区域中心相对设施枢轴的 X/Z 偏移（米）。")]
+        private Vector2 localCenterMeters;
+        [SerializeField, Tooltip("区域沿自身 X/Z 的完整尺寸（米）。")]
+        private Vector2 sizeMeters;
+        [SerializeField, Tooltip("区域相对设施枢轴的局部旋转角（度）。")]
+        private float localYawDegrees;
+        [SerializeField, Min(0f), Tooltip("物品根节点相对甲板的支撑高度（米）；地面停放区通常为 0。")]
+        private float supportHeightMeters;
+        [SerializeField, Min(0f), Tooltip("从区域边缘向内保留的安全距离（米），防止物品贴边或穿过挡板。")]
+        private float edgeInsetMeters;
+        [SerializeField, Tooltip("该区域允许接收的物品类别，例如 water-can、food 或 tool。")]
+        private string[] acceptedCategories;
+
+        public NomadPlacementRegionDefinition(
+            string regionId,
+            Vector2 localCenterMeters,
+            Vector2 sizeMeters,
+            float localYawDegrees,
+            float supportHeightMeters,
+            float edgeInsetMeters,
+            params string[] acceptedCategories)
+        {
+            this.regionId = regionId;
+            this.localCenterMeters = localCenterMeters;
+            this.sizeMeters = sizeMeters;
+            this.localYawDegrees = localYawDegrees;
+            this.supportHeightMeters = supportHeightMeters;
+            this.edgeInsetMeters = edgeInsetMeters;
+            this.acceptedCategories = acceptedCategories != null
+                ? (string[])acceptedCategories.Clone()
+                : Array.Empty<string>();
+            Sanitize();
+        }
+
+        public string RegionId => regionId;
+        public Vector2 LocalCenterMeters => localCenterMeters;
+        public Vector2 SizeMeters => sizeMeters;
+        public float LocalYawDegrees => localYawDegrees;
+        public float SupportHeightMeters => supportHeightMeters;
+        public float EdgeInsetMeters => edgeInsetMeters;
+        public IReadOnlyList<string> AcceptedCategories => acceptedCategories;
+
+        public PlacementRegionDefinition CreateRegion(
+            string ownerEntityId,
+            in DeckPose ownerPose)
+        {
+            ValidateOrThrow(ownerEntityId);
+            DeckPose local = DeckPose.FromMeters(
+                localCenterMeters.x,
+                localCenterMeters.y,
+                localYawDegrees);
+            DeckPose size = DeckPose.FromMeters(sizeMeters.x, sizeMeters.y, 0d);
+            return new PlacementRegionDefinition(
+                PlacementRegionLedger.ComposeRegionId(ownerEntityId, regionId),
+                regionId,
+                ownerEntityId,
+                ownerPose.TransformLocal(
+                    local.XMillimeters,
+                    local.ZMillimeters,
+                    local.YawDeciDegrees),
+                size.XMillimeters,
+                size.ZMillimeters,
+                Mathf.RoundToInt(supportHeightMeters * 1000f),
+                Mathf.RoundToInt(edgeInsetMeters * 1000f),
+                acceptedCategories);
+        }
+
+        public DeckFootprintPart CreateFunctionalClearancePart()
+        {
+            DeckPose local = DeckPose.FromMeters(
+                localCenterMeters.x,
+                localCenterMeters.y,
+                localYawDegrees);
+            DeckPose size = DeckPose.FromMeters(sizeMeters.x, sizeMeters.y, 0d);
+            return new DeckFootprintPart(
+                local.XMillimeters,
+                local.ZMillimeters,
+                size.XMillimeters,
+                size.ZMillimeters,
+                local.YawDeciDegrees);
+        }
+
+        internal void ValidateOrThrow(string ownerName)
+        {
+            Sanitize();
+            if (string.IsNullOrWhiteSpace(regionId))
+                throw new InvalidOperationException($"设施 '{ownerName}' 存在空 PlacementRegion id。");
+            if (acceptedCategories == null || acceptedCategories.Length == 0)
+                throw new InvalidOperationException(
+                    $"设施 '{ownerName}' 的 PlacementRegion '{regionId}' 没有允许的物品类别。");
+            var categories = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < acceptedCategories.Length; i++)
+            {
+                string category = acceptedCategories[i];
+                if (string.IsNullOrWhiteSpace(category))
+                    throw new InvalidOperationException(
+                        $"设施 '{ownerName}' 的 PlacementRegion '{regionId}' 第 {i} 个类别为空。");
+                if (!categories.Add(category))
+                    throw new InvalidOperationException(
+                        $"设施 '{ownerName}' 的 PlacementRegion '{regionId}' 重复接受类别 '{category}'。");
+            }
+        }
+
+        internal void Sanitize()
+        {
+            regionId = regionId?.Trim() ?? string.Empty;
+            if (!float.IsFinite(localCenterMeters.x)) localCenterMeters.x = 0f;
+            if (!float.IsFinite(localCenterMeters.y)) localCenterMeters.y = 0f;
+            if (!float.IsFinite(localYawDegrees)) localYawDegrees = 0f;
+            sizeMeters.x = float.IsFinite(sizeMeters.x) ? Mathf.Max(0.05f, sizeMeters.x) : 0.05f;
+            sizeMeters.y = float.IsFinite(sizeMeters.y) ? Mathf.Max(0.05f, sizeMeters.y) : 0.05f;
+            supportHeightMeters = float.IsFinite(supportHeightMeters)
+                ? Mathf.Max(0f, supportHeightMeters)
+                : 0f;
+            edgeInsetMeters = float.IsFinite(edgeInsetMeters)
+                ? Mathf.Clamp(edgeInsetMeters, 0f, Mathf.Min(sizeMeters.x, sizeMeters.y) * 0.49f)
+                : 0f;
+            acceptedCategories ??= Array.Empty<string>();
+            for (var i = 0; i < acceptedCategories.Length; i++)
+                acceptedCategories[i] = acceptedCategories[i]?.Trim() ?? string.Empty;
+        }
+    }
+
     /// <summary>一个 InteractionGroup 中的候选贴靠姿势；位置和朝向均相对设施枢轴。</summary>
     [Serializable]
     public struct NomadFacilityInteractionSlotDefinition
@@ -201,6 +333,11 @@ namespace Game.NomadWorkshop.Foundation
         private NomadFacilityInteractionGroupDefinition[] interactionGroups =
             Array.Empty<NomadFacilityInteractionGroupDefinition>();
 
+        [Header("物品放置区域（相对设施枢轴）")]
+        [SerializeField, Tooltip("桌面、柜台或地面停放区；区域容量和物品占地由纯模拟账本裁定，不使用刚体落点作为真值。")]
+        private NomadPlacementRegionDefinition[] placementRegions =
+            Array.Empty<NomadPlacementRegionDefinition>();
+
         [Header("初始设施")]
         [SerializeField, Tooltip("是否在复位/新游戏时自动放置。")]
         private bool placeAtStart;
@@ -228,6 +365,7 @@ namespace Game.NomadWorkshop.Foundation
             startYawDegrees);
         public IReadOnlyList<NomadFacilityInteractionGroupDefinition> InteractionGroups =>
             interactionGroups;
+        public IReadOnlyList<NomadPlacementRegionDefinition> PlacementRegions => placementRegions;
         public GameObject Prefab => prefab;
         public Vector3 PrototypeSize => prototypeSize;
         public Color PrototypeColor => prototypeColor;
@@ -238,6 +376,39 @@ namespace Game.NomadWorkshop.Foundation
             var parts = new DeckFootprintPart[footprintParts.Length];
             for (var i = 0; i < parts.Length; i++) parts[i] = footprintParts[i].CreatePart();
             return new ContinuousFacilityFootprint(parts);
+        }
+
+        /// <summary>
+        /// 返回不参与 NavMesh 障碍、但设施摆放不得侵占的物品功能净空；没有区域时返回 null。
+        /// </summary>
+        public ContinuousFacilityFootprint CreateFunctionalClearanceFootprint()
+        {
+            ValidateOrThrow();
+            if (placementRegions.Length == 0) return null;
+
+            var parts = new DeckFootprintPart[placementRegions.Length];
+            for (var i = 0; i < parts.Length; i++)
+                parts[i] = placementRegions[i].CreateFunctionalClearancePart();
+            return new ContinuousFacilityFootprint(parts);
+        }
+
+        public bool TryGetPlacementRegion(
+            string localRegionId,
+            out NomadPlacementRegionDefinition region)
+        {
+            for (var i = 0; i < placementRegions.Length; i++)
+            {
+                if (!string.Equals(
+                        placementRegions[i].RegionId,
+                        localRegionId,
+                        StringComparison.Ordinal))
+                    continue;
+                region = placementRegions[i];
+                return true;
+            }
+
+            region = default;
+            return false;
         }
 
         public void ValidateOrThrow()
@@ -258,6 +429,18 @@ namespace Game.NomadWorkshop.Foundation
                 if (!groupIds.Add(group.GroupId))
                     throw new InvalidOperationException(
                         $"设施定义 '{name}' 出现重复 InteractionGroup '{group.GroupId}'。");
+            }
+
+            placementRegions ??= Array.Empty<NomadPlacementRegionDefinition>();
+            var regionIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < placementRegions.Length; i++)
+            {
+                NomadPlacementRegionDefinition region = placementRegions[i];
+                region.ValidateOrThrow(name);
+                placementRegions[i] = region;
+                if (!regionIds.Add(region.RegionId))
+                    throw new InvalidOperationException(
+                        $"设施定义 '{name}' 出现重复 PlacementRegion '{region.RegionId}'。");
             }
         }
 
@@ -280,6 +463,13 @@ namespace Game.NomadWorkshop.Foundation
                     footprintParts[i] = part;
                 }
             }
+            placementRegions ??= Array.Empty<NomadPlacementRegionDefinition>();
+            for (var i = 0; i < placementRegions.Length; i++)
+            {
+                NomadPlacementRegionDefinition region = placementRegions[i];
+                region.Sanitize();
+                placementRegions[i] = region;
+            }
         }
 
 #if UNITY_EDITOR
@@ -291,6 +481,7 @@ namespace Game.NomadWorkshop.Foundation
             bool configuredBuildable,
             NomadFacilityFootprintPartDefinition[] configuredFootprintParts,
             NomadFacilityInteractionGroupDefinition[] configuredInteractionGroups,
+            NomadPlacementRegionDefinition[] configuredPlacementRegions,
             bool configuredPlaceAtStart,
             Vector2 configuredStartPositionMeters,
             float configuredStartYawDegrees,
@@ -303,6 +494,8 @@ namespace Game.NomadWorkshop.Foundation
             buildable = configuredBuildable;
             footprintParts = configuredFootprintParts;
             interactionGroups = configuredInteractionGroups;
+            placementRegions = configuredPlacementRegions ??
+                               Array.Empty<NomadPlacementRegionDefinition>();
             placeAtStart = configuredPlaceAtStart;
             startPositionMeters = configuredStartPositionMeters;
             startYawDegrees = configuredStartYawDegrees;
@@ -312,6 +505,33 @@ namespace Game.NomadWorkshop.Foundation
             OnValidate();
             CreateFootprint();
         }
+
+        /// <summary>兼容没有物品放置区域的既有 Editor 生成器。</summary>
+        public void ConfigureForEditor(
+            string configuredId,
+            string configuredDisplayName,
+            NomadFacilityFunction configuredFunction,
+            bool configuredBuildable,
+            NomadFacilityFootprintPartDefinition[] configuredFootprintParts,
+            NomadFacilityInteractionGroupDefinition[] configuredInteractionGroups,
+            bool configuredPlaceAtStart,
+            Vector2 configuredStartPositionMeters,
+            float configuredStartYawDegrees,
+            Vector3 configuredPrototypeSize,
+            Color configuredPrototypeColor) =>
+            ConfigureForEditor(
+                configuredId,
+                configuredDisplayName,
+                configuredFunction,
+                configuredBuildable,
+                configuredFootprintParts,
+                configuredInteractionGroups,
+                Array.Empty<NomadPlacementRegionDefinition>(),
+                configuredPlaceAtStart,
+                configuredStartPositionMeters,
+                configuredStartYawDegrees,
+                configuredPrototypeSize,
+                configuredPrototypeColor);
 
         /// <summary>与正式 Editor 生成入口共用同一套校验，避免测试伪造第二种定义语义。</summary>
         public void ConfigureForTests(
@@ -333,6 +553,34 @@ namespace Game.NomadWorkshop.Foundation
                 configuredBuildable,
                 configuredFootprintParts,
                 configuredInteractionGroups,
+                configuredPlaceAtStart,
+                configuredStartPositionMeters,
+                configuredStartYawDegrees,
+                configuredPrototypeSize,
+                configuredPrototypeColor);
+
+        /// <summary>隔离测试可显式声明物品放置区域，验证正式定义的空间语义。</summary>
+        public void ConfigureForTests(
+            string configuredId,
+            string configuredDisplayName,
+            NomadFacilityFunction configuredFunction,
+            bool configuredBuildable,
+            NomadFacilityFootprintPartDefinition[] configuredFootprintParts,
+            NomadFacilityInteractionGroupDefinition[] configuredInteractionGroups,
+            NomadPlacementRegionDefinition[] configuredPlacementRegions,
+            bool configuredPlaceAtStart,
+            Vector2 configuredStartPositionMeters,
+            float configuredStartYawDegrees,
+            Vector3 configuredPrototypeSize,
+            Color configuredPrototypeColor) =>
+            ConfigureForEditor(
+                configuredId,
+                configuredDisplayName,
+                configuredFunction,
+                configuredBuildable,
+                configuredFootprintParts,
+                configuredInteractionGroups,
+                configuredPlacementRegions,
                 configuredPlaceAtStart,
                 configuredStartPositionMeters,
                 configuredStartYawDegrees,

@@ -29,6 +29,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         private NomadFoundationModel _model;
         private NomadFoundationSystem _system;
         private NomadFoundationWorldView _worldView;
+        private NomadFoundationDebugView _debugView;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -59,6 +60,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Light light = CreateChild(presentation.transform, "Light").AddComponent<Light>();
             _worldView = presentation.AddComponent<NomadFoundationWorldView>();
             _worldView.ConfigureForTests(_layout, _definitions, deck.transform, camera, light);
+            _debugView = CreateChild(_root.transform, "Debug").AddComponent<NomadFoundationDebugView>();
 
             _root.SetActive(true);
             _system.ConfigureTimingsForTests(16f, 100f);
@@ -402,6 +404,60 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator SwitchingAwayFromBuildPanel_ExecutesFullExitAndHidesWorldDiagnostics()
+        {
+            Transform sourceVisual = FindFacilityVisual("initial-vehicle-water-tank");
+            Transform sourceSlots = sourceVisual.Find(
+                "Interaction Slots (build mode)");
+            Transform sourceRegions = sourceVisual.Find(
+                "Placement Regions (build mode)");
+            Transform grid = _worldView.transform.Find(
+                "Vehicle Deck Root/Optional Placement Grid");
+            Assert.That(sourceSlots, Is.Not.Null);
+            Assert.That(sourceRegions, Is.Not.Null);
+            Assert.That(grid, Is.Not.Null);
+
+            _debugView.TogglePanelForTests(FoundationHudPanel.Build);
+            yield return null;
+            Assert.That(_model.InteractionMode.Value, Is.EqualTo(FoundationInteractionMode.Build));
+            Assert.That(sourceSlots.gameObject.activeSelf, Is.True);
+            Assert.That(sourceRegions.gameObject.activeSelf, Is.True);
+            Assert.That(grid.gameObject.activeSelf, Is.True);
+
+            _debugView.TogglePanelForTests(FoundationHudPanel.Resident);
+            yield return null;
+            Assert.That(_debugView.OpenPanelForTests, Is.EqualTo(FoundationHudPanel.Resident));
+            AssertWorldBuildDiagnosticsHidden();
+
+            _debugView.TogglePanelForTests(FoundationHudPanel.Build);
+            yield return null;
+            Assert.That(_model.InteractionMode.Value, Is.EqualTo(FoundationInteractionMode.Build));
+            _debugView.TogglePanelForTests(FoundationHudPanel.Developer);
+            yield return null;
+            Assert.That(_debugView.OpenPanelForTests, Is.EqualTo(FoundationHudPanel.Developer));
+            AssertWorldBuildDiagnosticsHidden();
+
+            _debugView.TogglePanelForTests(FoundationHudPanel.Build);
+            yield return null;
+            Assert.That(_model.InteractionMode.Value, Is.EqualTo(FoundationInteractionMode.Build));
+            _debugView.TogglePanelForTests(FoundationHudPanel.Build);
+            yield return null;
+            Assert.That(_debugView.OpenPanelForTests, Is.EqualTo(FoundationHudPanel.None));
+            AssertWorldBuildDiagnosticsHidden();
+
+            void AssertWorldBuildDiagnosticsHidden()
+            {
+                Assert.That(
+                    _model.InteractionMode.Value,
+                    Is.EqualTo(FoundationInteractionMode.Observe));
+                Assert.That(_model.PlacementPreview.Value.Active, Is.False);
+                Assert.That(sourceSlots.gameObject.activeSelf, Is.False);
+                Assert.That(sourceRegions.gameObject.activeSelf, Is.False);
+                Assert.That(grid.gameObject.activeSelf, Is.False);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator BuildDrinkingStation_ResidentHaulsRealWaterAndDrinks()
         {
             // 屏蔽真实鼠标位置对候选姿态的扰动；响应式表现订阅仍保留。
@@ -479,6 +535,18 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 readModel.WaterCanLocation.CurrentValue,
                 Is.EqualTo(FoundationWaterCanLocation.DrinkingStation),
                 "倒水后空水罐应留在饮水站旁，下一次补货必须先到这里取得它。");
+            FoundationItemPlacementState canPlacement =
+                readModel.WaterCanPlacement.CurrentValue;
+            Assert.That(canPlacement.Active, Is.True);
+            Assert.That(canPlacement.OwnerEntityId, Is.EqualTo("facility-0001"));
+            Assert.That(
+                canPlacement.RegionId,
+                Is.EqualTo("facility-0001/placement/water-can-parking"));
+            Assert.That(canPlacement.LocalPose, Is.EqualTo(PlacementRegionPose.Centered));
+            Assert.That(
+                canPlacement.WorldPose,
+                Is.EqualTo(facilities[1].Pose.TransformLocal(720, 0)),
+                "水罐世界姿态必须由饮水站的 Authoring 区域与局部姿态推导，不能由 View 猜侧偏移。 ");
             FoundationActionPlanProjection plan = readModel.LatestActionPlan.CurrentValue;
             Assert.That(plan.Evaluated, Is.True);
             Assert.That(plan.Feasible, Is.True);
@@ -548,6 +616,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 savedCan.OwnerEntityId,
                 Is.EqualTo("initial-vehicle-water-tank"),
                 "未提交的携带阶段应回滚到精确水箱锚点，而不是保存半个资源租约。 ");
+            Assert.That(
+                savedCan.PlacementRegionId,
+                Is.EqualTo("initial-vehicle-water-tank/placement/water-can-parking"));
+            Assert.That(
+                savedCan.PlacementLocalPose.ToPlacementPose(),
+                Is.EqualTo(PlacementRegionPose.Centered));
             Assert.That(checkpoint.Residents[0].ActiveAction, Is.Null);
             Assert.That(checkpoint.RandomStreams.Count, Is.EqualTo(5));
             Assert.That(
@@ -571,6 +645,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(
                 _model.WaterCanAnchorFacilityInstanceId.Value,
                 Is.EqualTo("initial-vehicle-water-tank"));
+            Assert.That(
+                _model.WaterCanPlacement.Value.RegionId,
+                Is.EqualTo(savedCan.PlacementRegionId));
+            Assert.That(
+                _model.WaterCanPlacement.Value.LocalPose,
+                Is.EqualTo(savedCan.PlacementLocalPose.ToPlacementPose()));
             Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
             Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(60_000));
             Assert.That(
@@ -919,7 +999,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         {
             _worldView.enabled = false;
             _context.ExecuteCommand(new BeginFacilityPlacementCommand("access-wall"));
-            _context.ExecuteCommand(new MoveFacilityPreviewCommand(-2000, 0));
+            _context.ExecuteCommand(new MoveFacilityPreviewCommand(-1600, 0));
             yield return null;
 
             FoundationPlacementPreviewState preview = _model.PlacementPreview.Value;
@@ -1504,6 +1584,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     new NomadFacilityInteractionSlotDefinition(
                         "right",
                         new Vector2(0.48f, -0.9f))),
+                WaterCanParkingRegion(1.2f),
                 true,
                 new Vector2(-3.4f, 2.25f),
                 0f,
@@ -1533,6 +1614,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     new NomadFacilityInteractionSlotDefinition(
                         "right",
                         new Vector2(0.24f, -0.78f))),
+                WaterCanParkingRegion(0.72f),
                 false,
                 Vector2.zero,
                 0f,
@@ -1644,6 +1726,19 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 new Color(0.58f, 0.28f, 0.13f));
             return new[] { source, station, accessWall, toilet, slotBlocker, observationEasel };
         }
+
+        private static NomadPlacementRegionDefinition[] WaterCanParkingRegion(float localX) =>
+            new[]
+            {
+                new NomadPlacementRegionDefinition(
+                    "water-can-parking",
+                    new Vector2(localX, 0f),
+                    new Vector2(0.42f, 0.32f),
+                    0f,
+                    0f,
+                    0.02f,
+                    "water-can"),
+            };
 
         private IEnumerator BuildFacility(
             string definitionId,

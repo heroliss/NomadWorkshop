@@ -296,6 +296,7 @@ namespace Game.NomadWorkshop.Editor
                 buildable,
                 footprintParts,
                 interactionGroups,
+                CreatePlacementRegions(function),
                 placeAtStart,
                 startPositionMeters,
                 startYawDegrees,
@@ -303,6 +304,36 @@ namespace Game.NomadWorkshop.Editor
                 prototypeColor);
             EditorUtility.SetDirty(definition);
         }
+
+        private static NomadPlacementRegionDefinition[] CreatePlacementRegions(
+            NomadFacilityFunction function) => function switch
+            {
+                NomadFacilityFunction.VehicleWaterTank =>
+                new[]
+                {
+                    new NomadPlacementRegionDefinition(
+                        "water-can-parking",
+                        new Vector2(1.2f, 0f),
+                        new Vector2(0.42f, 0.32f),
+                        0f,
+                        0f,
+                        0.02f,
+                        "water-can"),
+                },
+                NomadFacilityFunction.DrinkingStation =>
+                new[]
+                {
+                    new NomadPlacementRegionDefinition(
+                        "water-can-parking",
+                        new Vector2(0.72f, 0f),
+                        new Vector2(0.42f, 0.32f),
+                        0f,
+                        0f,
+                        0.02f,
+                        "water-can"),
+                },
+                _ => Array.Empty<NomadPlacementRegionDefinition>(),
+            };
 
         private static NomadFacilityInteractionGroupDefinition[] RequiredGroup(
             string groupId,

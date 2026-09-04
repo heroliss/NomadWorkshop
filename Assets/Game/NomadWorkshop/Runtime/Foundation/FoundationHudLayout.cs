@@ -27,6 +27,23 @@ namespace Game.NomadWorkshop.Foundation
             FoundationHudPanel requested) =>
             current == requested ? FoundationHudPanel.None : requested;
 
+        /// <summary>
+        /// 判断面板切换是否必须退出建造模式。建造模式会驱动世界中的网格、幽灵和停靠点，
+        /// 因此不能只关闭面板而把领域交互状态遗留在后台。
+        /// </summary>
+        public static bool ShouldExitBuildMode(
+            FoundationInteractionMode interactionMode,
+            FoundationHudPanel nextPanel) =>
+            interactionMode == FoundationInteractionMode.Build &&
+            nextPanel != FoundationHudPanel.Build;
+
+        /// <summary>打开建造面板时，确保领域交互状态也进入建造模式。</summary>
+        public static bool ShouldEnterBuildMode(
+            FoundationInteractionMode interactionMode,
+            FoundationHudPanel nextPanel) =>
+            interactionMode != FoundationInteractionMode.Build &&
+            nextPanel == FoundationHudPanel.Build;
+
         public static Rect GetCompactResidentCardRect(float screenWidth)
         {
             float availableWidth = Mathf.Max(0f, screenWidth - Margin * 2f);

@@ -26,6 +26,8 @@ namespace Game.NomadWorkshop.Foundation
         DeckLevelUnavailable,
         FootprintOutOfBounds,
         FootprintOverlapsFacility,
+        FunctionalClearanceOutOfBounds,
+        FunctionalClearanceOverlapsFacility,
         NavigationUpdateFailed,
         RequiredInteractionUnreachable,
         TransactionInProgress,
@@ -80,6 +82,84 @@ namespace Game.NomadWorkshop.Foundation
         VehicleWaterTank,
         DrinkingStation,
         Resident,
+    }
+
+    /// <summary>
+    /// 一件世界物品在放置区域中的只读投影。局部量化姿态是存档真值，世界姿态只为 View、
+    /// 调试和选择提供方便，仍由区域与局部姿态确定性推导。
+    /// </summary>
+    [Serializable]
+    public struct FoundationItemPlacementState : IEquatable<FoundationItemPlacementState>
+    {
+        [SerializeField] private string itemId;
+        [SerializeField] private string regionId;
+        [SerializeField] private string ownerEntityId;
+        [SerializeField] private int localXMillimeters;
+        [SerializeField] private int localZMillimeters;
+        [SerializeField] private int localYawDeciDegrees;
+        [SerializeField] private int worldXMillimeters;
+        [SerializeField] private int worldZMillimeters;
+        [SerializeField] private int worldYawDeciDegrees;
+        [SerializeField] private int deckLevel;
+        [SerializeField] private int supportHeightMillimeters;
+
+        public FoundationItemPlacementState(PlacementRegionItem placement)
+        {
+            if (placement == null) throw new ArgumentNullException(nameof(placement));
+            itemId = placement.ItemId;
+            regionId = placement.Region.RegionId;
+            ownerEntityId = placement.Region.OwnerEntityId;
+            localXMillimeters = placement.LocalPose.LocalXMillimeters;
+            localZMillimeters = placement.LocalPose.LocalZMillimeters;
+            localYawDeciDegrees = placement.LocalPose.LocalYawDeciDegrees;
+            worldXMillimeters = placement.WorldPose.XMillimeters;
+            worldZMillimeters = placement.WorldPose.ZMillimeters;
+            worldYawDeciDegrees = placement.WorldPose.YawDeciDegrees;
+            deckLevel = placement.WorldPose.DeckLevel;
+            supportHeightMillimeters = placement.Region.SupportHeightMillimeters;
+        }
+
+        public bool Active => !string.IsNullOrWhiteSpace(itemId);
+        public string ItemId => itemId;
+        public string RegionId => regionId;
+        public string OwnerEntityId => ownerEntityId;
+        public PlacementRegionPose LocalPose =>
+            new(localXMillimeters, localZMillimeters, localYawDeciDegrees);
+        public DeckPose WorldPose =>
+            new(worldXMillimeters, worldZMillimeters, worldYawDeciDegrees, deckLevel);
+        public int SupportHeightMillimeters => supportHeightMillimeters;
+
+        public bool Equals(FoundationItemPlacementState other) =>
+            string.Equals(itemId, other.itemId, StringComparison.Ordinal) &&
+            string.Equals(regionId, other.regionId, StringComparison.Ordinal) &&
+            string.Equals(ownerEntityId, other.ownerEntityId, StringComparison.Ordinal) &&
+            localXMillimeters == other.localXMillimeters &&
+            localZMillimeters == other.localZMillimeters &&
+            localYawDeciDegrees == other.localYawDeciDegrees &&
+            worldXMillimeters == other.worldXMillimeters &&
+            worldZMillimeters == other.worldZMillimeters &&
+            worldYawDeciDegrees == other.worldYawDeciDegrees &&
+            deckLevel == other.deckLevel &&
+            supportHeightMillimeters == other.supportHeightMillimeters;
+
+        public override bool Equals(object obj) =>
+            obj is FoundationItemPlacementState other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            int identity = HashCode.Combine(itemId, regionId, ownerEntityId);
+            int local = HashCode.Combine(
+                localXMillimeters,
+                localZMillimeters,
+                localYawDeciDegrees);
+            int world = HashCode.Combine(
+                worldXMillimeters,
+                worldZMillimeters,
+                worldYawDeciDegrees,
+                deckLevel,
+                supportHeightMillimeters);
+            return HashCode.Combine(identity, local, world);
+        }
     }
 
     /// <summary>

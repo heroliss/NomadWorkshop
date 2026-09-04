@@ -33,6 +33,15 @@ MonoBehaviour:
     - slotId: right
       localPositionMeters: {x: 0.48, y: -0.9}
       localYawDegrees: 0
+  placementRegions:
+  - regionId: water-can-parking
+    localCenterMeters: {x: 1.2, y: 0}
+    sizeMeters: {x: 0.42, y: 0.32}
+    localYawDegrees: 0
+    supportHeightMeters: 0
+    edgeInsetMeters: 0.02
+    acceptedCategories:
+    - water-can
   placeAtStart: 1
   startPositionMeters: {x: -3.4, y: 2.25}
   startYawDegrees: 0
