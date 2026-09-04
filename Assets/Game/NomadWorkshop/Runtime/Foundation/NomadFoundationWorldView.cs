@@ -146,7 +146,7 @@ namespace Game.NomadWorkshop.Foundation
                 _waterCanLocation = location;
                 UpdateWaterCanVisual();
             });
-            Bag.Subscribe(readModel.WaterCanWater, amount =>
+            Bag.Subscribe(readModel.WaterCanWaterMilliliters, amount =>
             {
                 if (_waterCanFillVisual != null)
                     _waterCanFillVisual.gameObject.SetActive(amount > 0);

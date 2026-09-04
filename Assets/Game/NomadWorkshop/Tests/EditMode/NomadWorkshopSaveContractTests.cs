@@ -36,6 +36,17 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void PrepareAfterLoad_RejectsVersionOneWithoutMeasurementMigration()
+        {
+            NomadWorkshopSaveData versionOne = CreateValidSave();
+            versionOne.Version = 1;
+
+            Assert.Throws<NotSupportedException>(
+                () => NomadWorkshopSaveContract.PrepareAfterLoad(versionOne),
+                "v1 的 Amount / Capacity 没有量纲，不能把旧数字静默解释为 v2 的件或 mL。");
+        }
+
+        [Test]
         public void ValidateForSave_RejectsDuplicateEntityAndOverfilledInventory()
         {
             NomadWorkshopSaveData duplicate = CreateValidSave();
@@ -49,9 +60,14 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 () => NomadWorkshopSaveContract.ValidateForSave(duplicate));
 
             NomadWorkshopSaveData overfilled = CreateValidSave();
-            overfilled.Inventories[0].Capacity = 0;
+            overfilled.Inventories[0].CapacityBaseUnits = 0;
             Assert.Throws<InvalidOperationException>(
                 () => NomadWorkshopSaveContract.ValidateForSave(overfilled));
+
+            NomadWorkshopSaveData mismatchedMeasure = CreateValidSave();
+            mismatchedMeasure.Inventories[0].Contents[0].Measure = ResourceMeasure.Milliliter;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(mismatchedMeasure));
         }
 
         [Test]
@@ -110,7 +126,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
             {
                 InventoryId = "resident-a-hands",
                 OwnerEntityId = "resident-a",
-                Capacity = 1,
+                Measure = ResourceMeasure.Item,
+                CapacityBaseUnits = 1,
             });
             save.Residents.Add(new NomadResidentSaveData
             {
@@ -169,7 +186,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
             {
                 InventoryId = "resident-b-hands",
                 OwnerEntityId = "resident-b",
-                Capacity = 2,
+                Measure = ResourceMeasure.Item,
+                CapacityBaseUnits = 2,
                 ContaminationPermille = 110,
                 Contents = new List<NomadResourceStackSaveData>
                 {
@@ -177,7 +195,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
                     {
                         StackId = "parts-0004",
                         ResourceId = "repair-parts",
-                        Amount = 1,
+                        Measure = ResourceMeasure.Item,
+                        AmountBaseUnits = 1,
                         ConditionPermille = 930,
                         ContaminationPermille = 80,
                     },

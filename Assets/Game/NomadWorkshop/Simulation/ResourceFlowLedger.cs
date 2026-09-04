@@ -43,6 +43,7 @@ namespace Game.NomadWorkshop.Simulation
             Inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             if (!resource.IsValid) throw new ArgumentException("资源 id 无效。", nameof(resource));
             if (amount <= 0) throw new ArgumentOutOfRangeException(nameof(amount), "资源数量必须大于零。");
+            inventory.EnsureCompatible(resource);
             Resource = resource;
             Amount = amount;
         }
@@ -80,6 +81,10 @@ namespace Game.NomadWorkshop.Simulation
             if (amount <= 0) throw new ArgumentOutOfRangeException(nameof(amount), "搬运数量必须大于零。");
             if (string.IsNullOrWhiteSpace(reason))
                 throw new ArgumentException("搬运任务必须说明原因。", nameof(reason));
+
+            source.EnsureCompatible(resource);
+            carrier.EnsureCompatible(resource);
+            destination.EnsureCompatible(resource);
 
             TaskId = taskId.Trim();
             OwnerId = ownerId;

@@ -9,7 +9,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     /// </summary>
     public static class NomadWorkshopSaveSchema
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
     }
 
     /// <summary>
@@ -163,18 +163,23 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     {
         public string StackId = string.Empty;
         public string ResourceId = string.Empty;
-        public int Amount;
+        public ResourceMeasure Measure;
+        public int AmountBaseUnits;
         public int ConditionPermille = 1000;
         public int ContaminationPermille;
     }
 
-    /// <summary>真实储物节点；容量、容器污染和每个批次的位置是存档真值，不保存运行期预留计数。</summary>
+    /// <summary>
+    /// 真实储物节点；容量与内容共享同一计量维度。复合设施保存多个库存隔间，不能把件数与 mL
+    /// 相加成一个总容量。容器污染和每个批次的位置是存档真值，不保存运行期预留计数。
+    /// </summary>
     [Serializable]
     public sealed class NomadInventorySaveData
     {
         public string InventoryId = string.Empty;
         public string OwnerEntityId = string.Empty;
-        public int Capacity;
+        public ResourceMeasure Measure;
+        public int CapacityBaseUnits;
         public int ContaminationPermille;
         public List<NomadResourceStackSaveData> Contents = new();
     }
@@ -415,7 +420,10 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                 NomadInventorySaveData inventory = inventories[i] ??
                     throw new InvalidOperationException($"库存列表第 {i} 项为空。");
                 RequireUniqueId(inventory.InventoryId, "库存", inventoryIds);
-                if (inventory.Capacity < 0)
+                if (!Enum.IsDefined(typeof(ResourceMeasure), inventory.Measure))
+                    throw new InvalidOperationException(
+                        $"库存 {inventory.InventoryId} 的计量维度无效。");
+                if (inventory.CapacityBaseUnits < 0)
                     throw new InvalidOperationException($"库存 {inventory.InventoryId} 容量不能为负数。");
                 ValidateRange(inventory.ContaminationPermille, $"库存 {inventory.InventoryId} 污染");
                 if (inventory.Contents == null)
@@ -429,16 +437,21 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                             $"库存 {inventory.InventoryId} 的第 {stackIndex} 个批次为空。");
                     RequireUniqueId(stack.StackId, "资源批次", stackIds);
                     RequireId(stack.ResourceId, "资源");
-                    if (stack.Amount <= 0)
+                    if (!Enum.IsDefined(typeof(ResourceMeasure), stack.Measure) ||
+                        stack.Measure != inventory.Measure)
+                        throw new InvalidOperationException(
+                            $"资源批次 {stack.StackId} 的计量维度与库存 {inventory.InventoryId} 不一致。");
+                    if (stack.AmountBaseUnits <= 0)
                         throw new InvalidOperationException($"资源批次 {stack.StackId} 数量必须大于零。");
                     ValidateRange(stack.ConditionPermille, $"资源批次 {stack.StackId} 状态");
                     ValidateRange(stack.ContaminationPermille, $"资源批次 {stack.StackId} 污染");
-                    total = checked(total + stack.Amount);
+                    total = checked(total + stack.AmountBaseUnits);
                 }
 
-                if (total > inventory.Capacity)
+                if (total > inventory.CapacityBaseUnits)
                     throw new InvalidOperationException(
-                        $"库存 {inventory.InventoryId} 内容 {total} 超过容量 {inventory.Capacity}。");
+                        $"库存 {inventory.InventoryId} 内容 {total} 超过容量 " +
+                        $"{inventory.CapacityBaseUnits}。");
             }
         }
 

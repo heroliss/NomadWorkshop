@@ -7,6 +7,7 @@ using Game.Framework.Context;
 using Game.Framework.Storage;
 using Game.Framework.Systems;
 using Game.NomadWorkshop.Persistence;
+using Game.NomadWorkshop.Simulation;
 using Game.NomadWorkshop.Simulation.Persistence;
 using NUnit.Framework;
 using UnityEngine;
@@ -59,6 +60,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.AreEqual(expected.Facilities[0].Pose, actual.Facilities[0].Pose);
                 Assert.AreEqual(expected.Inventories[0].ContaminationPermille,
                     actual.Inventories[0].ContaminationPermille);
+                Assert.AreEqual(ResourceMeasure.Item, actual.Inventories[0].Measure);
+                Assert.AreEqual(1, actual.Inventories[0].Contents[0].AmountBaseUnits);
                 Assert.AreEqual("right", actual.Residents[0].ActiveAction.InteractionSlotId);
                 Assert.IsTrue(actual.Residents[0].ActiveAction.OutcomeCommitted);
                 Assert.AreEqual(expected.Residents[0].BodyHygieneDeficitPermille,
@@ -104,7 +107,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             {
                 InventoryId = "resident-b-hands",
                 OwnerEntityId = "resident-b",
-                Capacity = 2,
+                Measure = ResourceMeasure.Item,
+                CapacityBaseUnits = 2,
                 ContaminationPermille = 110,
                 Contents =
                 {
@@ -112,7 +116,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     {
                         StackId = "parts-0004",
                         ResourceId = "repair-parts",
-                        Amount = 1,
+                        Measure = ResourceMeasure.Item,
+                        AmountBaseUnits = 1,
                         ConditionPermille = 930,
                         ContaminationPermille = 80,
                     },

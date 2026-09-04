@@ -146,10 +146,17 @@ namespace Game.NomadWorkshop.Navigation
                 _resourceFlow = new ResourceFlowLedger(_interactionReservations);
                 _cabinetInventory = new ResourceInventory(
                     "navigation-spike-cabinet",
+                    ResourceMeasure.Item,
                     2,
                     new ResourceQuantity(SpikeItem, 2));
-                _residentAInventory = new ResourceInventory("navigation-spike-resident-a", 1);
-                _residentBInventory = new ResourceInventory("navigation-spike-resident-b", 1);
+                _residentAInventory = new ResourceInventory(
+                    "navigation-spike-resident-a",
+                    ResourceMeasure.Item,
+                    1);
+                _residentBInventory = new ResourceInventory(
+                    "navigation-spike-resident-b",
+                    ResourceMeasure.Item,
+                    1);
                 _taskSequence = 0;
                 RefreshInventoryProjection();
 

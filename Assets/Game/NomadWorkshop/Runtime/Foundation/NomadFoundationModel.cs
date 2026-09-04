@@ -37,16 +37,22 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<bool> ResidentCarryingWater { get; private set; } = new(false);
         [field: SerializeField] public RP<FoundationWaterCanLocation> WaterCanLocation { get; private set; } =
             new(FoundationWaterCanLocation.VehicleWaterTank);
-        [field: SerializeField] public RP<int> WaterCanWater { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> WaterCanWaterMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> WaterCanCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationActionPlanProjection> LatestActionPlan { get; private set; } =
             new(FoundationActionPlanProjection.None);
         [field: SerializeField] public RP<float> ResidentThirst { get; private set; } = new(0f);
         [field: SerializeField] public RP<float> ResidentRecreation { get; private set; } = new(0f);
-        [field: SerializeField] public RP<int> VehicleWater { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> DrinkingStationWater { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> BodyWater { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> BladderWaste { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> ToiletHoldingWaste { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> VehicleWaterMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> VehicleWaterCapacityMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> DrinkingStationWaterMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> DrinkingStationCapacityMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> BodyWaterMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> BodyWaterCapacityMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> BladderWasteMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> BladderCapacityMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> ToiletHoldingWasteMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> ToiletHoldingCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<float> ActionProgress { get; private set; } = new(0f);
         [field: SerializeField] public RP<int> CompletedDrinkCount { get; private set; } = new(0);
         [field: SerializeField] public RP<int> CompletedToiletUseCount { get; private set; } = new(0);

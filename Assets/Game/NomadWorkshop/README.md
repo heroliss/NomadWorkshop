@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**时间 / 随机 / 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.23**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**mL 水循环 / 同量纲库存 + 时间 / 随机 / 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.24**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -14,14 +14,14 @@
 - 设施权威记录只保存稳定实例 id、定义 id 与 `DeckPose`，复合有向矩形 Footprint、候选交互位和 3D Transform 都从定义与姿态派生；首发定义使用 ScriptableObject，灰盒稳定后可只替换视觉子树；
 - 拖动候选时，复用数组的纯 C# 连通预演会重算候选与既有设施的每个 InteractionGroup / Slot；同组任一 Slot 可达即保留该功能，越界 / 占地重叠是硬错误，功能点不可达是仍可确认的软警告；
 - 建造视图无需悬停就持续显示全部设施的所有停靠位；完全不可达的既有设施标红，部分功能失效标橙，每个失效 Group 另有独立红色功能警示；
-- 建成饮水站后，一名居民会在站内有水时就近饮用、缺水且口渴时从初始车辆水箱紧急搬一桶、空闲时低优先级补到 2/2 且不误饮；体内水暂满只形成等待代谢 / 如厕的背压，旱厕会真实接收膀胱废物；
+- 建成饮水站后，一名居民会在站内有水时就近饮用 300 mL、缺水且口渴时用 5 L 防漏水罐从车辆水箱紧急搬运最多 2 L、空闲时低优先级补到 4 L 且不误饮；体内水暂满只形成等待代谢 / 如厕的背压，旱厕会真实接收膀胱废物；
 - 正式 Foundation 已接入小型甲板 NavMesh：0.1 m 实时预检复用 Agent 净空并收紧 Slot 映射，几何通过后创建候选障碍并异步更新导航；设施动作前居民精确抵达毫米 Slot 和朝向，普通散步才允许宽松采样；
 - 居民移动保存“任务 + 设施功能 + 首选设施”语义而非一次性坐标；施工切断旧目标后重选 Slot、改去同功能设施或限频重试，不再以“建造后无法重新规划”为永久 Block；
 - 居民新增 Recreation 需求；无必要水任务时，可达空地漫步与原地发呆作为两个完整候选参与确定性 Utility / Softmax 选择，当前基础比约为 1:2 且停留时间缩短；固定长椅、画板或观景点是下一个数据驱动扩展；
 - 已锁定官方 AI Navigation 2.0.14；隔离 `NavigationInteractionSpike` 中 `DeckNavigationUtility : MonoUtilityBase` 同步构建小型甲板 NavMesh，空旷路径长度比为 1.000，穿过 27° 旋转柜体的路径长度比为 1.058；
 - 两名 NavMeshAgent 能相向通过，代表性最小间距约 0.69m；同一柜门的 left / center / right 是共享容量 1 的备选 Slot，A / B 会从相反方向选择 right / left，而不是沿格中心移动或同时穿手操作；
 - 柜门 InteractionGroup 的租约覆盖接近、Docking、开门、真实库存交接与关门全周期；资源提交不会提前释放设施容量，最终柜内 2 件物品分别进入两名居民携带库存；
-- 版本 1 存档骨架已覆盖世界 / 旅途、毫米 + 0.1° 甲板姿态、设施 / 蓝图、真实库存批次、居民需求、Group / Slot 与中途行动检查点；`OutcomeCommitted` 防止加载后重复交接，NavMesh 路径和 RVO 速度明确按派生缓存重建；
+- 版本 2 存档骨架已覆盖世界 / 旅途、毫米 + 0.1° 甲板姿态、设施 / 蓝图、带计量维度的真实库存批次、居民需求、Group / Slot 与中途行动检查点；`OutcomeCommitted` 防止加载后重复交接，NavMesh 路径和 RVO 速度明确按派生缓存重建；v1 无量纲开发存档明确拒绝，不猜测单位；
 - `SaveNomadWorkshopProgressCommand` / `LoadNomadWorkshopProgressCommand` 已真实穿过 SSFramework Context 与 `IStorageUtility` 的 JSON、FIFO、原子写和备份边界；当前证明协议与介质往返，尚未冒充玩家可操作的保存 / 读取流程；
 - `DeckPose` 与 `ContinuousFacilityPlacementLedger` 已在无 Unity 依赖的 Simulation 中实现毫米 / 0.1° 连续姿态、位置 / 旋转独立可关吸附、复合有向矩形占地、多层甲板、稳定排序和原子提交；正式玩家场景的 Model / System / View 与存档 DTO 已共用这套姿态真值；
 - 同意图目标先归并，紧急候选优先进入选择池，再在相对高分短名单中用确定性 Softmax 抽样；
@@ -30,11 +30,11 @@
 - `FailureHazardAccumulator` 已验证预先取样阈值、分段风险积分、暂停和读取存档具有同一触发边界；老化 / 积尘到风险率、故障模式与严重度的正式设施模型尚未接线；
 - 同一世界 Seed、居民稳定 ID 与决策序号会重现相同随机值、候选分解和选择；
 - 目标、材料与设施交互位可以全有或全无地预留，失败不会残留部分占用；
-- `ResourceInventory` 与 `ResourceFlowLedger` 已把离散资源、总容量、来源数量、居民携带容量、最终目的容量和交互位放入同一条可查询契约；
+- `ResourceInventory` 与 `ResourceFlowLedger` 已把资源、同量纲容量、来源数量、居民携带容量、最终目的容量和交互位放入同一条可查询契约；液体使用整数 mL，物品使用件，复合设施以多个库存隔间表达，跨量纲混装立即拒绝；
 - 搬运预留不会瞬移资源：拾取后资源真实进入居民随身库存，再在送达时进入目的库存；拾取后取消会保留手中货物并显式要求恢复，不会静默丢失；
 - 设施加工会在开始前原子预留全部输入、输出所需净容量和工作位，取消不结算，提交才同时消耗食材 / 清水并产生餐食 / 污水；
 - `FoundationResourceFlowSpike` 已让 Ada 完成食材储柜与净水箱 → 随身库存 → 厨房输入 → 厨房本地输出 → 随身库存 → 餐架 / 污水罐的完整物质链；污水罐满时会留下厨房输出并报告具体容量阻塞；
-- `ResidentWaterCycle` 把连续口渴、延迟代谢进度与体内水 / 膀胱排泄物库存分开；喝水、代谢和如厕仍经同一资源账本提交，膀胱或厕所满时不会吞掉物质；
+- `ResidentWaterCycle` 把连续口渴、按 mL 累积的代谢速率与体内水 / 膀胱排泄物库存分开；喝水、代谢和如厕仍经同一资源账本提交，膀胱或厕所满时不会吞掉物质；
 - 同一场景已跑通净水箱 → 实体搬运 → 饮水台 → 体内水 → 膀胱 → 厕所暂存桶 → 实体搬运 → 车辆废物罐；厨房污水和人体排泄物共享总容量但保留资源身份；
 - 参数化厨房的 `StorageAccess`、`WaterInput`、`WasteOutput`、`WorkPosition` 和中门 Pivot 已被运行时实际消费；门由任务阶段驱动，动画不拥有经济结算；
 - Unity 展示层能把选中行动推进为“走到设施 → 执行 → 结算 → 再决策”，并显示中文诊断面板；
@@ -103,10 +103,10 @@ NomadWorkshop/
 更宽但仍是旧单体 Harness 的实体物流场景可用于对照：
 
 1. 执行 `Assets/SSFramework/游牧工坊/Foundation/创建或打开实体物流灰盒`，或直接打开 [`Scenes/FoundationResourceFlowSpike.unity`](Scenes/FoundationResourceFlowSpike.unity)；
-2. 进入 Play，观察 Ada 从食材储柜和净水箱拾取资源；左侧“Ada 携带”会变为 `1 / 1`，人物手上同时出现对应箱 / 桶；
+2. 进入 Play，观察 Ada 从食材储柜和净水箱拾取资源；食材携带按件、水桶按 mL / L 分别显示，人物手上同时出现对应箱 / 桶；
 3. 厨房只向本地餐食口和污水口产出，再由 Ada 清运到最终餐架和车辆废物罐；中门随任务阶段开合；
 4. 第一批完成后点击“运行一次饮水 → 排泄 → 厕所清运链”，观察水依次进入饮水台、体内、膀胱、厕所暂存桶与居民携带库存；
-5. 车辆废物罐容量为 2，一份厨房污水与一份人体排泄物会恰好装满；继续生产会把无法清运的物质留在原容器并显示目的地已满；
+5. 车辆液体废物罐容量为 1 L，厨房污水与当前尿液保留不同资源身份并共享液体容量；剩余空间不足时，继续生产会把无法清运的物质留在原容器并显示目的地已满；
 6. 完整不变量、取消语义与后续任务化路线见 [`docs/nomad-workshop-resource-flow-foundation.md`](../../../docs/nomad-workshop-resource-flow-foundation.md)。
 
 旧的决策评分场景仍可单独观察，但不代表正式物流：
@@ -148,6 +148,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 编译：CompilationPipeline 0 error / 0 warning；
 - 共享吸附基格 + 镜头定向 EditMode 16/16（job `15a8261b90eb`），覆盖自由 / 0.2 / 0.3 / 0.4 / 0.6 m、共同 0.1 m 基础格、双指拖动 / 捏合分解与镜头限位；
 - 正式 Foundation PlayMode 15/15（job `42c9a8476b07`），覆盖同步 0.2 / 0.6 m 网格、自由模式自动隐藏、精确停靠、45° 邻接预览 / 落地一致、施工后改去第二座饮水站，以及 `DestinationFull → 如厕 → 恢复饮水`；
+- mL 水循环、量纲边界与 v2 存档字段定向 EditMode 26/26（job `025bdf77a02d`）；完整 Simulation EditMode 94/94（job `4664dcc8e86e`）；完整 Nomad PlayMode 23/23（job `7f4f6d0d2b57`）；
 - 可重建场景管线 EditMode 1/1（job `c3046ae76822`）；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
 - Game View：已实际查看 45° 紧邻既有饮水站时 0/3 Slot 可达但仍可确认的红色幽灵；`Screenshots/nomad-foundation-45deg-preview-parity.png` 同时显示既有设施三个绿色 Slot 与候选三个红色 Slot，无需悬停。同步 0.2 m 网格与基础建造模式见 `Screenshots/nomad-foundation-exact-docking-build-mode.png`（两者均为本地忽略证据）。
@@ -167,4 +168,4 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步把纯内核时钟接入 Foundation 的统一推进与 Inspector 投影，再把临时整数水单位迁移为 mL 定点量、按设施实例建立库存，并让行动样本真正写入检查点；随后用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”，再用长椅或观景点抽离决策协调，并以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。完整四季不会在基础时钟成立前抢跑；之后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。
+下一步把纯内核时钟接入 Foundation 的统一推进与 Inspector 投影，按设施实例建立库存，并让行动样本与不足 1 mL 的代谢余量真正写入检查点；随后用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”，再用长椅或观景点抽离决策协调，并以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。完整四季不会在基础时钟成立前抢跑；之后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。

@@ -12,8 +12,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
         public void Haul_ReservesWholeContract_ThenMovesResourceThroughCarrier()
         {
             ResourceInventory source = Inventory("pantry", 4, NomadResourceIds.FoodIngredient, 2);
-            var carrier = new ResourceInventory("ada-hands", 1);
-            var destination = new ResourceInventory("kitchen-input", 2);
+            var carrier = new ResourceInventory("ada-hands", ResourceMeasure.Item, 1);
+            var destination = new ResourceInventory("kitchen-input", ResourceMeasure.Item, 2);
             var ledger = new ResourceFlowLedger();
             HaulTaskRequest request = Haul(
                 "haul-food-01", source, carrier, destination, NomadResourceIds.FoodIngredient,
@@ -46,7 +46,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
         public void Haul_DestinationFull_FailsWithoutConsumingSourceOrCarrierCapacity()
         {
             ResourceInventory source = Inventory("tank", 4, NomadResourceIds.Water, 2);
-            var carrier = new ResourceInventory("ada-hands", 1);
+            var carrier = new ResourceInventory("ada-hands", ResourceMeasure.Milliliter, 1);
             ResourceInventory destination = Inventory("kitchen-water", 1, NomadResourceIds.Water, 1);
             var ledger = new ResourceFlowLedger();
 
@@ -67,9 +67,9 @@ namespace Game.NomadWorkshop.Simulation.Tests
         public void CompetingHauls_CannotOverbookSourceOrSharedDestinationCapacity()
         {
             ResourceInventory source = Inventory("tank", 8, NomadResourceIds.Water, 3);
-            var firstCarrier = new ResourceInventory("ada-hands", 2);
-            var secondCarrier = new ResourceInventory("bo-hands", 2);
-            var destination = new ResourceInventory("kitchen-water", 3);
+            var firstCarrier = new ResourceInventory("ada-hands", ResourceMeasure.Milliliter, 2);
+            var secondCarrier = new ResourceInventory("bo-hands", ResourceMeasure.Milliliter, 2);
+            var destination = new ResourceInventory("kitchen-water", ResourceMeasure.Milliliter, 3);
             var ledger = new ResourceFlowLedger();
 
             Assert.IsTrue(ledger.TryReserveHaul(
@@ -96,8 +96,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
         public void CancelBeforePickup_ReleasesEverythingWithoutMutation()
         {
             ResourceInventory source = Inventory("pantry", 2, NomadResourceIds.FoodIngredient, 1);
-            var carrier = new ResourceInventory("ada-hands", 1);
-            var destination = new ResourceInventory("kitchen-input", 1);
+            var carrier = new ResourceInventory("ada-hands", ResourceMeasure.Item, 1);
+            var destination = new ResourceInventory("kitchen-input", ResourceMeasure.Item, 1);
             var ledger = new ResourceFlowLedger();
             Assert.IsTrue(ledger.TryReserveHaul(
                 Haul("cancel", source, carrier, destination, NomadResourceIds.FoodIngredient, "补充食材"),
@@ -119,8 +119,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
         public void CancelAfterPickup_LeavesRealCargoInCarrierForRecovery()
         {
             ResourceInventory source = Inventory("tank", 2, NomadResourceIds.Water, 1);
-            var carrier = new ResourceInventory("ada-hands", 1);
-            var destination = new ResourceInventory("kitchen-water", 1);
+            var carrier = new ResourceInventory("ada-hands", ResourceMeasure.Milliliter, 1);
+            var destination = new ResourceInventory("kitchen-water", ResourceMeasure.Milliliter, 1);
             var ledger = new ResourceFlowLedger();
             Assert.IsTrue(ledger.TryReserveHaul(
                 Haul("interrupted", source, carrier, destination, NomadResourceIds.Water, "补充厨房用水"),
@@ -143,8 +143,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
             var interactions = new ReservationLedger();
             Assert.IsTrue(interactions.TryAcquire(99, new[] { "station:kitchen-input" }, out ReservationLease occupied));
             ResourceInventory source = Inventory("pantry", 2, NomadResourceIds.FoodIngredient, 1);
-            var carrier = new ResourceInventory("ada-hands", 1);
-            var destination = new ResourceInventory("kitchen-input", 1);
+            var carrier = new ResourceInventory("ada-hands", ResourceMeasure.Item, 1);
+            var destination = new ResourceInventory("kitchen-input", ResourceMeasure.Item, 1);
             var ledger = new ResourceFlowLedger(interactions);
 
             Assert.IsFalse(ledger.TryReserveHaul(
@@ -164,10 +164,10 @@ namespace Game.NomadWorkshop.Simulation.Tests
         {
             ResourceInventory firstSource = Inventory("first-source", 2, NomadResourceIds.Water, 1);
             ResourceInventory secondSource = Inventory("second-source", 2, NomadResourceIds.Water, 1);
-            var firstCarrier = new ResourceInventory("ada-hands", 1);
-            var secondCarrier = new ResourceInventory("bo-hands", 1);
-            var firstDestination = new ResourceInventory("first-destination", 1);
-            var secondDestination = new ResourceInventory("second-destination", 1);
+            var firstCarrier = new ResourceInventory("ada-hands", ResourceMeasure.Milliliter, 1);
+            var secondCarrier = new ResourceInventory("bo-hands", ResourceMeasure.Milliliter, 1);
+            var firstDestination = new ResourceInventory("first-destination", ResourceMeasure.Milliliter, 1);
+            var secondDestination = new ResourceInventory("second-destination", ResourceMeasure.Milliliter, 1);
             var ledger = new ResourceFlowLedger();
 
             Assert.IsTrue(ledger.TryReserveHaul(
@@ -193,8 +193,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
         {
             ResourceInventory foodInput = Inventory("kitchen-food", 2, NomadResourceIds.FoodIngredient, 1);
             ResourceInventory waterInput = Inventory("kitchen-water", 2, NomadResourceIds.Water, 1);
-            var meals = new ResourceInventory("meal-shelf", 2);
-            var waste = new ResourceInventory("waste-tank", 2);
+            var meals = new ResourceInventory("meal-shelf", ResourceMeasure.Item, 2);
+            var waste = new ResourceInventory("waste-tank", ResourceMeasure.Milliliter, 2);
             var ledger = new ResourceFlowLedger();
             ProcessTaskRequest request = MealProcess(foodInput, waterInput, meals, waste);
 
@@ -219,7 +219,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
         {
             ResourceInventory foodInput = Inventory("kitchen-food", 2, NomadResourceIds.FoodIngredient, 1);
             ResourceInventory waterInput = Inventory("kitchen-water", 2, NomadResourceIds.Water, 1);
-            var meals = new ResourceInventory("meal-shelf", 2);
+            var meals = new ResourceInventory("meal-shelf", ResourceMeasure.Item, 2);
             ResourceInventory waste = Inventory("waste-tank", 1, NomadResourceIds.WasteWater, 1);
             var ledger = new ResourceFlowLedger();
 
@@ -241,22 +241,20 @@ namespace Game.NomadWorkshop.Simulation.Tests
         {
             var kitchen = new ResourceInventory(
                 "kitchen",
-                2,
-                new ResourceQuantity(NomadResourceIds.FoodIngredient, 1),
+                ResourceMeasure.Milliliter,
+                1,
                 new ResourceQuantity(NomadResourceIds.Water, 1));
             var ledger = new ResourceFlowLedger();
             var request = new ProcessTaskRequest(
                 "cook-in-place",
                 Ada,
-                "制作一份餐食并留下清洗污水",
+                "同一处理罐把清水转为污水",
                 new[]
                 {
-                    new InventoryResourceQuantity(kitchen, NomadResourceIds.FoodIngredient, 1),
                     new InventoryResourceQuantity(kitchen, NomadResourceIds.Water, 1),
                 },
                 new[]
                 {
-                    new InventoryResourceQuantity(kitchen, NomadResourceIds.PreparedMeal, 1),
                     new InventoryResourceQuantity(kitchen, NomadResourceIds.WasteWater, 1),
                 },
                 new[] { "station:kitchen-work" });
@@ -264,8 +262,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
             Assert.IsTrue(ledger.TryReserveProcess(request, out ProcessTaskLease lease, out _));
             lease.Commit();
 
-            Assert.AreEqual(2, kitchen.TotalAmount);
-            Assert.AreEqual(1, kitchen.GetAmount(NomadResourceIds.PreparedMeal));
+            Assert.AreEqual(1, kitchen.TotalAmount);
             Assert.AreEqual(1, kitchen.GetAmount(NomadResourceIds.WasteWater));
         }
 
@@ -274,8 +271,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
         {
             ResourceInventory foodInput = Inventory("kitchen-food", 2, NomadResourceIds.FoodIngredient, 1);
             ResourceInventory waterInput = Inventory("kitchen-water", 2, NomadResourceIds.Water, 1);
-            var meals = new ResourceInventory("meal-shelf", 1);
-            var waste = new ResourceInventory("waste-tank", 1);
+            var meals = new ResourceInventory("meal-shelf", ResourceMeasure.Item, 1);
+            var waste = new ResourceInventory("waste-tank", ResourceMeasure.Milliliter, 1);
             var interactions = new ReservationLedger();
             var ledger = new ResourceFlowLedger(interactions);
             ProcessTaskRequest request = MealProcess(foodInput, waterInput, meals, waste);
@@ -295,8 +292,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
         [Test]
         public void InvalidTaskContract_IsRejectedBeforeEnteringLedger()
         {
-            var source = new ResourceInventory("source", 1);
-            var carrier = new ResourceInventory("carrier", 1);
+            var source = new ResourceInventory("source", ResourceMeasure.Milliliter, 1);
+            var carrier = new ResourceInventory("carrier", ResourceMeasure.Milliliter, 1);
 
             Assert.Throws<ArgumentException>(() => new HaulTaskRequest(
                 "invalid",
@@ -313,11 +310,43 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 Ada,
                 source,
                 carrier,
-                new ResourceInventory("destination", 1),
+                new ResourceInventory("destination", ResourceMeasure.Milliliter, 1),
                 NomadResourceIds.Water,
                 1,
                 string.Empty,
                 new[] { "station:any" }));
+        }
+
+        [Test]
+        public void InventoryMeasure_PreventsMillilitersFromEnteringItemCapacity()
+        {
+            ResourceInventory waterSource = Inventory(
+                "water-source",
+                1_000,
+                NomadResourceIds.Water,
+                500);
+            var itemCarrier = new ResourceInventory(
+                "item-hands",
+                ResourceMeasure.Item,
+                1);
+            var waterDestination = new ResourceInventory(
+                "water-destination",
+                ResourceMeasure.Milliliter,
+                1_000);
+
+            Assert.Throws<InvalidOperationException>(() => new HaulTaskRequest(
+                "wrong-measure",
+                Ada,
+                waterSource,
+                itemCarrier,
+                waterDestination,
+                NomadResourceIds.Water,
+                300,
+                "不能把散装水放进件数库存",
+                new[] { "station:water-source", "station:water-destination" }));
+            Assert.AreEqual(
+                "1.25 L",
+                ResourceAmountFormatting.Format(1_250, ResourceMeasure.Milliliter));
         }
 
         private static ResourceInventory Inventory(
@@ -325,7 +354,7 @@ namespace Game.NomadWorkshop.Simulation.Tests
             int capacity,
             ResourceId resource,
             int amount)
-            => new(id, capacity, new ResourceQuantity(resource, amount));
+            => new(id, resource.Measure, capacity, new ResourceQuantity(resource, amount));
 
         private static HaulTaskRequest Haul(
             string id,

@@ -25,7 +25,13 @@ namespace Game.NomadWorkshop.Foundation
         // 100 mm 采样格内任意点到最近格心至多约 71 mm；75 mm 能覆盖量化误差，
         // 又不会像旧 360 mm 容差那样隔着设施把另一侧格子误判成目标可达。
         private const int PreviewEndpointSampleRadiusMillimeters = 75;
-        private const int DrinkingStationRestockTarget = 2;
+        private const int VehicleWaterCapacityMilliliters = 100_000;
+        private const int InitialVehicleWaterMilliliters = 60_000;
+        private const int WaterCanCapacityMilliliters = 5_000;
+        private const int WaterHaulBatchMilliliters = 2_000;
+        private const int DrinkingStationCapacityMilliliters = 6_000;
+        private const int DrinkingStationRestockTargetMilliliters = 4_000;
+        private const int DefaultToiletHoldingCapacityMilliliters = 12_000;
         private const int MaximumPreviewInteractionSlots = 64;
         private const float ResidentExactNavMeshTolerance = 0.02f;
 
@@ -41,7 +47,7 @@ namespace Game.NomadWorkshop.Foundation
         private Vector3 residentStartLocalPosition = new(0f, ResidentVisualHeight, 2.4f);
         [SerializeField, Min(0.1f), Tooltip("居民沿连续 NavMesh 路径移动的米/秒。")]
         private float residentMoveSpeed = 2.8f;
-        [SerializeField, Min(0.01f), Tooltip("取得容器或装入一单位物资的灰盒动作时长。")]
+        [SerializeField, Min(0.01f), Tooltip("取得容器或完成一次装水动作的灰盒时长；搬运毫升数不直接线性放大动画时间。")]
         private float pickupSeconds = 0.45f;
         [SerializeField, Min(0.01f), Tooltip("把容器中的物资交付到设施库存的灰盒动作时长。")]
         private float deliverySeconds = 0.45f;
@@ -49,12 +55,18 @@ namespace Game.NomadWorkshop.Foundation
         private float drinkingSeconds = 1.2f;
         [SerializeField, Min(0.01f), Tooltip("居民在旱厕完成一次排泄物转移的灰盒动作时长。")]
         private float toiletSeconds = 1.4f;
-        [SerializeField, Min(0.1f), Tooltip("每单位体内水转化为膀胱内容物所需的模拟秒数。")]
-        private float metabolismSeconds = 8f;
+        [SerializeField, Min(0.1f), Tooltip("一份 300 mL 饮水全部转化为膀胱内容物所需的模拟秒数；这是玩法节奏，不是现实生理时长。")]
+        private float drinkMetabolismSeconds = 8f;
         [SerializeField, Range(0f, 1f), Tooltip("新场景中居民的初始口渴缺口。")]
         private float initialThirst = 0.78f;
-        [SerializeField, Min(0f), Tooltip("每模拟秒增加的口渴缺口；饮水会按单位降低它。")]
+        [SerializeField, Min(0f), Tooltip("每模拟秒增加的口渴缺口；每份 300 mL 饮水按玩法参数降低它。")]
         private float thirstIncreasePerSecond = 0.004f;
+        [SerializeField, Min(1), Tooltip("居民体内已饮用、尚未完成代谢的水容量（mL）。")]
+        private int bodyWaterCapacityMilliliters =
+            ResidentWaterCycle.DefaultBodyWaterCapacityMilliliters;
+        [SerializeField, Min(1), Tooltip("膀胱内容物容量（mL）；排泄压力按实际体积比例计算。")]
+        private int bladderCapacityMilliliters =
+            ResidentWaterCycle.DefaultBladderCapacityMilliliters;
         [SerializeField, Range(0.25f, 16f), Tooltip("场景初始化后的模拟倍率。暂停独立控制。")]
         private float initialSimulationSpeed = 1f;
         [SerializeField, Min(0.1f), Tooltip("路线暂时失效时的自动重试间隔；避免每帧重复查询 NavMesh。")]
@@ -76,8 +88,9 @@ namespace Game.NomadWorkshop.Foundation
             CargoContainerCapability.LiquidTight | CargoContainerCapability.Sealable;
         [SerializeField, Range(0f, 1f), Tooltip("水罐洁净度；以后会参与水品质与污染风险。")]
         private float waterCanCleanliness = 0.96f;
-        [SerializeField, Min(1), Tooltip("当前共享旱厕暂存桶容量；满后必须等待未来清运链，不会吞掉排泄物。")]
-        private int toiletHoldingCapacity = 4;
+        [SerializeField, Min(1), Tooltip("当前共享旱厕暂存桶容量（mL）；满后必须等待未来清运链，不会吞掉排泄物。")]
+        private int toiletHoldingCapacityMilliliters =
+            DefaultToiletHoldingCapacityMilliliters;
 
         private readonly Dictionary<string, NomadFacilityDefinition> _definitions =
             new(StringComparer.Ordinal);
@@ -511,15 +524,28 @@ namespace Game.NomadWorkshop.Foundation
         /// 只供 PlayMode 回归压缩生理时间；修改后调用 ResetScenario，确保正式和测试都从同一构造路径建库存。
         /// </summary>
         public void ConfigurePhysiologyForTests(
-            float configuredMetabolismSeconds,
+            float configuredDrinkMetabolismSeconds,
             float configuredInitialThirst,
             float configuredThirstIncreasePerSecond,
-            int configuredToiletHoldingCapacity = 4)
+            int configuredToiletHoldingCapacityMilliliters =
+                DefaultToiletHoldingCapacityMilliliters,
+            int configuredBodyWaterCapacityMilliliters =
+                ResidentWaterCycle.DefaultBodyWaterCapacityMilliliters,
+            int configuredBladderCapacityMilliliters =
+                ResidentWaterCycle.DefaultBladderCapacityMilliliters)
         {
-            metabolismSeconds = Mathf.Max(0.01f, configuredMetabolismSeconds);
+            drinkMetabolismSeconds = Mathf.Max(0.01f, configuredDrinkMetabolismSeconds);
             initialThirst = Mathf.Clamp01(configuredInitialThirst);
             thirstIncreasePerSecond = Mathf.Max(0f, configuredThirstIncreasePerSecond);
-            toiletHoldingCapacity = Mathf.Max(1, configuredToiletHoldingCapacity);
+            toiletHoldingCapacityMilliliters = Mathf.Max(
+                1,
+                configuredToiletHoldingCapacityMilliliters);
+            bodyWaterCapacityMilliliters = Mathf.Max(
+                1,
+                configuredBodyWaterCapacityMilliliters);
+            bladderCapacityMilliliters = Mathf.Max(
+                1,
+                configuredBladderCapacityMilliliters);
             toiletSeconds = 0.01f;
             routeRetrySeconds = 0.01f;
         }
@@ -618,29 +644,49 @@ namespace Game.NomadWorkshop.Foundation
             _resourceFlow = new ResourceFlowLedger();
             _vehicleWater = new ResourceInventory(
                 "vehicle-water-tank",
-                8,
-                new ResourceQuantity(NomadResourceIds.Water, 5));
-            _waterCan = new ResourceInventory("water-can-01", 1);
+                ResourceMeasure.Milliliter,
+                VehicleWaterCapacityMilliliters,
+                new ResourceQuantity(
+                    NomadResourceIds.Water,
+                    InitialVehicleWaterMilliliters));
+            _waterCan = new ResourceInventory(
+                "water-can-01",
+                ResourceMeasure.Milliliter,
+                WaterCanCapacityMilliliters);
             _waterCanLocation = FoundationWaterCanLocation.VehicleWaterTank;
             _waterCanPickupWasAtSource = false;
             _residentRecreation = 0.32f;
             _activeLeisureRestore = 0f;
-            _drinkingStation = new ResourceInventory("drinking-station", 2);
+            _drinkingStation = new ResourceInventory(
+                "drinking-station",
+                ResourceMeasure.Milliliter,
+                DrinkingStationCapacityMilliliters);
             _toiletHolding = new ResourceInventory(
                 "toilet-holding",
-                Mathf.Max(1, toiletHoldingCapacity));
+                ResourceMeasure.Milliliter,
+                Mathf.Max(1, toiletHoldingCapacityMilliliters));
             _residentWaterCycle = new ResidentWaterCycle(
                 "resident-01",
                 ResidentOwnerId,
-                metabolismSeconds,
+                ResidentWaterCycle.DefaultDrinkServingMilliliters /
+                Mathf.Max(0.01f, drinkMetabolismSeconds),
+                drinkServingMilliliters: ResidentWaterCycle.DefaultDrinkServingMilliliters,
                 initialThirst: initialThirst,
                 thirstIncreasePerSecond: thirstIncreasePerSecond,
-                thirstReliefPerUnit: 0.72f);
+                thirstReliefPerServing: 0.72f,
+                bodyWaterCapacityMilliliters: bodyWaterCapacityMilliliters,
+                bladderCapacityMilliliters: bladderCapacityMilliliters);
 
             _model.SimulationSpeed.Value = initialSimulationSpeed;
             _model.ResidentCarryingWater.Value = false;
             _model.WaterCanLocation.Value = _waterCanLocation;
-            _model.WaterCanWater.Value = 0;
+            _model.WaterCanWaterMilliliters.Value = 0;
+            _model.WaterCanCapacityMilliliters.Value = _waterCan.Capacity;
+            _model.VehicleWaterCapacityMilliliters.Value = _vehicleWater.Capacity;
+            _model.DrinkingStationCapacityMilliliters.Value = _drinkingStation.Capacity;
+            _model.BodyWaterCapacityMilliliters.Value = _residentWaterCycle.BodyWater.Capacity;
+            _model.BladderCapacityMilliliters.Value = _residentWaterCycle.Bladder.Capacity;
+            _model.ToiletHoldingCapacityMilliliters.Value = _toiletHolding.Capacity;
             _model.LatestActionPlan.Value = FoundationActionPlanProjection.None;
             _model.CompletedDrinkCount.Value = 0;
             _model.CompletedToiletUseCount.Value = 0;
@@ -1498,7 +1544,7 @@ namespace Game.NomadWorkshop.Foundation
                     _toiletHolding,
                     $"toilet:{_waterTaskSequence + 1}",
                     $"facility:{toilet.InstanceId}:toilet-use",
-                    1,
+                    waste,
                     out _activeResidentAction,
                     out ResourceFlowBlocker blocker))
             {
@@ -1550,7 +1596,7 @@ namespace Game.NomadWorkshop.Foundation
 
             int stationWater = _drinkingStation.GetAmount(NomadResourceIds.Water);
             int restockTarget = Math.Min(
-                DrinkingStationRestockTarget,
+                DrinkingStationRestockTargetMilliliters,
                 _drinkingStation.Capacity);
             if (needsDrink && stationWater > 0)
             {
@@ -1590,10 +1636,21 @@ namespace Game.NomadWorkshop.Foundation
             in FoundationFacilityState station,
             bool drinkAfterDelivery)
         {
+            int haulMilliliters = CalculateWaterHaulMilliliters(drinkAfterDelivery);
+            if (haulMilliliters <= 0)
+            {
+                if (drinkAfterDelivery)
+                    Block("当前没有可装入水罐并送达饮水站的水量", ResourceFlowBlocker.None);
+                else
+                    TryStartLeisureRoutine();
+                return;
+            }
+
             ResidentActionPlanEvaluation plan = EvaluateWaterRestockPlan(
                 source,
                 station,
                 drinkAfterDelivery,
+                haulMilliliters,
                 out FoundationFacilityState waterCanFacility,
                 out bool waterCanAtSource);
             ResidentDecisionResult decision = DecideWaterRestockPlan(plan);
@@ -1621,7 +1678,7 @@ namespace Game.NomadWorkshop.Foundation
                 _waterCan,
                 _drinkingStation,
                 NomadResourceIds.Water,
-                1,
+                haulMilliliters,
                 drinkAfterDelivery
                     ? "居民为迫切饮水取得防漏水罐，把水从车辆水箱搬到饮水站"
                     : "居民在空闲时取得防漏水罐，低优先级补充饮水站库存",
@@ -1657,6 +1714,21 @@ namespace Game.NomadWorkshop.Foundation
                     : "低优先级补货：先前往唯一防漏水罐所在位置",
                 waterCanFacility,
                 allowAlternativeFacility: false);
+        }
+
+        private int CalculateWaterHaulMilliliters(bool drinkAfterDelivery)
+        {
+            int desiredMilliliters = drinkAfterDelivery
+                ? WaterHaulBatchMilliliters
+                : Math.Max(
+                    0,
+                    DrinkingStationRestockTargetMilliliters -
+                    _drinkingStation.GetAmount(NomadResourceIds.Water));
+            return Math.Min(
+                desiredMilliliters,
+                Math.Min(
+                    _vehicleWater.GetAmount(NomadResourceIds.Water),
+                    Math.Min(_waterCan.FreeCapacity, _drinkingStation.FreeCapacity)));
         }
 
         private void TryStartLeisureRoutine()
@@ -1820,6 +1892,7 @@ namespace Game.NomadWorkshop.Foundation
             in FoundationFacilityState source,
             in FoundationFacilityState station,
             bool drinkAfterDelivery,
+            int haulMilliliters,
             out FoundationFacilityState waterCanFacility,
             out bool waterCanAtSource)
         {
@@ -1828,7 +1901,7 @@ namespace Game.NomadWorkshop.Foundation
 
             var requirement = new CargoTransportRequirement(
                 NomadResourceIds.Water,
-                1,
+                haulMilliliters,
                 CargoContainerCapability.LiquidTight,
                 allowBareHands: false,
                 bareHandsMaxAmount: 0,
@@ -1863,8 +1936,9 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             float stockDeficit = Mathf.Clamp01(
-                (DrinkingStationRestockTarget - _drinkingStation.GetAmount(NomadResourceIds.Water)) /
-                (float)DrinkingStationRestockTarget);
+                (DrinkingStationRestockTargetMilliliters -
+                 _drinkingStation.GetAmount(NomadResourceIds.Water)) /
+                (float)DrinkingStationRestockTargetMilliliters);
             var proposal = new ResidentActionPlanProposal(
                 $"water-restock:{_waterTaskSequence + 1}",
                 "restock-drinking-station",
@@ -2158,7 +2232,7 @@ namespace Game.NomadWorkshop.Foundation
                     _drinkingStation,
                     $"drink:{_waterTaskSequence}",
                     $"facility:{station.InstanceId}:drink",
-                    1,
+                    ResidentWaterCycle.DefaultDrinkServingMilliliters,
                     out _activeResidentAction,
                     out ResourceFlowBlocker blocker))
             {
@@ -2753,16 +2827,28 @@ namespace Game.NomadWorkshop.Foundation
             if (_residentWaterCycle == null) return;
             SetFloat(_model.ResidentThirst, _residentWaterCycle.Thirst);
             SetFloat(_model.ResidentRecreation, _residentRecreation);
-            SetInt(_model.VehicleWater, _vehicleWater.GetAmount(NomadResourceIds.Water));
-            SetInt(_model.WaterCanWater, _waterCan.GetAmount(NomadResourceIds.Water));
+            SetInt(
+                _model.VehicleWaterMilliliters,
+                _vehicleWater.GetAmount(NomadResourceIds.Water));
+            SetInt(
+                _model.WaterCanWaterMilliliters,
+                _waterCan.GetAmount(NomadResourceIds.Water));
             bool carryingWater = _waterCanLocation == FoundationWaterCanLocation.Resident &&
                                  _waterCan.GetAmount(NomadResourceIds.Water) > 0;
             if (_model.ResidentCarryingWater.Value != carryingWater)
                 _model.ResidentCarryingWater.Value = carryingWater;
-            SetInt(_model.DrinkingStationWater, _drinkingStation.GetAmount(NomadResourceIds.Water));
-            SetInt(_model.BodyWater, _residentWaterCycle.BodyWater.GetAmount(NomadResourceIds.Water));
-            SetInt(_model.BladderWaste, _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
-            SetInt(_model.ToiletHoldingWaste, _toiletHolding.GetAmount(NomadResourceIds.HumanWaste));
+            SetInt(
+                _model.DrinkingStationWaterMilliliters,
+                _drinkingStation.GetAmount(NomadResourceIds.Water));
+            SetInt(
+                _model.BodyWaterMilliliters,
+                _residentWaterCycle.BodyWater.GetAmount(NomadResourceIds.Water));
+            SetInt(
+                _model.BladderWasteMilliliters,
+                _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
+            SetInt(
+                _model.ToiletHoldingWasteMilliliters,
+                _toiletHolding.GetAmount(NomadResourceIds.HumanWaste));
         }
 
         private void ClearPlacementSelection(bool exitBuildMode)

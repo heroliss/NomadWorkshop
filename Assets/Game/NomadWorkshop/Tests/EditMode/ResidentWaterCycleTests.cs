@@ -1,193 +1,270 @@
-using Game.NomadWorkshop.Simulation;
 using NUnit.Framework;
 
-namespace Game.NomadWorkshop.Tests
+namespace Game.NomadWorkshop.Simulation.Tests
 {
+    /// <summary>锁定 mL 水循环的连续代谢、容量背压、取消语义与全程物质守恒。</summary>
     public sealed class ResidentWaterCycleTests
     {
-        private const ulong Ada = 0xADA01UL;
+        private const int ServingMilliliters =
+            ResidentWaterCycle.DefaultDrinkServingMilliliters;
 
         [Test]
         public void DrinkCancellation_DoesNotConsumeWaterOrRelieveThirst()
         {
             var ledger = new ResourceFlowLedger();
-            ResourceInventory cup = Inventory("drinking-station", 1, NomadResourceIds.Water, 1);
+            ResourceInventory cup = Inventory(
+                "drinking-station",
+                ServingMilliliters,
+                NomadResourceIds.Water,
+                ServingMilliliters);
             ResidentWaterCycle cycle = Cycle(initialThirst: 0.8f);
 
             Assert.IsTrue(cycle.TryReserveDrink(
                 ledger,
                 cup,
-                "ada:drink:1",
-                "station:drinking",
-                1,
+                "drink-1",
+                "station:drink",
+                ServingMilliliters,
                 out ResidentWaterActionLease action,
-                out ResourceFlowBlocker blocker));
-            Assert.IsFalse(blocker.IsBlocked);
+                out _));
 
             action.Dispose();
 
-            Assert.AreEqual(1, cup.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(ServingMilliliters, cup.GetAmount(NomadResourceIds.Water));
             Assert.AreEqual(0, cycle.BodyWater.TotalAmount);
-            Assert.That(cycle.Thirst, Is.EqualTo(0.8f).Within(0.0001f));
+            Assert.AreEqual(0.8f, cycle.Thirst, 0.0001f);
         }
 
         [Test]
-        public void DrinkCommit_AtomicallyMovesWaterAndRelievesThirst()
+        public void DrinkCommit_AtomicallyMovesMillilitersAndRelievesThirst()
         {
             var ledger = new ResourceFlowLedger();
-            ResourceInventory cup = Inventory("drinking-station", 1, NomadResourceIds.Water, 1);
+            ResourceInventory cup = Inventory(
+                "drinking-station",
+                ServingMilliliters,
+                NomadResourceIds.Water,
+                ServingMilliliters);
             ResidentWaterCycle cycle = Cycle(initialThirst: 0.8f);
 
             Assert.IsTrue(cycle.TryReserveDrink(
                 ledger,
                 cup,
-                "ada:drink:1",
-                "station:drinking",
-                1,
+                "drink-1",
+                "station:drink",
+                ServingMilliliters,
                 out ResidentWaterActionLease action,
                 out _));
             action.Commit();
 
-            Assert.IsTrue(action.IsCommitted);
             Assert.AreEqual(0, cup.GetAmount(NomadResourceIds.Water));
-            Assert.AreEqual(1, cycle.BodyWater.GetAmount(NomadResourceIds.Water));
-            Assert.That(cycle.Thirst, Is.EqualTo(0.1f).Within(0.0001f));
+            Assert.AreEqual(
+                ServingMilliliters,
+                cycle.BodyWater.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(0.1f, cycle.Thirst, 0.0001f);
         }
 
         [Test]
-        public void Metabolism_IsDelayedAndPressureRisesBeforeDiscreteConversion()
+        public void Advance_ConvertsMillilitersContinuouslyAndPreservesSplitStepResult()
         {
-            var ledger = new ResourceFlowLedger();
-            ResidentWaterCycle cycle = DrankOneUnit(ledger);
+            var splitLedger = new ResourceFlowLedger();
+            ResidentWaterCycle split = DrankOneServing(splitLedger);
+            var combinedLedger = new ResourceFlowLedger();
+            ResidentWaterCycle combined = DrankOneServing(combinedLedger);
 
-            ResidentWaterCycleTick firstHalf = cycle.Advance(2f, ledger);
+            ResidentWaterCycleTick firstHalf = split.Advance(2f, splitLedger);
+            ResidentWaterCycleTick secondHalf = split.Advance(2f, splitLedger);
+            ResidentWaterCycleTick whole = combined.Advance(4f, combinedLedger);
 
-            Assert.AreEqual(0, firstHalf.MetabolizedUnits);
-            Assert.AreEqual(1, cycle.BodyWater.GetAmount(NomadResourceIds.Water));
-            Assert.AreEqual(0, cycle.Bladder.TotalAmount);
-            Assert.That(cycle.ExcretionPressure, Is.EqualTo(0.25f).Within(0.0001f));
-
-            ResidentWaterCycleTick secondHalf = cycle.Advance(2f, ledger);
-
-            Assert.AreEqual(1, secondHalf.MetabolizedUnits);
-            Assert.AreEqual(0, cycle.BodyWater.TotalAmount);
-            Assert.AreEqual(1, cycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
-            Assert.That(cycle.ExcretionPressure, Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.AreEqual(150, firstHalf.MetabolizedMilliliters);
+            Assert.AreEqual(150, secondHalf.MetabolizedMilliliters);
+            Assert.AreEqual(ServingMilliliters, whole.MetabolizedMilliliters);
+            Assert.AreEqual(0, split.BodyWater.TotalAmount);
+            Assert.AreEqual(
+                ServingMilliliters,
+                split.Bladder.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(split.BodyWater.TotalAmount, combined.BodyWater.TotalAmount);
+            Assert.AreEqual(split.Bladder.TotalAmount, combined.Bladder.TotalAmount);
         }
 
         [Test]
         public void FullBladder_BlocksMetabolismAndKeepsBodyWater()
         {
             var ledger = new ResourceFlowLedger();
-            ResidentWaterCycle cycle = Cycle(bladderCapacity: 1, bodyWaterCapacity: 2);
-            Drink(cycle, ledger, Inventory("cup-1", 1, NomadResourceIds.Water, 1), "drink-1");
-            Assert.AreEqual(1, cycle.Advance(4f, ledger).MetabolizedUnits);
-            Drink(cycle, ledger, Inventory("cup-2", 1, NomadResourceIds.Water, 1), "drink-2");
+            ResidentWaterCycle cycle = Cycle(
+                bodyWaterCapacityMilliliters: ServingMilliliters * 2,
+                bladderCapacityMilliliters: ServingMilliliters);
+            Drink(
+                cycle,
+                ledger,
+                Inventory("cup-1", ServingMilliliters, NomadResourceIds.Water, ServingMilliliters),
+                "drink-1");
+            Assert.AreEqual(
+                ServingMilliliters,
+                cycle.Advance(4f, ledger).MetabolizedMilliliters);
+            Drink(
+                cycle,
+                ledger,
+                Inventory("cup-2", ServingMilliliters, NomadResourceIds.Water, ServingMilliliters),
+                "drink-2");
 
             ResidentWaterCycleTick blocked = cycle.Advance(4f, ledger);
 
-            Assert.AreEqual(0, blocked.MetabolizedUnits);
+            Assert.AreEqual(0, blocked.MetabolizedMilliliters);
             Assert.AreEqual(ResourceFlowBlockReason.DestinationFull, blocked.Blocker.Reason);
-            Assert.AreEqual("ada:bladder", blocked.Blocker.InventoryId);
-            Assert.AreEqual(1, cycle.BodyWater.GetAmount(NomadResourceIds.Water));
-            Assert.AreEqual(1, cycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(cycle.Bladder.Id, blocked.Blocker.InventoryId);
+            Assert.AreEqual(
+                ServingMilliliters,
+                cycle.BodyWater.GetAmount(NomadResourceIds.Water));
+            Assert.AreEqual(
+                ServingMilliliters,
+                cycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(1f, cycle.ExcretionPressure, 0.0001f);
         }
 
         [Test]
-        public void FullToilet_BlocksUseWithoutReducingPressureOrContent()
+        public void ToiletCancellation_KeepsBladderAndToiletUnchanged()
         {
             var ledger = new ResourceFlowLedger();
-            ResidentWaterCycle cycle = DrankAndMetabolizedOneUnit(ledger);
-            ResourceInventory toilet = Inventory("toilet-holding", 1, NomadResourceIds.HumanWaste, 1);
-            float pressure = cycle.ExcretionPressure;
+            ResidentWaterCycle cycle = DrankAndMetabolizedOneServing(ledger);
+            ResourceInventory toilet = Inventory(
+                "toilet-holding",
+                ServingMilliliters,
+                NomadResourceIds.HumanWaste,
+                ServingMilliliters);
 
             Assert.IsFalse(cycle.TryReserveToiletUse(
                 ledger,
                 toilet,
-                "ada:toilet:1",
+                "toilet-full",
                 "station:toilet",
-                1,
-                out ResidentWaterActionLease action,
-                out ResourceFlowBlocker blocker));
+                ServingMilliliters,
+                out _,
+                out ResourceFlowBlocker full));
+            Assert.AreEqual(ResourceFlowBlockReason.DestinationFull, full.Reason);
 
-            Assert.IsNull(action);
-            Assert.AreEqual(ResourceFlowBlockReason.DestinationFull, blocker.Reason);
-            Assert.AreEqual("toilet-holding", blocker.InventoryId);
-            Assert.AreEqual(1, cycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
-            Assert.AreEqual(1, toilet.GetAmount(NomadResourceIds.HumanWaste));
-            Assert.That(cycle.ExcretionPressure, Is.EqualTo(pressure).Within(0.0001f));
+            toilet = new ResourceInventory(
+                "toilet-holding-empty",
+                ResourceMeasure.Milliliter,
+                ServingMilliliters);
+            Assert.IsTrue(cycle.TryReserveToiletUse(
+                ledger,
+                toilet,
+                "toilet-cancel",
+                "station:toilet",
+                ServingMilliliters,
+                out ResidentWaterActionLease action,
+                out _));
+            action.Dispose();
+
+            Assert.AreEqual(
+                ServingMilliliters,
+                cycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(0, toilet.GetAmount(NomadResourceIds.HumanWaste));
         }
 
         [Test]
         public void ToiletThenPhysicalHaul_PreservesHumanWasteAcrossEveryInventory()
         {
             var ledger = new ResourceFlowLedger();
-            ResidentWaterCycle cycle = DrankAndMetabolizedOneUnit(ledger);
-            var toilet = new ResourceInventory("toilet-holding", 1);
-            var hands = new ResourceInventory("ada-hands", 1);
-            var vehicleWasteTank = new ResourceInventory("vehicle-waste-tank", 2);
+            ResidentWaterCycle cycle = DrankAndMetabolizedOneServing(ledger);
+            var toilet = new ResourceInventory(
+                "toilet-holding",
+                ResourceMeasure.Milliliter,
+                ServingMilliliters);
+            var liquidCarrier = new ResourceInventory(
+                "ada-liquid-container",
+                ResourceMeasure.Milliliter,
+                ServingMilliliters);
+            var vehicleWasteTank = new ResourceInventory(
+                "vehicle-waste-tank",
+                ResourceMeasure.Milliliter,
+                ServingMilliliters * 2);
 
             Assert.IsTrue(cycle.TryReserveToiletUse(
                 ledger,
                 toilet,
-                "ada:toilet:1",
+                "use-toilet",
                 "station:toilet",
-                1,
+                ServingMilliliters,
                 out ResidentWaterActionLease toiletAction,
                 out _));
             toiletAction.Commit();
 
             Assert.AreEqual(0, cycle.Bladder.TotalAmount);
-            Assert.AreEqual(1, toilet.GetAmount(NomadResourceIds.HumanWaste));
-            Assert.That(cycle.ExcretionPressure, Is.EqualTo(0f).Within(0.0001f));
+            Assert.AreEqual(
+                ServingMilliliters,
+                toilet.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(
+                ServingMilliliters,
+                TotalHumanWaste(cycle, toilet, liquidCarrier, vehicleWasteTank));
 
             var request = new HaulTaskRequest(
-                "haul-toilet-canister-1",
-                Ada,
+                "empty-toilet",
+                0xADA01UL,
                 toilet,
-                hands,
+                liquidCarrier,
                 vehicleWasteTank,
                 NomadResourceIds.HumanWaste,
-                1,
-                "把厕所暂存桶清运到车辆废物罐",
-                new[] { "station:toilet-canister", "station:vehicle-waste-tank" });
+                ServingMilliliters,
+                "把厕所内容物实体清运到车辆废物罐",
+                new[] { "station:toilet", "station:waste-tank" });
             Assert.IsTrue(ledger.TryReserveHaul(request, out HaulTaskLease haul, out _));
-            Assert.AreEqual(1, TotalHumanWaste(cycle, toilet, hands, vehicleWasteTank));
-
             haul.PickUp();
-            Assert.AreEqual(1, hands.GetAmount(NomadResourceIds.HumanWaste));
-            Assert.AreEqual(1, TotalHumanWaste(cycle, toilet, hands, vehicleWasteTank));
+
+            Assert.AreEqual(0, toilet.TotalAmount);
+            Assert.AreEqual(
+                ServingMilliliters,
+                liquidCarrier.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(
+                ServingMilliliters,
+                TotalHumanWaste(cycle, toilet, liquidCarrier, vehicleWasteTank));
 
             haul.Deliver();
-            Assert.AreEqual(1, vehicleWasteTank.GetAmount(NomadResourceIds.HumanWaste));
-            Assert.AreEqual(1, TotalHumanWaste(cycle, toilet, hands, vehicleWasteTank));
+
+            Assert.AreEqual(0, liquidCarrier.TotalAmount);
+            Assert.AreEqual(
+                ServingMilliliters,
+                vehicleWasteTank.GetAmount(NomadResourceIds.HumanWaste));
+            Assert.AreEqual(
+                ServingMilliliters,
+                TotalHumanWaste(cycle, toilet, liquidCarrier, vehicleWasteTank));
         }
 
         private static ResidentWaterCycle Cycle(
             float initialThirst = 0.8f,
-            int bodyWaterCapacity = 2,
-            int bladderCapacity = 2)
+            int bodyWaterCapacityMilliliters =
+                ResidentWaterCycle.DefaultBodyWaterCapacityMilliliters,
+            int bladderCapacityMilliliters =
+                ResidentWaterCycle.DefaultBladderCapacityMilliliters)
             => new(
                 "ada",
-                Ada,
-                metabolismSecondsPerUnit: 4f,
+                0xADA01UL,
+                metabolismMillilitersPerSecond: 75f,
+                drinkServingMilliliters: ServingMilliliters,
                 initialThirst: initialThirst,
                 thirstIncreasePerSecond: 0f,
-                thirstReliefPerUnit: 0.7f,
-                bodyWaterCapacity: bodyWaterCapacity,
-                bladderCapacity: bladderCapacity);
+                thirstReliefPerServing: 0.7f,
+                bodyWaterCapacityMilliliters: bodyWaterCapacityMilliliters,
+                bladderCapacityMilliliters: bladderCapacityMilliliters);
 
-        private static ResidentWaterCycle DrankOneUnit(ResourceFlowLedger ledger)
+        private static ResidentWaterCycle DrankOneServing(ResourceFlowLedger ledger)
         {
             ResidentWaterCycle cycle = Cycle();
-            Drink(cycle, ledger, Inventory("cup", 1, NomadResourceIds.Water, 1), "drink");
+            Drink(
+                cycle,
+                ledger,
+                Inventory("cup", ServingMilliliters, NomadResourceIds.Water, ServingMilliliters),
+                "drink");
             return cycle;
         }
 
-        private static ResidentWaterCycle DrankAndMetabolizedOneUnit(ResourceFlowLedger ledger)
+        private static ResidentWaterCycle DrankAndMetabolizedOneServing(
+            ResourceFlowLedger ledger)
         {
-            ResidentWaterCycle cycle = DrankOneUnit(ledger);
-            Assert.AreEqual(1, cycle.Advance(4f, ledger).MetabolizedUnits);
+            ResidentWaterCycle cycle = DrankOneServing(ledger);
+            Assert.AreEqual(
+                ServingMilliliters,
+                cycle.Advance(4f, ledger).MetabolizedMilliliters);
             return cycle;
         }
 
@@ -201,8 +278,8 @@ namespace Game.NomadWorkshop.Tests
                 ledger,
                 source,
                 taskId,
-                "station:drinking",
-                1,
+                $"station:{taskId}",
+                ServingMilliliters,
                 out ResidentWaterActionLease action,
                 out _));
             action.Commit();
@@ -210,10 +287,14 @@ namespace Game.NomadWorkshop.Tests
 
         private static ResourceInventory Inventory(
             string id,
-            int capacity,
+            int capacityMilliliters,
             ResourceId resource,
-            int amount)
-            => new(id, capacity, new ResourceQuantity(resource, amount));
+            int amountMilliliters)
+            => new(
+                id,
+                ResourceMeasure.Milliliter,
+                capacityMilliliters,
+                new ResourceQuantity(resource, amountMilliliters));
 
         private static int TotalHumanWaste(
             ResidentWaterCycle cycle,

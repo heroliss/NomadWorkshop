@@ -2,87 +2,101 @@ using System;
 
 namespace Game.NomadWorkshop.Simulation
 {
-    /// <summary>一次生理推进的离散物质变化与首个阻塞原因。</summary>
+    /// <summary>一次生理推进转化的真实毫升数与首个阻塞原因。</summary>
     public readonly struct ResidentWaterCycleTick
     {
-        public ResidentWaterCycleTick(int metabolizedUnits, ResourceFlowBlocker blocker)
+        public ResidentWaterCycleTick(int metabolizedMilliliters, ResourceFlowBlocker blocker)
         {
-            if (metabolizedUnits < 0)
-                throw new ArgumentOutOfRangeException(nameof(metabolizedUnits));
-            MetabolizedUnits = metabolizedUnits;
+            if (metabolizedMilliliters < 0)
+                throw new ArgumentOutOfRangeException(nameof(metabolizedMilliliters));
+            MetabolizedMilliliters = metabolizedMilliliters;
             Blocker = blocker;
         }
 
-        public int MetabolizedUnits { get; }
+        public int MetabolizedMilliliters { get; }
         public ResourceFlowBlocker Blocker { get; }
     }
 
     /// <summary>
-    /// 一位居民的最小饮水与排泄物质链。口渴是连续需求，摄入水和膀胱内容物是离散库存；
+    /// 一位居民的最小饮水与排泄物质链。口渴是连续需求，摄入水和膀胱内容物以整数 mL 保存；
     /// 喝水、代谢和如厕均借用同一资源账本，因而取消或容量不足时不会吞掉物质。
     /// </summary>
     public sealed class ResidentWaterCycle
     {
+        public const int DefaultDrinkServingMilliliters = 300;
+        public const int DefaultBodyWaterCapacityMilliliters = 900;
+        public const int DefaultBladderCapacityMilliliters = 500;
+
         private readonly string _id;
         private readonly ulong _ownerId;
-        private readonly float _metabolismSecondsPerUnit;
+        private readonly double _metabolismMillilitersPerSecond;
+        private readonly int _drinkServingMilliliters;
         private readonly float _thirstIncreasePerSecond;
-        private readonly float _thirstReliefPerUnit;
-        private float _metabolismProgressSeconds;
+        private readonly float _thirstReliefPerServing;
+        private double _pendingMetabolismMilliliters;
         private int _metabolismSequence;
 
         public ResidentWaterCycle(
             string id,
             ulong ownerId,
-            float metabolismSecondsPerUnit,
+            float metabolismMillilitersPerSecond,
+            int drinkServingMilliliters = DefaultDrinkServingMilliliters,
             float initialThirst = 0.72f,
             float thirstIncreasePerSecond = 0.004f,
-            float thirstReliefPerUnit = 0.72f,
-            int bodyWaterCapacity = 2,
-            int bladderCapacity = 2)
+            float thirstReliefPerServing = 0.72f,
+            int bodyWaterCapacityMilliliters = DefaultBodyWaterCapacityMilliliters,
+            int bladderCapacityMilliliters = DefaultBladderCapacityMilliliters)
         {
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("居民水循环 id 不能为空。", nameof(id));
-            if (metabolismSecondsPerUnit <= 0f)
+            if (metabolismMillilitersPerSecond <= 0f)
                 throw new ArgumentOutOfRangeException(
-                    nameof(metabolismSecondsPerUnit),
-                    "每单位代谢时间必须大于零。");
+                    nameof(metabolismMillilitersPerSecond),
+                    "每秒代谢毫升数必须大于零。");
+            if (drinkServingMilliliters <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(drinkServingMilliliters),
+                    "一份饮水的毫升数必须大于零。");
             if (initialThirst < 0f || initialThirst > 1f)
                 throw new ArgumentOutOfRangeException(nameof(initialThirst), "初始口渴必须位于 0 到 1。 ");
             if (thirstIncreasePerSecond < 0f)
                 throw new ArgumentOutOfRangeException(nameof(thirstIncreasePerSecond));
-            if (thirstReliefPerUnit <= 0f || thirstReliefPerUnit > 1f)
-                throw new ArgumentOutOfRangeException(nameof(thirstReliefPerUnit));
-            if (bodyWaterCapacity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(bodyWaterCapacity));
-            if (bladderCapacity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(bladderCapacity));
+            if (thirstReliefPerServing <= 0f || thirstReliefPerServing > 1f)
+                throw new ArgumentOutOfRangeException(nameof(thirstReliefPerServing));
+            if (bodyWaterCapacityMilliliters <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bodyWaterCapacityMilliliters));
+            if (bladderCapacityMilliliters <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bladderCapacityMilliliters));
 
             _id = id.Trim();
             _ownerId = ownerId;
-            _metabolismSecondsPerUnit = metabolismSecondsPerUnit;
+            _metabolismMillilitersPerSecond = metabolismMillilitersPerSecond;
+            _drinkServingMilliliters = drinkServingMilliliters;
             _thirstIncreasePerSecond = thirstIncreasePerSecond;
-            _thirstReliefPerUnit = thirstReliefPerUnit;
+            _thirstReliefPerServing = thirstReliefPerServing;
             Thirst = initialThirst;
-            BodyWater = new ResourceInventory($"{_id}:body-water", bodyWaterCapacity);
-            Bladder = new ResourceInventory($"{_id}:bladder", bladderCapacity);
+            BodyWater = new ResourceInventory(
+                $"{_id}:body-water",
+                ResourceMeasure.Milliliter,
+                bodyWaterCapacityMilliliters);
+            Bladder = new ResourceInventory(
+                $"{_id}:bladder",
+                ResourceMeasure.Milliliter,
+                bladderCapacityMilliliters);
         }
 
         /// <summary>0 表示不渴，1 表示口渴达到当前原型上限。</summary>
         public float Thirst { get; private set; }
 
         /// <summary>
-        /// 0 到 1 的排泄压力。已形成的排泄物占主要部分，正在代谢的水提供连续的前兆，
-        /// 便于效用 AI 在硬性“满”之前做出选择。
+        /// 0 到 1 的排泄压力，直接由膀胱内真实 mL 与容量计算。代谢本身按 mL 连续形成内容物，
+        /// 因而无需再把尚在体内的水重复折算成一份虚拟压力。
         /// </summary>
         public float ExcretionPressure
         {
             get
             {
-                float forming = BodyWater.GetAmount(NomadResourceIds.Water) > 0
-                    ? Math.Min(1f, _metabolismProgressSeconds / _metabolismSecondsPerUnit)
-                    : 0f;
-                return Math.Min(1f, (Bladder.TotalAmount + forming) / Bladder.Capacity);
+                return Math.Min(1f, Bladder.TotalAmount / (float)Bladder.Capacity);
             }
         }
 
@@ -92,9 +106,8 @@ namespace Game.NomadWorkshop.Simulation
         /// <summary>已形成且需要通过厕所排出的真实内容物。</summary>
         public ResourceInventory Bladder { get; }
 
-        public float MetabolismProgress01 => Math.Min(
-            1f,
-            _metabolismProgressSeconds / _metabolismSecondsPerUnit);
+        /// <summary>当前玩法参数下每个模拟秒最多转化的水量。</summary>
+        public double MetabolismMillilitersPerSecond => _metabolismMillilitersPerSecond;
 
         /// <summary>预留一次喝水行动；只有提交才会同时转移水并缓解口渴。</summary>
         public bool TryReserveDrink(
@@ -132,7 +145,11 @@ namespace Game.NomadWorkshop.Simulation
 
             lease = new ResidentWaterActionLease(
                 process,
-                () => Thirst = Math.Max(0f, Thirst - _thirstReliefPerUnit * amount));
+                () =>
+                {
+                    float servingRatio = amount / (float)_drinkServingMilliliters;
+                    Thirst = Math.Max(0f, Thirst - _thirstReliefPerServing * servingRatio);
+                });
             return true;
         }
 
@@ -175,8 +192,10 @@ namespace Game.NomadWorkshop.Simulation
         }
 
         /// <summary>
-        /// 推进连续口渴和延迟代谢。每满一个代谢周期，才原子地把一单位体内水变成排泄物；
-        /// 膀胱无容量时保留水与累计进度，并返回可解释阻塞。
+        /// 推进连续口渴和水代谢。速率先累积为不足 1 mL 的小数余量，再以整数 mL 原子转移；
+        /// 因而小步更新不会丢量；未来接入运行存档时，除整数库存外还需保存这份不足 1 mL 的余量。
+        /// 当前 Foundation 为守恒验证采用
+        /// 1 mL 摄入水 → 1 mL 排泄物，未来呼吸、汗液等损失应作为显式去向加入，不能偷偷乘系数消失。
         /// </summary>
         public ResidentWaterCycleTick Advance(float deltaSeconds, ResourceFlowLedger ledger)
         {
@@ -184,43 +203,74 @@ namespace Game.NomadWorkshop.Simulation
             if (ledger == null) throw new ArgumentNullException(nameof(ledger));
 
             Thirst = Math.Min(1f, Thirst + deltaSeconds * _thirstIncreasePerSecond);
-            if (BodyWater.GetAmount(NomadResourceIds.Water) <= 0)
+            int bodyWaterMilliliters = BodyWater.GetAmount(NomadResourceIds.Water);
+            if (bodyWaterMilliliters <= 0)
             {
-                _metabolismProgressSeconds = 0f;
+                _pendingMetabolismMilliliters = 0d;
                 return new ResidentWaterCycleTick(0, ResourceFlowBlocker.None);
             }
 
-            _metabolismProgressSeconds += deltaSeconds;
-            int metabolized = 0;
-            while (_metabolismProgressSeconds >= _metabolismSecondsPerUnit &&
-                   BodyWater.GetAmount(NomadResourceIds.Water) > 0)
+            _pendingMetabolismMilliliters = Math.Min(
+                bodyWaterMilliliters,
+                _pendingMetabolismMilliliters + deltaSeconds * _metabolismMillilitersPerSecond);
+            int readyMilliliters = Math.Min(
+                bodyWaterMilliliters,
+                (int)Math.Floor(_pendingMetabolismMilliliters));
+            if (readyMilliliters <= 0)
+                return new ResidentWaterCycleTick(0, ResourceFlowBlocker.None);
+
+            int transferableMilliliters = Math.Min(readyMilliliters, Bladder.FreeCapacity);
+            if (transferableMilliliters <= 0)
             {
-                var request = new ProcessTaskRequest(
-                    $"{_id}:metabolism:{_metabolismSequence + 1}",
-                    _ownerId,
-                    "延迟代谢把摄入水转为需要排出的真实物质",
-                    new[]
-                    {
-                        new InventoryResourceQuantity(BodyWater, NomadResourceIds.Water, 1),
-                    },
-                    new[]
-                    {
-                        new InventoryResourceQuantity(Bladder, NomadResourceIds.HumanWaste, 1),
-                    },
-                    new[] { $"resident:{_id}:metabolism" });
-
-                if (!ledger.TryReserveProcess(request, out ProcessTaskLease process, out ResourceFlowBlocker blocker))
-                    return new ResidentWaterCycleTick(metabolized, blocker);
-
-                process.Commit();
-                _metabolismProgressSeconds -= _metabolismSecondsPerUnit;
-                _metabolismSequence++;
-                metabolized++;
+                return new ResidentWaterCycleTick(
+                    0,
+                    new ResourceFlowBlocker(
+                        ResourceFlowBlockReason.DestinationFull,
+                        Bladder.Id,
+                        NomadResourceIds.HumanWaste));
             }
 
+            var request = new ProcessTaskRequest(
+                $"{_id}:metabolism:{_metabolismSequence + 1}",
+                _ownerId,
+                "按毫升把摄入水转为需要排出的真实物质",
+                new[]
+                {
+                    new InventoryResourceQuantity(
+                        BodyWater,
+                        NomadResourceIds.Water,
+                        transferableMilliliters),
+                },
+                new[]
+                {
+                    new InventoryResourceQuantity(
+                        Bladder,
+                        NomadResourceIds.HumanWaste,
+                        transferableMilliliters),
+                },
+                new[] { $"resident:{_id}:metabolism" });
+
+            if (!ledger.TryReserveProcess(
+                    request,
+                    out ProcessTaskLease process,
+                    out ResourceFlowBlocker blocker))
+                return new ResidentWaterCycleTick(0, blocker);
+
+            process.Commit();
+            _pendingMetabolismMilliliters -= transferableMilliliters;
+            _metabolismSequence++;
+
             if (BodyWater.GetAmount(NomadResourceIds.Water) <= 0)
-                _metabolismProgressSeconds = 0f;
-            return new ResidentWaterCycleTick(metabolized, ResourceFlowBlocker.None);
+                _pendingMetabolismMilliliters = 0d;
+
+            ResourceFlowBlocker remainingBlocker =
+                readyMilliliters > transferableMilliliters && Bladder.FreeCapacity <= 0
+                    ? new ResourceFlowBlocker(
+                        ResourceFlowBlockReason.DestinationFull,
+                        Bladder.Id,
+                        NomadResourceIds.HumanWaste)
+                    : ResourceFlowBlocker.None;
+            return new ResidentWaterCycleTick(transferableMilliliters, remainingBlocker);
         }
     }
 

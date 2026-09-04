@@ -19,7 +19,7 @@ namespace Game.NomadWorkshop
         [SerializeField, Min(0.05f)] private float pickupSeconds = 0.55f;
         [SerializeField, Min(0.05f)] private float deliverySeconds = 0.55f;
         [SerializeField, Min(0.05f)] private float processingSeconds = 2.6f;
-        [SerializeField, Min(0.1f)] private float metabolismSeconds = 4.2f;
+        [SerializeField, Min(0.1f)] private float drinkMetabolismSeconds = 4.2f;
         [SerializeField] private GameObject fieldKitchenPrefab;
         [SerializeField] private GameObject humanoidPrefab;
         [SerializeField] private RuntimeAnimatorController humanoidController;
@@ -28,7 +28,8 @@ namespace Game.NomadWorkshop
         private ResourceFlowLedger _resourceFlow;
         private ResourceInventory _pantry;
         private ResourceInventory _waterTank;
-        private ResourceInventory _residentCarry;
+        private ResourceInventory _residentItemCarry;
+        private ResourceInventory _residentLiquidCarry;
         private ResourceInventory _kitchenFoodInput;
         private ResourceInventory _kitchenWaterInput;
         private ResourceInventory _kitchenMealOutput;
@@ -143,19 +144,26 @@ namespace Game.NomadWorkshop
         public ResourceFlowBlocker LastBlocker => _lastBlocker;
         public float CenterDoorOpenAmount => _doorOpenAmount;
         public int PantryFood => _pantry?.GetAmount(NomadResourceIds.FoodIngredient) ?? 0;
-        public int WaterTankAmount => _waterTank?.GetAmount(NomadResourceIds.Water) ?? 0;
+        public int WaterTankMilliliters => _waterTank?.GetAmount(NomadResourceIds.Water) ?? 0;
         public int KitchenMealOutput => _kitchenMealOutput?.GetAmount(NomadResourceIds.PreparedMeal) ?? 0;
-        public int KitchenWasteOutput => _kitchenWasteOutput?.GetAmount(NomadResourceIds.WasteWater) ?? 0;
+        public int KitchenWasteOutputMilliliters =>
+            _kitchenWasteOutput?.GetAmount(NomadResourceIds.WasteWater) ?? 0;
         public int PreparedMeals => _mealShelf?.GetAmount(NomadResourceIds.PreparedMeal) ?? 0;
-        public int WasteWater => _wasteTank?.GetAmount(NomadResourceIds.WasteWater) ?? 0;
-        public int HumanWaste => _wasteTank?.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
-        public int VehicleWasteTotal => _wasteTank?.TotalAmount ?? 0;
-        public int DrinkingStationWater => _drinkingStation?.GetAmount(NomadResourceIds.Water) ?? 0;
-        public int ToiletHoldingWaste => _toiletHolding?.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
-        public int ResidentCarriedHumanWaste =>
-            _residentCarry?.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
-        public int BodyWater => _residentWaterCycle?.BodyWater.GetAmount(NomadResourceIds.Water) ?? 0;
-        public int BladderWaste => _residentWaterCycle?.Bladder.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
+        public int WasteWaterMilliliters =>
+            _wasteTank?.GetAmount(NomadResourceIds.WasteWater) ?? 0;
+        public int HumanWasteMilliliters =>
+            _wasteTank?.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
+        public int VehicleWasteTotalMilliliters => _wasteTank?.TotalAmount ?? 0;
+        public int DrinkingStationWaterMilliliters =>
+            _drinkingStation?.GetAmount(NomadResourceIds.Water) ?? 0;
+        public int ToiletHoldingWasteMilliliters =>
+            _toiletHolding?.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
+        public int ResidentCarriedHumanWasteMilliliters =>
+            _residentLiquidCarry?.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
+        public int BodyWaterMilliliters =>
+            _residentWaterCycle?.BodyWater.GetAmount(NomadResourceIds.Water) ?? 0;
+        public int BladderWasteMilliliters =>
+            _residentWaterCycle?.Bladder.GetAmount(NomadResourceIds.HumanWaste) ?? 0;
         public float Thirst => _residentWaterCycle?.Thirst ?? 0f;
         public float ExcretionPressure => _residentWaterCycle?.ExcretionPressure ?? 0f;
         public bool IsSimulationPaused => _simulationPaused;
@@ -237,7 +245,8 @@ namespace Game.NomadWorkshop
                     _lastBlocker = waterTick.Blocker;
                     SetBlocked("体内水代谢");
                 }
-                else if (waterTick.MetabolizedUnits > 0)
+                else if (waterTick.MetabolizedMilliliters > 0 &&
+                         _residentWaterCycle.BodyWater.TotalAmount == 0)
                 {
                     BeginToiletUse();
                 }
@@ -307,25 +316,59 @@ namespace Game.NomadWorkshop
             _resourceFlow = new ResourceFlowLedger();
             _pantry = new ResourceInventory(
                 "pantry",
+                ResourceMeasure.Item,
                 6,
                 new ResourceQuantity(NomadResourceIds.FoodIngredient, 3));
             _waterTank = new ResourceInventory(
                 "clean-water-tank",
-                6,
-                new ResourceQuantity(NomadResourceIds.Water, 3));
-            _residentCarry = new ResourceInventory("resident-ada-carry", 1);
-            _kitchenFoodInput = new ResourceInventory("kitchen-food-input", 1);
-            _kitchenWaterInput = new ResourceInventory("kitchen-water-input", 1);
-            _kitchenMealOutput = new ResourceInventory("kitchen-meal-output", 1);
-            _kitchenWasteOutput = new ResourceInventory("kitchen-waste-output", 1);
-            _mealShelf = new ResourceInventory("prepared-meal-shelf", 3);
-            _wasteTank = new ResourceInventory("vehicle-waste-tank", 2);
-            _drinkingStation = new ResourceInventory("drinking-station", 1);
-            _toiletHolding = new ResourceInventory("toilet-holding", 1);
+                ResourceMeasure.Milliliter,
+                3_000,
+                new ResourceQuantity(NomadResourceIds.Water, 2_000));
+            _residentItemCarry = new ResourceInventory(
+                "resident-ada-item-carry",
+                ResourceMeasure.Item,
+                1);
+            _residentLiquidCarry = new ResourceInventory(
+                "resident-ada-liquid-carry",
+                ResourceMeasure.Milliliter,
+                500);
+            _kitchenFoodInput = new ResourceInventory(
+                "kitchen-food-input",
+                ResourceMeasure.Item,
+                1);
+            _kitchenWaterInput = new ResourceInventory(
+                "kitchen-water-input",
+                ResourceMeasure.Milliliter,
+                500);
+            _kitchenMealOutput = new ResourceInventory(
+                "kitchen-meal-output",
+                ResourceMeasure.Item,
+                1);
+            _kitchenWasteOutput = new ResourceInventory(
+                "kitchen-waste-output",
+                ResourceMeasure.Milliliter,
+                500);
+            _mealShelf = new ResourceInventory(
+                "prepared-meal-shelf",
+                ResourceMeasure.Item,
+                3);
+            _wasteTank = new ResourceInventory(
+                "vehicle-waste-tank",
+                ResourceMeasure.Milliliter,
+                1_000);
+            _drinkingStation = new ResourceInventory(
+                "drinking-station",
+                ResourceMeasure.Milliliter,
+                ResidentWaterCycle.DefaultDrinkServingMilliliters);
+            _toiletHolding = new ResourceInventory(
+                "toilet-holding",
+                ResourceMeasure.Milliliter,
+                500);
             _residentWaterCycle = new ResidentWaterCycle(
                 "ada",
                 ResidentId,
-                metabolismSeconds);
+                ResidentWaterCycle.DefaultDrinkServingMilliliters /
+                Mathf.Max(0.01f, drinkMetabolismSeconds));
             _lastBlocker = ResourceFlowBlocker.None;
             _batchIndex = 0;
             _sanitationCycleCount = 0;
@@ -344,7 +387,7 @@ namespace Game.NomadWorkshop
                     $"batch-{_batchIndex + 1}:haul-food",
                     ResidentId,
                     _pantry,
-                    _residentCarry,
+                    _residentItemCarry,
                     _kitchenFoodInput,
                     NomadResourceIds.FoodIngredient,
                     1,
@@ -363,11 +406,11 @@ namespace Game.NomadWorkshop
                     $"batch-{_batchIndex + 1}:haul-water",
                     ResidentId,
                     _waterTank,
-                    _residentCarry,
+                    _residentLiquidCarry,
                     _kitchenWaterInput,
                     NomadResourceIds.Water,
-                    1,
-                    "厨房需要一份清水",
+                    500,
+                    "厨房需要 500 mL 清水",
                     new[] { "station:clean-water", "station:kitchen-water-input" }),
                 _waterPickupPoint.position,
                 _waterDeliveryPoint.position,
@@ -382,7 +425,7 @@ namespace Game.NomadWorkshop
                     $"batch-{_batchIndex + 1}:store-meal",
                     ResidentId,
                     _kitchenMealOutput,
-                    _residentCarry,
+                    _residentItemCarry,
                     _mealShelf,
                     NomadResourceIds.PreparedMeal,
                     1,
@@ -401,10 +444,10 @@ namespace Game.NomadWorkshop
                     $"batch-{_batchIndex + 1}:drain-kitchen-waste",
                     ResidentId,
                     _kitchenWasteOutput,
-                    _residentCarry,
+                    _residentLiquidCarry,
                     _wasteTank,
                     NomadResourceIds.WasteWater,
-                    1,
+                    500,
                     "把厨房污水桶送入有容量的污水罐",
                     new[] { "station:kitchen-waste-output", "station:vehicle-waste-tank" }),
                 _wastePickupPoint.position,
@@ -422,11 +465,11 @@ namespace Game.NomadWorkshop
                     $"sanitation-{_sanitationCycleCount + 1}:fill-drinking-station",
                     ResidentId,
                     _waterTank,
-                    _residentCarry,
+                    _residentLiquidCarry,
                     _drinkingStation,
                     NomadResourceIds.Water,
-                    1,
-                    "Ada 口渴，需要把一份清水送到饮水台",
+                    ResidentWaterCycle.DefaultDrinkServingMilliliters,
+                    "Ada 口渴，需要把 300 mL 清水送到饮水台",
                     new[] { "station:clean-water", "station:drinking" }),
                 _waterPickupPoint.position,
                 _drinkingDeliveryPoint.position,
@@ -441,10 +484,10 @@ namespace Game.NomadWorkshop
                     $"sanitation-{_sanitationCycleCount + 1}:empty-toilet",
                     ResidentId,
                     _toiletHolding,
-                    _residentCarry,
+                    _residentLiquidCarry,
                     _wasteTank,
                     NomadResourceIds.HumanWaste,
-                    1,
+                    _toiletHolding.GetAmount(NomadResourceIds.HumanWaste),
                     "把厕所暂存桶中的排泄物清运到车辆废物罐",
                     new[] { "station:toilet-canister", "station:vehicle-waste-tank" }),
                 _toiletWastePickupPoint.position,
@@ -474,7 +517,9 @@ namespace Game.NomadWorkshop
             _currentTask = displayName;
             _currentContract =
                 $"{request.Source.Id} → {request.Carrier.Id} → {request.Destination.Id}\n" +
-                $"{request.Resource} × {request.Amount}；原因：{request.Reason}";
+                $"{request.Resource} × " +
+                $"{ResourceAmountFormatting.Format(request.Amount, request.Resource.Measure)}；" +
+                $"原因：{request.Reason}";
             SetResidentSemantic(ResidentAnimationSemantic.Move);
         }
 
@@ -527,7 +572,7 @@ namespace Game.NomadWorkshop
                     _drinkingStation,
                     $"sanitation-{_sanitationCycleCount + 1}:drink",
                     "station:drinking",
-                    1,
+                    ResidentWaterCycle.DefaultDrinkServingMilliliters,
                     out _activeResidentAction,
                     out _lastBlocker))
             {
@@ -540,7 +585,7 @@ namespace Game.NomadWorkshop
             _phase = SpikePhase.MovingToResidentAction;
             _currentTask = "Ada 饮水";
             _currentContract =
-                "输入：饮水台清水 × 1；提交后进入 Ada 体内待代谢库存\n" +
+                "输入：饮水台清水 300 mL；提交后进入 Ada 体内待代谢库存\n" +
                 "口渴只在行动提交时缓解；取消不会吞水。";
             SetResidentSemantic(ResidentAnimationSemantic.Move);
         }
@@ -552,7 +597,7 @@ namespace Game.NomadWorkshop
                     _toiletHolding,
                     $"sanitation-{_sanitationCycleCount + 1}:use-toilet",
                     "station:toilet",
-                    1,
+                    _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste),
                     out _activeResidentAction,
                     out _lastBlocker))
             {
@@ -565,8 +610,8 @@ namespace Game.NomadWorkshop
             _phase = SpikePhase.MovingToResidentAction;
             _currentTask = "Ada 使用厕所";
             _currentContract =
-                "输入：Ada 膀胱排泄物 × 1\n" +
-                "输出：厕所暂存桶 × 1；桶满会阻止本次行动。";
+                "输入：Ada 当前全部膀胱内容物\n" +
+                "输出：同体积进入厕所暂存桶；桶满会阻止本次行动。";
             SetResidentSemantic(ResidentAnimationSemantic.Move);
         }
 
@@ -624,7 +669,7 @@ namespace Game.NomadWorkshop
                     new InventoryResourceQuantity(
                         _kitchenWaterInput,
                         NomadResourceIds.Water,
-                        1),
+                        500),
                 },
                 new[]
                 {
@@ -635,7 +680,7 @@ namespace Game.NomadWorkshop
                     new InventoryResourceQuantity(
                         _kitchenWasteOutput,
                         NomadResourceIds.WasteWater,
-                        1),
+                        500),
                 },
                 new[] { "station:kitchen-work" });
 
@@ -649,8 +694,8 @@ namespace Game.NomadWorkshop
             _phase = SpikePhase.MovingToKitchenWork;
             _currentTask = "制作餐食";
             _currentContract =
-                "输入：厨房食材口 × 1 + 厨房进水口 × 1\n" +
-                "输出：厨房餐食口 × 1 + 厨房污水口 × 1（本地容量已预留）";
+                "输入：厨房食材 1 件 + 清水 500 mL\n" +
+                "输出：餐食 1 件 + 污水 500 mL（本地容量已预留）";
             SetResidentSemantic(ResidentAnimationSemantic.Move);
         }
 
@@ -1150,7 +1195,8 @@ namespace Game.NomadWorkshop
             if (_kitchenMealIndicator != null)
                 _kitchenMealIndicator.gameObject.SetActive(KitchenMealOutput > 0);
             if (_kitchenWasteIndicator != null)
-                _kitchenWasteIndicator.gameObject.SetActive(KitchenWasteOutput > 0);
+                _kitchenWasteIndicator.gameObject.SetActive(
+                    KitchenWasteOutputMilliliters > 0);
             if (_mealIndicator != null)
             {
                 int count = PreparedMeals;
@@ -1159,15 +1205,18 @@ namespace Game.NomadWorkshop
             }
             if (_wasteIndicator != null)
             {
-                int count = VehicleWasteTotal;
-                _wasteIndicator.gameObject.SetActive(count > 0);
-                _wasteIndicator.localPosition = new Vector3(0f, 0.18f + count * 0.23f, 0f);
-                _wasteIndicator.localScale = new Vector3(0.62f, 0.05f + count * 0.18f, 0.62f);
+                int amountMilliliters = VehicleWasteTotalMilliliters;
+                float fill = amountMilliliters / (float)_wasteTank.Capacity;
+                _wasteIndicator.gameObject.SetActive(amountMilliliters > 0);
+                _wasteIndicator.localPosition = new Vector3(0f, 0.18f + fill * 0.46f, 0f);
+                _wasteIndicator.localScale = new Vector3(0.62f, 0.05f + fill * 0.36f, 0.62f);
             }
             if (_drinkingWaterIndicator != null)
-                _drinkingWaterIndicator.gameObject.SetActive(DrinkingStationWater > 0);
+                _drinkingWaterIndicator.gameObject.SetActive(
+                    DrinkingStationWaterMilliliters > 0);
             if (_toiletWasteIndicator != null)
-                _toiletWasteIndicator.gameObject.SetActive(ToiletHoldingWaste > 0);
+                _toiletWasteIndicator.gameObject.SetActive(
+                    ToiletHoldingWasteMilliliters > 0);
         }
 
         private void ResetScenario()
@@ -1229,29 +1278,41 @@ namespace Game.NomadWorkshop
             GUILayout.Space(6f);
             _guiScroll = GUILayout.BeginScrollView(_guiScroll, false, true);
             GUILayout.Label("真实库存 / 总容量", _accentStyle);
-            DrawInventory("食材储柜", PantryFood, _pantry.Capacity);
-            DrawInventory("净水箱", WaterTankAmount, _waterTank.Capacity);
-            DrawInventory("Ada 携带", _residentCarry.TotalAmount, _residentCarry.Capacity);
-            DrawInventory("厨房食材口", _kitchenFoodInput.TotalAmount, _kitchenFoodInput.Capacity);
-            DrawInventory("厨房进水口", _kitchenWaterInput.TotalAmount, _kitchenWaterInput.Capacity);
-            DrawInventory("厨房餐食口", KitchenMealOutput, _kitchenMealOutput.Capacity);
-            DrawInventory("厨房污水口", KitchenWasteOutput, _kitchenWasteOutput.Capacity);
-            DrawInventory("成品餐架", PreparedMeals, _mealShelf.Capacity);
-            DrawInventory("车辆废物罐", VehicleWasteTotal, _wasteTank.Capacity);
-            GUILayout.Label($"其中：厨房污水 {WasteWater} / 人体排泄物 {HumanWaste}", _bodyStyle);
+            DrawInventory("食材储柜", PantryFood, _pantry.Capacity, ResourceMeasure.Item);
+            DrawInventory("净水箱", WaterTankMilliliters, _waterTank.Capacity, ResourceMeasure.Milliliter);
+            DrawInventory(
+                "Ada 物品携带",
+                _residentItemCarry.TotalAmount,
+                _residentItemCarry.Capacity,
+                ResourceMeasure.Item);
+            DrawInventory(
+                "Ada 液体容器",
+                _residentLiquidCarry.TotalAmount,
+                _residentLiquidCarry.Capacity,
+                ResourceMeasure.Milliliter);
+            DrawInventory("厨房食材口", _kitchenFoodInput.TotalAmount, _kitchenFoodInput.Capacity, ResourceMeasure.Item);
+            DrawInventory("厨房进水口", _kitchenWaterInput.TotalAmount, _kitchenWaterInput.Capacity, ResourceMeasure.Milliliter);
+            DrawInventory("厨房餐食口", KitchenMealOutput, _kitchenMealOutput.Capacity, ResourceMeasure.Item);
+            DrawInventory("厨房污水口", KitchenWasteOutputMilliliters, _kitchenWasteOutput.Capacity, ResourceMeasure.Milliliter);
+            DrawInventory("成品餐架", PreparedMeals, _mealShelf.Capacity, ResourceMeasure.Item);
+            DrawInventory("车辆废物罐", VehicleWasteTotalMilliliters, _wasteTank.Capacity, ResourceMeasure.Milliliter);
+            GUILayout.Label(
+                $"其中：厨房污水 {ResourceAmountFormatting.Format(WasteWaterMilliliters, ResourceMeasure.Milliliter)} / " +
+                $"人体排泄物 {ResourceAmountFormatting.Format(HumanWasteMilliliters, ResourceMeasure.Milliliter)}",
+                _bodyStyle);
 
             GUILayout.Space(6f);
             GUILayout.Label("Ada 生理状态与局部容器", _accentStyle);
             DrawMeter("口渴", Thirst);
             DrawMeter("排泄压力", ExcretionPressure);
-            DrawInventory("饮水台", DrinkingStationWater, _drinkingStation.Capacity);
-            DrawInventory("体内待代谢水", BodyWater, _residentWaterCycle.BodyWater.Capacity);
-            DrawInventory("膀胱内容物", BladderWaste, _residentWaterCycle.Bladder.Capacity);
-            DrawInventory("厕所暂存桶", ToiletHoldingWaste, _toiletHolding.Capacity);
+            DrawInventory("饮水台", DrinkingStationWaterMilliliters, _drinkingStation.Capacity, ResourceMeasure.Milliliter);
+            DrawInventory("体内待代谢水", BodyWaterMilliliters, _residentWaterCycle.BodyWater.Capacity, ResourceMeasure.Milliliter);
+            DrawInventory("膀胱内容物", BladderWasteMilliliters, _residentWaterCycle.Bladder.Capacity, ResourceMeasure.Milliliter);
+            DrawInventory("厕所暂存桶", ToiletHoldingWasteMilliliters, _toiletHolding.Capacity, ResourceMeasure.Milliliter);
 
             GUILayout.Space(5f);
             GUILayout.Label(
-                "提示：车辆废物罐容量只有 2。单批厨房污水与一次人体排泄物会恰好装满；继续生产时，无法清运的物质会留在原容器并明确显示阻塞。",
+                "提示：车辆废物罐容量为 1 L。两批厨房污水会装满；继续生产时，无法清运的物质会留在原容器并明确显示阻塞。",
                 _bodyStyle);
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -1272,7 +1333,11 @@ namespace Game.NomadWorkshop
             GUILayout.EndHorizontal();
         }
 
-        private static void DrawInventory(string label, int amount, int capacity)
+        private static void DrawInventory(
+            string label,
+            int amount,
+            int capacity,
+            ResourceMeasure measure)
         {
             GUILayout.BeginHorizontal();
             GUILayout.Label(label, GUILayout.Width(112f));
@@ -1283,7 +1348,10 @@ namespace Game.NomadWorkshop
             GUI.color = ratio >= 0.999f ? new Color(0.88f, 0.35f, 0.2f) : new Color(0.22f, 0.67f, 0.55f);
             GUI.Box(new Rect(rect.x + 2f, rect.y + 2f, (rect.width - 4f) * ratio, rect.height - 4f), GUIContent.none);
             GUI.color = previous;
-            GUILayout.Label($"{amount} / {capacity}", GUILayout.Width(52f));
+            GUILayout.Label(
+                $"{ResourceAmountFormatting.Format(amount, measure)} / " +
+                ResourceAmountFormatting.Format(capacity, measure),
+                GUILayout.Width(108f));
             GUILayout.EndHorizontal();
         }
 

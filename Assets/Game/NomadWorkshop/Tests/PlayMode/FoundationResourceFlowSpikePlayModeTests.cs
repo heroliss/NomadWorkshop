@@ -69,11 +69,11 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.IsTrue(observedCargo, "至少一帧应能看见居民携带的真实资源表现。 ");
             Assert.AreEqual(1, _controller.CompletedBatchCount);
             Assert.AreEqual(2, _controller.PantryFood);
-            Assert.AreEqual(2, _controller.WaterTankAmount);
+            Assert.AreEqual(1_500, _controller.WaterTankMilliliters);
             Assert.AreEqual(0, _controller.KitchenMealOutput);
-            Assert.AreEqual(0, _controller.KitchenWasteOutput);
+            Assert.AreEqual(0, _controller.KitchenWasteOutputMilliliters);
             Assert.AreEqual(1, _controller.PreparedMeals);
-            Assert.AreEqual(1, _controller.WasteWater);
+            Assert.AreEqual(500, _controller.WasteWaterMilliliters);
             Assert.IsFalse(_controller.HasVisibleCargo);
             Assert.Greater(maximumDoorOpen, 0.01f, "厨房门应由行动阶段驱动打开，而不是依赖动画结算。 ");
             Assert.IsFalse(_controller.LastBlocker.IsBlocked);
@@ -94,8 +94,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.AreEqual("vehicle-waste-tank", _controller.LastBlocker.InventoryId);
             Assert.AreEqual(3, _controller.PreparedMeals,
                 "餐食已先经本地输出口完成实体清运，不应因随后污水阻塞而回滚。 ");
-            Assert.AreEqual(2, _controller.WasteWater);
-            Assert.AreEqual(1, _controller.KitchenWasteOutput,
+            Assert.AreEqual(1_000, _controller.WasteWaterMilliliters);
+            Assert.AreEqual(500, _controller.KitchenWasteOutputMilliliters,
                 "无法清运的污水必须留在厨房输出口，不能消失或瞬移。 ");
             Assert.AreEqual(0, _controller.KitchenMealOutput);
             Assert.IsFalse(_controller.HasVisibleCargo,
@@ -121,10 +121,11 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                  i++)
             {
                 yield return null;
-                observedBodyWater |= _controller.BodyWater > 0;
-                observedBladderWaste |= _controller.BladderWaste > 0;
-                observedToiletWaste |= _controller.ToiletHoldingWaste > 0;
-                observedCarriedWaste |= _controller.ResidentCarriedHumanWaste > 0;
+                observedBodyWater |= _controller.BodyWaterMilliliters > 0;
+                observedBladderWaste |= _controller.BladderWasteMilliliters > 0;
+                observedToiletWaste |= _controller.ToiletHoldingWasteMilliliters > 0;
+                observedCarriedWaste |=
+                    _controller.ResidentCarriedHumanWasteMilliliters > 0;
                 maximumPressure = Mathf.Max(maximumPressure, _controller.ExcretionPressure);
             }
 
@@ -135,15 +136,15 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.IsTrue(observedToiletWaste, "如厕后排泄物应先进入厕所暂存桶。 ");
             Assert.IsTrue(observedCarriedWaste, "厕所暂存桶必须由居民实体清运到车辆废物罐。 ");
             Assert.Greater(maximumPressure, 0.01f, "离散代谢提交前后都应提供连续排泄压力。 ");
-            Assert.AreEqual(1, _controller.WaterTankAmount);
-            Assert.AreEqual(1, _controller.WasteWater);
-            Assert.AreEqual(1, _controller.HumanWaste);
-            Assert.AreEqual(2, _controller.VehicleWasteTotal);
-            Assert.AreEqual(0, _controller.DrinkingStationWater);
-            Assert.AreEqual(0, _controller.BodyWater);
-            Assert.AreEqual(0, _controller.BladderWaste);
-            Assert.AreEqual(0, _controller.ToiletHoldingWaste);
-            Assert.AreEqual(0, _controller.ResidentCarriedHumanWaste);
+            Assert.AreEqual(1_200, _controller.WaterTankMilliliters);
+            Assert.AreEqual(500, _controller.WasteWaterMilliliters);
+            Assert.AreEqual(300, _controller.HumanWasteMilliliters);
+            Assert.AreEqual(800, _controller.VehicleWasteTotalMilliliters);
+            Assert.AreEqual(0, _controller.DrinkingStationWaterMilliliters);
+            Assert.AreEqual(0, _controller.BodyWaterMilliliters);
+            Assert.AreEqual(0, _controller.BladderWasteMilliliters);
+            Assert.AreEqual(0, _controller.ToiletHoldingWasteMilliliters);
+            Assert.AreEqual(0, _controller.ResidentCarriedHumanWasteMilliliters);
             Assert.IsFalse(_controller.LastBlocker.IsBlocked);
             Assert.IsFalse(_controller.RequestWaterSanitationCycle(), "当前 Foundation 只演示一次完整水循环。 ");
         }

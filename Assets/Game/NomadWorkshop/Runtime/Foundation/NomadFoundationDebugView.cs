@@ -30,15 +30,21 @@ namespace Game.NomadWorkshop.Foundation
         private int _remainingPathCorners;
         private string _activePathSummary = string.Empty;
         private FoundationWaterCanLocation _waterCanLocation;
-        private int _waterCanWater;
+        private int _waterCanWaterMilliliters;
+        private int _waterCanCapacityMilliliters;
         private FoundationActionPlanProjection _latestActionPlan;
         private float _thirst;
         private float _recreation;
-        private int _vehicleWater;
-        private int _stationWater;
-        private int _bodyWater;
-        private int _bladderWaste;
-        private int _toiletHoldingWaste;
+        private int _vehicleWaterMilliliters;
+        private int _vehicleWaterCapacityMilliliters;
+        private int _stationWaterMilliliters;
+        private int _stationWaterCapacityMilliliters;
+        private int _bodyWaterMilliliters;
+        private int _bodyWaterCapacityMilliliters;
+        private int _bladderWasteMilliliters;
+        private int _bladderCapacityMilliliters;
+        private int _toiletHoldingWasteMilliliters;
+        private int _toiletHoldingCapacityMilliliters;
         private int _completedDrinks;
         private int _completedToiletUses;
         private int _completedLeisure;
@@ -73,15 +79,45 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.RemainingPathCorners, value => _remainingPathCorners = value);
             Bag.Subscribe(readModel.ActivePathSummary, value => _activePathSummary = value);
             Bag.Subscribe(readModel.WaterCanLocation, value => _waterCanLocation = value);
-            Bag.Subscribe(readModel.WaterCanWater, value => _waterCanWater = value);
+            Bag.Subscribe(
+                readModel.WaterCanWaterMilliliters,
+                value => _waterCanWaterMilliliters = value);
+            Bag.Subscribe(
+                readModel.WaterCanCapacityMilliliters,
+                value => _waterCanCapacityMilliliters = value);
             Bag.Subscribe(readModel.LatestActionPlan, value => _latestActionPlan = value);
             Bag.Subscribe(readModel.ResidentThirst, value => _thirst = value);
             Bag.Subscribe(readModel.ResidentRecreation, value => _recreation = value);
-            Bag.Subscribe(readModel.VehicleWater, value => _vehicleWater = value);
-            Bag.Subscribe(readModel.DrinkingStationWater, value => _stationWater = value);
-            Bag.Subscribe(readModel.BodyWater, value => _bodyWater = value);
-            Bag.Subscribe(readModel.BladderWaste, value => _bladderWaste = value);
-            Bag.Subscribe(readModel.ToiletHoldingWaste, value => _toiletHoldingWaste = value);
+            Bag.Subscribe(
+                readModel.VehicleWaterMilliliters,
+                value => _vehicleWaterMilliliters = value);
+            Bag.Subscribe(
+                readModel.VehicleWaterCapacityMilliliters,
+                value => _vehicleWaterCapacityMilliliters = value);
+            Bag.Subscribe(
+                readModel.DrinkingStationWaterMilliliters,
+                value => _stationWaterMilliliters = value);
+            Bag.Subscribe(
+                readModel.DrinkingStationCapacityMilliliters,
+                value => _stationWaterCapacityMilliliters = value);
+            Bag.Subscribe(
+                readModel.BodyWaterMilliliters,
+                value => _bodyWaterMilliliters = value);
+            Bag.Subscribe(
+                readModel.BodyWaterCapacityMilliliters,
+                value => _bodyWaterCapacityMilliliters = value);
+            Bag.Subscribe(
+                readModel.BladderWasteMilliliters,
+                value => _bladderWasteMilliliters = value);
+            Bag.Subscribe(
+                readModel.BladderCapacityMilliliters,
+                value => _bladderCapacityMilliliters = value);
+            Bag.Subscribe(
+                readModel.ToiletHoldingWasteMilliliters,
+                value => _toiletHoldingWasteMilliliters = value);
+            Bag.Subscribe(
+                readModel.ToiletHoldingCapacityMilliliters,
+                value => _toiletHoldingCapacityMilliliters = value);
             Bag.Subscribe(readModel.CompletedDrinkCount, value => _completedDrinks = value);
             Bag.Subscribe(readModel.CompletedToiletUseCount, value => _completedToiletUses = value);
             Bag.Subscribe(readModel.CompletedLeisureCount, value => _completedLeisure = value);
@@ -235,11 +271,18 @@ namespace Game.NomadWorkshop.Foundation
             DrawMeter("娱乐缺口", _recreation);
             DrawMeter("当前动作", _actionProgress);
             GUILayout.Label(
-                $"车辆水箱 {_vehicleWater}/8   饮水站 {_stationWater}/2   " +
-                $"体内水 {_bodyWater}/2   膀胱废物 {_bladderWaste}/2");
-            GUILayout.Label($"旱厕暂存桶 {_toiletHoldingWaste}/4", _smallStyle);
+                $"车辆水箱 {FormatVolume(_vehicleWaterMilliliters, _vehicleWaterCapacityMilliliters)}   " +
+                $"饮水站 {FormatVolume(_stationWaterMilliliters, _stationWaterCapacityMilliliters)}");
             GUILayout.Label(
-                $"唯一防漏水罐：{Describe(_waterCanLocation)} · 内含水 {_waterCanWater}/1",
+                $"体内待代谢水 {FormatVolume(_bodyWaterMilliliters, _bodyWaterCapacityMilliliters)}   " +
+                $"膀胱内容物 {FormatVolume(_bladderWasteMilliliters, _bladderCapacityMilliliters)}",
+                _smallStyle);
+            GUILayout.Label(
+                $"旱厕暂存桶 {FormatVolume(_toiletHoldingWasteMilliliters, _toiletHoldingCapacityMilliliters)}",
+                _smallStyle);
+            GUILayout.Label(
+                $"唯一防漏水罐：{Describe(_waterCanLocation)} · " +
+                $"内含水 {FormatVolume(_waterCanWaterMilliliters, _waterCanCapacityMilliliters)}",
                 _smallStyle);
             if (_latestActionPlan.Evaluated)
             {
@@ -398,6 +441,10 @@ namespace Game.NomadWorkshop.Foundation
 
         private static string DescribeRotationSnap(int deciDegrees) =>
             deciDegrees == 0 ? "关" : $"{deciDegrees / 10f:0.#}°";
+
+        private static string FormatVolume(int amountMilliliters, int capacityMilliliters) =>
+            $"{ResourceAmountFormatting.Format(amountMilliliters, ResourceMeasure.Milliliter)} / " +
+            ResourceAmountFormatting.Format(capacityMilliliters, ResourceMeasure.Milliliter);
 
         private static int NextValue(int current, params int[] values)
         {

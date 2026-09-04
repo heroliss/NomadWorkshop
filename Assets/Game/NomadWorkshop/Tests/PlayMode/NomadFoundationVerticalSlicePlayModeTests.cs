@@ -262,8 +262,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 observedCarriedWater |= _model.ResidentCarryingWater.Value;
                 observedPhysicalCanInResidentHands |=
                     _model.WaterCanLocation.Value == FoundationWaterCanLocation.Resident;
-                observedWaterInsideCan |= _model.WaterCanWater.Value == 1;
-                observedStationWater |= _model.DrinkingStationWater.Value > 0;
+                observedWaterInsideCan |=
+                    _model.WaterCanWaterMilliliters.Value == 2_000;
+                observedStationWater |=
+                    _model.DrinkingStationWaterMilliliters.Value > 0;
                 observedPlannedPath |= _model.RemainingPathMeters.Value > 0f &&
                                        _model.RemainingPathCorners.Value > 0 &&
                                        !string.IsNullOrEmpty(_model.ActivePathSummary.Value);
@@ -289,20 +291,23 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 observedPhysicalCanInResidentHands,
                 Is.True,
                 "居民必须先取得唯一实体水罐，不能把水抽象地挂在自身库存上。");
-            Assert.That(observedWaterInsideCan, Is.True, "搬运途中一单位水必须真实位于水罐库存。");
+            Assert.That(observedWaterInsideCan, Is.True, "搬运途中 2 L 水必须真实位于水罐库存。");
             Assert.That(observedStationWater, Is.True, "水应先进入饮水站，再进入居民身体。");
             Assert.That(observedPlannedPath, Is.True, "居民移动前应先生成可观察的连续 NavMesh 路径。");
             Assert.That(
                 observedOccupiedDockingSpace,
                 Is.True,
                 "居民前往和使用功能点期间，共享停靠空间应作为真实容量被占用并投影。 ");
-            Assert.That(readModel.VehicleWater.CurrentValue, Is.EqualTo(4));
             Assert.That(
-                readModel.BodyWater.CurrentValue + readModel.BladderWaste.CurrentValue,
-                Is.EqualTo(1),
+                readModel.VehicleWaterMilliliters.CurrentValue,
+                Is.EqualTo(58_000));
+            Assert.That(
+                readModel.BodyWaterMilliliters.CurrentValue +
+                readModel.BladderWasteMilliliters.CurrentValue,
+                Is.EqualTo(ResidentWaterCycle.DefaultDrinkServingMilliliters),
                 "喝下的水随后只能位于体内水或代谢后的膀胱库存。");
             Assert.That(readModel.ResidentCarryingWater.CurrentValue, Is.False);
-            Assert.That(readModel.WaterCanWater.CurrentValue, Is.Zero);
+            Assert.That(readModel.WaterCanWaterMilliliters.CurrentValue, Is.Zero);
             Assert.That(
                 readModel.WaterCanLocation.CurrentValue,
                 Is.EqualTo(FoundationWaterCanLocation.DrinkingStation),
@@ -558,18 +563,19 @@ namespace Game.NomadWorkshop.PlayMode.Tests
 
             const int restockFrameLimit = 180;
             for (var i = 0;
-                 i < restockFrameLimit && _model.DrinkingStationWater.Value < 2;
+                 i < restockFrameLimit &&
+                 _model.DrinkingStationWaterMilliliters.Value < 4_000;
                  i++)
                 yield return null;
 
-            Assert.That(_model.DrinkingStationWater.Value, Is.EqualTo(2));
-            Assert.That(_model.VehicleWater.Value, Is.EqualTo(2));
+            Assert.That(_model.DrinkingStationWaterMilliliters.Value, Is.EqualTo(4_000));
+            Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(55_700));
             Assert.That(
                 _model.CompletedDrinkCount.Value,
                 Is.EqualTo(1),
                 "例行补货只补充站内库存，不应让不渴的居民连续喝水。");
             Assert.That(_model.ResidentCarryingWater.Value, Is.False);
-            Assert.That(_model.WaterCanWater.Value, Is.Zero);
+            Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
             Assert.That(
                 _model.WaterCanLocation.Value,
                 Is.EqualTo(FoundationWaterCanLocation.DrinkingStation));
@@ -652,7 +658,13 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         {
             _worldView.enabled = false;
             _context.ExecuteCommand(new SetFoundationPausedCommand(true));
-            _system.ConfigurePhysiologyForTests(3f, 0.96f, 1f, 8);
+            _system.ConfigurePhysiologyForTests(
+                3f,
+                0.96f,
+                1f,
+                configuredToiletHoldingCapacityMilliliters: 1_200,
+                configuredBodyWaterCapacityMilliliters: 300,
+                configuredBladderCapacityMilliliters: 600);
             _context.ExecuteCommand(new ResetFoundationSliceCommand());
             yield return null;
             yield return BuildFacility("drinking-station", 0, 0);
@@ -677,7 +689,9 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(observedDestinationFull, Is.True, "测试应实际经过用户报告的 DestinationFull 窗口。 ");
             Assert.That(_model.CompletedDrinkCount.Value, Is.GreaterThanOrEqualTo(2));
             Assert.That(_model.CompletedToiletUseCount.Value, Is.GreaterThanOrEqualTo(1));
-            Assert.That(_model.ToiletHoldingWaste.Value, Is.GreaterThanOrEqualTo(1));
+            Assert.That(
+                _model.ToiletHoldingWasteMilliliters.Value,
+                Is.GreaterThanOrEqualTo(ResidentWaterCycle.DefaultDrinkServingMilliliters));
         }
 
         [UnityTest]
@@ -701,12 +715,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(plan.Feasible, Is.False);
             Assert.That(plan.Selected, Is.False);
             StringAssert.Contains("防漏", plan.Blocker);
-            Assert.That(_model.VehicleWater.Value, Is.EqualTo(5));
-            Assert.That(_model.WaterCanWater.Value, Is.Zero);
+            Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(60_000));
+            Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
             Assert.That(
                 _model.WaterCanLocation.Value,
                 Is.EqualTo(FoundationWaterCanLocation.VehicleWaterTank));
-            Assert.That(_model.DrinkingStationWater.Value, Is.Zero);
+            Assert.That(_model.DrinkingStationWaterMilliliters.Value, Is.Zero);
             Assert.That(_model.ResidentCarryingWater.Value, Is.False);
         }
 
