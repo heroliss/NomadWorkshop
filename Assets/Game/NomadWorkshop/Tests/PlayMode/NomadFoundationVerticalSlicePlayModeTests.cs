@@ -25,6 +25,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         private GameObject _root;
         private DeckLayoutDefinition _layout;
         private NomadFacilityDefinition[] _definitions;
+        private NomadWorldItemDefinition[] _itemDefinitions;
         private NomadFoundationContext _context;
         private NomadFoundationModel _model;
         private NomadFoundationSystem _system;
@@ -41,6 +42,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _layout = ScriptableObject.CreateInstance<DeckLayoutDefinition>();
             _layout.ConfigureForTests(-4, -3, 9, 7, 1.2f);
             _definitions = CreateDefinitions();
+            _itemDefinitions = CreateWorldItemDefinitions();
 
             _root = new GameObject("Foundation Test Root");
             _root.SetActive(false);
@@ -52,14 +54,20 @@ namespace Game.NomadWorkshop.PlayMode.Tests
 
             GameObject logic = CreateChild(_root.transform, "Logic");
             _system = logic.AddComponent<NomadFoundationSystem>();
-            _system.ConfigureDefinitionsForTests(_layout, _definitions);
+            _system.ConfigureDefinitionsForTests(_layout, _definitions, _itemDefinitions);
 
             GameObject presentation = CreateChild(_root.transform, "Presentation");
             GameObject deck = CreateChild(presentation.transform, "Vehicle Deck Root");
             Camera camera = CreateChild(presentation.transform, "Camera").AddComponent<Camera>();
             Light light = CreateChild(presentation.transform, "Light").AddComponent<Light>();
             _worldView = presentation.AddComponent<NomadFoundationWorldView>();
-            _worldView.ConfigureForTests(_layout, _definitions, deck.transform, camera, light);
+            _worldView.ConfigureForTests(
+                _layout,
+                _definitions,
+                deck.transform,
+                camera,
+                light,
+                configuredWorldItemDefinitions: _itemDefinitions);
             _debugView = CreateChild(_root.transform, "Debug").AddComponent<NomadFoundationDebugView>();
 
             _root.SetActive(true);
@@ -83,6 +91,13 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 for (var i = 0; i < _definitions.Length; i++)
                 {
                     if (_definitions[i] != null) Object.Destroy(_definitions[i]);
+                }
+            }
+            if (_itemDefinitions != null)
+            {
+                for (var i = 0; i < _itemDefinitions.Length; i++)
+                {
+                    if (_itemDefinitions[i] != null) Object.Destroy(_itemDefinitions[i]);
                 }
             }
             yield return null;
@@ -455,6 +470,72 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.That(sourceRegions.gameObject.activeSelf, Is.False);
                 Assert.That(grid.gameObject.activeSelf, Is.False);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator FieldKitchen_CupUsesRegionTruthAndRestoresExactArbitraryYaw()
+        {
+            // 隔离真实鼠标对候选姿态的覆盖；响应式 View 投影即使组件 disabled 仍保持订阅。
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            yield return BuildFacility("field-kitchen", 0, 0);
+
+            FoundationItemPlacementState[] placedItems = _context.ExecuteCommand(
+                new GetFoundationWorldItemPlacementsCommand());
+            FoundationItemPlacementState cup = FindWorldItem(placedItems, "cup-01");
+            Assert.That(cup.Active, Is.True);
+            Assert.That(cup.DefinitionId, Is.EqualTo("drinking-cup"));
+            StringAssert.EndsWith("/placement/countertop-center", cup.RegionId);
+            Assert.That(cup.LocalPose, Is.EqualTo(PlacementRegionPose.Centered));
+            Assert.That(cup.SupportHeightMillimeters, Is.EqualTo(970));
+
+            NomadWorkshopSaveData checkpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadWorldItemSaveData savedCup = checkpoint.WorldItems.Find(
+                item => item.ItemId == "cup-01");
+            Assert.That(savedCup, Is.Not.Null, "普通台面物品必须作为独立实例进入检查点。 ");
+            savedCup.PlacementLocalPose = new QuantizedPlacementPose(40, -30, 370);
+
+            _context.ExecuteCommand(new ResetFoundationSliceCommand());
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+            yield return null;
+
+            FoundationItemPlacementState restored = FindWorldItem(
+                _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                "cup-01");
+            Assert.That(restored.DefinitionId, Is.EqualTo("drinking-cup"));
+            Assert.That(
+                restored.LocalPose,
+                Is.EqualTo(new PlacementRegionPose(40, -30, 370)),
+                "任意旋转杯具的存档恢复不能重新吸附到稳定候选角度。 ");
+            FoundationFacilityState owner = FindFacility(
+                _context.ExecuteCommand(new GetFoundationFacilitiesCommand()),
+                restored.OwnerEntityId);
+            NomadFacilityDefinition ownerDefinition = FindDefinition(
+                _definitions,
+                owner.DefinitionId);
+            Assert.That(
+                ownerDefinition.TryGetPlacementRegion(
+                    "countertop-center",
+                    out NomadPlacementRegionDefinition countertop),
+                Is.True);
+            PlacementRegionDefinition restoredRegion = countertop.CreateRegion(
+                owner.InstanceId,
+                owner.Pose);
+            Assert.That(
+                restored.WorldPose,
+                Is.EqualTo(restoredRegion.Pose.TransformLocal(40, -30, 370)));
+
+            Transform cupVisual = _worldView.transform.Find(
+                "Vehicle Deck Root/World Items/搪瓷杯 [cup-01]");
+            Assert.That(cupVisual, Is.Not.Null, "View 应从物品投影重建杯具，不从场景临时状态猜位置。 ");
+            Vector3 expectedLocal = _layout.PoseToLocal(restored.WorldPose, 0.97f);
+            Assert.That(
+                Vector3.Distance(cupVisual.localPosition, expectedLocal),
+                Is.LessThanOrEqualTo(0.001f));
+            Assert.That(
+                Mathf.Abs(Mathf.DeltaAngle(cupVisual.localEulerAngles.y, 37f)),
+                Is.LessThanOrEqualTo(0.01f));
         }
 
         [UnityTest]
@@ -1559,6 +1640,42 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             return amount;
         }
 
+        private static FoundationItemPlacementState FindWorldItem(
+            FoundationItemPlacementState[] items,
+            string itemId)
+        {
+            for (var i = 0; i < items.Length; i++)
+            {
+                if (items[i].ItemId == itemId) return items[i];
+            }
+            Assert.Fail($"没有找到世界物品：{itemId}");
+            return default;
+        }
+
+        private static FoundationFacilityState FindFacility(
+            FoundationFacilityState[] facilities,
+            string instanceId)
+        {
+            for (var i = 0; i < facilities.Length; i++)
+            {
+                if (facilities[i].InstanceId == instanceId) return facilities[i];
+            }
+            Assert.Fail($"没有找到设施：{instanceId}");
+            return default;
+        }
+
+        private static NomadFacilityDefinition FindDefinition(
+            NomadFacilityDefinition[] definitions,
+            string definitionId)
+        {
+            for (var i = 0; i < definitions.Length; i++)
+            {
+                if (definitions[i].Id == definitionId) return definitions[i];
+            }
+            Assert.Fail($"没有找到设施定义：{definitionId}");
+            return null;
+        }
+
         private static NomadFacilityDefinition[] CreateDefinitions()
         {
             var source = ScriptableObject.CreateInstance<NomadFacilityDefinition>();
@@ -1620,6 +1737,36 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 0f,
                 new Vector3(0.78f, 0.9f, 0.65f),
                 Color.cyan);
+
+            var fieldKitchen = ScriptableObject.CreateInstance<NomadFacilityDefinition>();
+            fieldKitchen.ConfigureForTests(
+                "field-kitchen",
+                "野战厨房",
+                NomadFacilityFunction.FieldKitchen,
+                true,
+                new[]
+                {
+                    new NomadFacilityFootprintPartDefinition(
+                        Vector2.zero,
+                        new Vector2(2.1f, 0.95f)),
+                },
+                RequiredGroup(
+                    "cook",
+                    new NomadFacilityInteractionSlotDefinition(
+                        "left",
+                        new Vector2(-0.62f, -0.9f)),
+                    new NomadFacilityInteractionSlotDefinition(
+                        "center",
+                        new Vector2(0f, -0.94f)),
+                    new NomadFacilityInteractionSlotDefinition(
+                        "right",
+                        new Vector2(0.62f, -0.9f))),
+                CountertopRegion(),
+                false,
+                Vector2.zero,
+                0f,
+                new Vector3(2.05f, 0.9f, 0.88f),
+                new Color(0.12f, 0.46f, 0.44f));
 
             var accessWall = ScriptableObject.CreateInstance<NomadFacilityDefinition>();
             accessWall.ConfigureForTests(
@@ -1724,7 +1871,46 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 0f,
                 new Vector3(0.86f, 1.38f, 0.62f),
                 new Color(0.58f, 0.28f, 0.13f));
-            return new[] { source, station, accessWall, toilet, slotBlocker, observationEasel };
+            return new[]
+            {
+                source,
+                station,
+                fieldKitchen,
+                accessWall,
+                toilet,
+                slotBlocker,
+                observationEasel,
+            };
+        }
+
+        private static NomadWorldItemDefinition[] CreateWorldItemDefinitions()
+        {
+            var waterCan = ScriptableObject.CreateInstance<NomadWorldItemDefinition>();
+            waterCan.ConfigureForTests(
+                "water-can",
+                "防漏水罐",
+                "water-can",
+                new Vector2(0.34f, 0.24f),
+                0.59f,
+                0.02f,
+                false,
+                new[] { 0f, 90f },
+                NomadWorldItemPrototypeStyle.WaterCan,
+                new Color(0.1f, 0.54f, 0.62f));
+
+            var cup = ScriptableObject.CreateInstance<NomadWorldItemDefinition>();
+            cup.ConfigureForTests(
+                "drinking-cup",
+                "搪瓷杯",
+                "cup",
+                new Vector2(0.09f, 0.09f),
+                0.12f,
+                0.01f,
+                true,
+                new[] { 0f },
+                NomadWorldItemPrototypeStyle.Cup,
+                new Color(0.83f, 0.48f, 0.16f));
+            return new[] { waterCan, cup };
         }
 
         private static NomadPlacementRegionDefinition[] WaterCanParkingRegion(float localX) =>
@@ -1740,6 +1926,22 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     "water-can"),
             };
 
+        private static NomadPlacementRegionDefinition[] CountertopRegion() =>
+            new[]
+            {
+                new NomadPlacementRegionDefinition(
+                    "countertop-center",
+                    new Vector2(0f, -0.08f),
+                    new Vector2(0.42f, 0.42f),
+                    0f,
+                    0.97f,
+                    0.03f,
+                    "cup",
+                    "plate",
+                    "food-serving",
+                    "tool-small"),
+            };
+
         private IEnumerator BuildFacility(
             string definitionId,
             int xMillimeters,
@@ -1751,7 +1953,11 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             for (var i = 0; i < counterClockwiseRotationSteps; i++)
                 _context.ExecuteCommand(new RotateFacilityPreviewCommand(1));
             yield return null;
-            Assert.That(_model.PlacementPreview.Value.CanConfirm, Is.True, $"测试设施 {definitionId} 应允许确认。 ");
+            FoundationPlacementPreviewState preview = _model.PlacementPreview.Value;
+            Assert.That(
+                preview.CanConfirm,
+                Is.True,
+                $"测试设施 {definitionId} 应允许确认，实际失败为 {preview.Failure}。 ");
             _context.ExecuteCommand(new ConfirmFacilityPlacementCommand());
             yield return WaitForBuildTransaction();
         }

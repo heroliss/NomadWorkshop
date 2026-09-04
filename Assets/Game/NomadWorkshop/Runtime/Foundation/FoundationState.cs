@@ -92,6 +92,7 @@ namespace Game.NomadWorkshop.Foundation
     public struct FoundationItemPlacementState : IEquatable<FoundationItemPlacementState>
     {
         [SerializeField] private string itemId;
+        [SerializeField] private string definitionId;
         [SerializeField] private string regionId;
         [SerializeField] private string ownerEntityId;
         [SerializeField] private int localXMillimeters;
@@ -107,6 +108,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (placement == null) throw new ArgumentNullException(nameof(placement));
             itemId = placement.ItemId;
+            definitionId = placement.Footprint.DefinitionId;
             regionId = placement.Region.RegionId;
             ownerEntityId = placement.Region.OwnerEntityId;
             localXMillimeters = placement.LocalPose.LocalXMillimeters;
@@ -121,6 +123,7 @@ namespace Game.NomadWorkshop.Foundation
 
         public bool Active => !string.IsNullOrWhiteSpace(itemId);
         public string ItemId => itemId;
+        public string DefinitionId => definitionId;
         public string RegionId => regionId;
         public string OwnerEntityId => ownerEntityId;
         public PlacementRegionPose LocalPose =>
@@ -131,6 +134,7 @@ namespace Game.NomadWorkshop.Foundation
 
         public bool Equals(FoundationItemPlacementState other) =>
             string.Equals(itemId, other.itemId, StringComparison.Ordinal) &&
+            string.Equals(definitionId, other.definitionId, StringComparison.Ordinal) &&
             string.Equals(regionId, other.regionId, StringComparison.Ordinal) &&
             string.Equals(ownerEntityId, other.ownerEntityId, StringComparison.Ordinal) &&
             localXMillimeters == other.localXMillimeters &&
@@ -147,7 +151,7 @@ namespace Game.NomadWorkshop.Foundation
 
         public override int GetHashCode()
         {
-            int identity = HashCode.Combine(itemId, regionId, ownerEntityId);
+            int identity = HashCode.Combine(itemId, definitionId, regionId, ownerEntityId);
             int local = HashCode.Combine(
                 localXMillimeters,
                 localZMillimeters,

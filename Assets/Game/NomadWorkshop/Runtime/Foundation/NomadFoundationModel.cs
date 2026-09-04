@@ -47,6 +47,8 @@ namespace Game.NomadWorkshop.Foundation
         public RP<int> FacilityInventoryRevision { get; private set; } = new(0);
         [field: SerializeField, Tooltip("设施磨损、积尘、维护欠账和具体故障投影的版本；真值仍由 System 独占。")]
         public RP<int> FacilityConditionRevision { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("已落位世界物品投影的版本；区域账本变化后递增。")]
+        public RP<int> WorldItemPlacementRevision { get; private set; } = new(0);
 
         [Header("居民与物质链（运行时只读观察）")]
         [field: SerializeField] public RP<FoundationResidentPhase> ResidentPhase { get; private set; } =
@@ -109,6 +111,7 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField] private List<FoundationFacilityAccessState> facilityAccess = new();
         [SerializeField] private List<FoundationFacilityInventoryState> facilityInventories = new();
         [SerializeField] private List<FoundationFacilityConditionState> facilityConditions = new();
+        [SerializeField] private List<FoundationItemPlacementState> worldItemPlacements = new();
 
         internal IReadOnlyList<FoundationFacilityState> Facilities => facilities;
 
@@ -230,6 +233,34 @@ namespace Game.NomadWorkshop.Foundation
 
         internal FoundationFacilityConditionState[] GetFacilityConditionSnapshot() =>
             facilityConditions.ToArray();
+
+        internal void ReplaceWorldItemPlacements(
+            IReadOnlyList<FoundationItemPlacementState> source)
+        {
+            int sourceCount = source?.Count ?? 0;
+            if (worldItemPlacements.Count == sourceCount)
+            {
+                var unchanged = true;
+                for (var i = 0; i < sourceCount; i++)
+                {
+                    if (worldItemPlacements[i].Equals(source[i])) continue;
+                    unchanged = false;
+                    break;
+                }
+                if (unchanged) return;
+            }
+
+            worldItemPlacements.Clear();
+            if (source != null)
+            {
+                for (var i = 0; i < source.Count; i++)
+                    worldItemPlacements.Add(source[i]);
+            }
+            WorldItemPlacementRevision.Value++;
+        }
+
+        internal FoundationItemPlacementState[] GetWorldItemPlacementSnapshot() =>
+            worldItemPlacements.ToArray();
 
         private bool HasSameFacilityAccess(IReadOnlyList<FoundationFacilityAccessState> source)
         {

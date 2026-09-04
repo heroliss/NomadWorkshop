@@ -40,6 +40,8 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationWaterCanLocation _waterCanLocation;
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
         private FoundationItemPlacementState _waterCanPlacement;
+        private FoundationItemPlacementState[] _worldItemPlacements =
+            Array.Empty<FoundationItemPlacementState>();
         private FoundationFacilityInventoryState[] _facilityInventories =
             Array.Empty<FoundationFacilityInventoryState>();
         private FoundationFacilityConditionState[] _facilityConditions =
@@ -131,6 +133,9 @@ namespace Game.NomadWorkshop.Foundation
                 readModel.WaterCanAnchorFacilityInstanceId,
                 value => _waterCanAnchorFacilityInstanceId = value ?? string.Empty);
             Bag.Subscribe(readModel.WaterCanPlacement, value => _waterCanPlacement = value);
+            Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
+                _worldItemPlacements = this.ExecuteCommand(
+                    new GetFoundationWorldItemPlacementsCommand()));
             Bag.Subscribe(
                 readModel.WaterCanWaterMilliliters,
                 value => _waterCanWaterMilliliters = value);
@@ -792,6 +797,27 @@ namespace Game.NomadWorkshop.Foundation
                     $"{localPose.LocalYawDeciDegrees / 10f:0.#}° · " +
                     $"甲板 ({worldPose.XMillimeters}, {worldPose.ZMillimeters})mm",
                     _smallStyle);
+            }
+
+            GUILayout.Space(5f);
+            GUILayout.Label("世界物品空间", _sectionStyle);
+            if (_worldItemPlacements.Length == 0)
+            {
+                GUILayout.Label("当前没有占用设施放置区域的物品。", _smallStyle);
+            }
+            else
+            {
+                for (var i = 0; i < _worldItemPlacements.Length; i++)
+                {
+                    FoundationItemPlacementState item = _worldItemPlacements[i];
+                    PlacementRegionPose localPose = item.LocalPose;
+                    GUILayout.Label(
+                        $"{item.ItemId} ({item.DefinitionId}) · 支撑 {item.OwnerEntityId} · " +
+                        $"局部 ({localPose.LocalXMillimeters}, {localPose.LocalZMillimeters})mm / " +
+                        $"{localPose.LocalYawDeciDegrees / 10f:0.#}° · 高度 " +
+                        $"{item.SupportHeightMillimeters}mm",
+                        _smallStyle);
+                }
             }
 
             GUILayout.Space(7f);

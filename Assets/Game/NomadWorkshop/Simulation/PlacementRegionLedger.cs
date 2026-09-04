@@ -97,6 +97,7 @@ namespace Game.NomadWorkshop.Simulation
     public sealed class PlacementFootprint
     {
         private readonly int[] _allowedYawDeciDegrees;
+        private readonly bool _allowsAnyYaw;
 
         public PlacementFootprint(
             string definitionId,
@@ -105,7 +106,8 @@ namespace Game.NomadWorkshop.Simulation
             int depthMillimeters,
             int heightMillimeters,
             int safetyMarginMillimeters,
-            IReadOnlyList<int> allowedYawDeciDegrees)
+            IReadOnlyList<int> allowedYawDeciDegrees,
+            bool allowsAnyYaw = false)
         {
             if (string.IsNullOrWhiteSpace(definitionId))
                 throw new ArgumentException("物品占地必须有定义 id。", nameof(definitionId));
@@ -128,6 +130,7 @@ namespace Game.NomadWorkshop.Simulation
             DepthMillimeters = depthMillimeters;
             HeightMillimeters = heightMillimeters;
             SafetyMarginMillimeters = safetyMarginMillimeters;
+            _allowsAnyYaw = allowsAnyYaw;
 
             var unique = new SortedSet<int>();
             for (var i = 0; i < allowedYawDeciDegrees.Count; i++)
@@ -142,12 +145,12 @@ namespace Game.NomadWorkshop.Simulation
         public int DepthMillimeters { get; }
         public int HeightMillimeters { get; }
         public int SafetyMarginMillimeters { get; }
+        public bool AllowsAnyYaw => _allowsAnyYaw;
         public IReadOnlyList<int> AllowedYawDeciDegrees => _allowedYawDeciDegrees;
 
         public bool AllowsYaw(int yawDeciDegrees) =>
-            Array.BinarySearch(
-                _allowedYawDeciDegrees,
-                DeckPose.NormalizeYaw(yawDeciDegrees)) >= 0;
+            _allowsAnyYaw ||
+            Array.BinarySearch(_allowedYawDeciDegrees, DeckPose.NormalizeYaw(yawDeciDegrees)) >= 0;
     }
 
     /// <summary>物品相对放置区域中心的量化姿态；它与区域 id 一起构成存档真值。</summary>

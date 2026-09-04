@@ -29,6 +29,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> FacilityAccessRevision;
         public readonly ReadOnlyReactiveProperty<int> FacilityInventoryRevision;
         public readonly ReadOnlyReactiveProperty<int> FacilityConditionRevision;
+        public readonly ReadOnlyReactiveProperty<int> WorldItemPlacementRevision;
         public readonly ReadOnlyReactiveProperty<FoundationResidentPhase> ResidentPhase;
         public readonly ReadOnlyReactiveProperty<Vector3> ResidentLocalPosition;
         public readonly ReadOnlyReactiveProperty<float> ResidentLocalYawDegrees;
@@ -93,6 +94,7 @@ namespace Game.NomadWorkshop.Foundation
             FacilityAccessRevision = model.FacilityAccessRevision;
             FacilityInventoryRevision = model.FacilityInventoryRevision;
             FacilityConditionRevision = model.FacilityConditionRevision;
+            WorldItemPlacementRevision = model.WorldItemPlacementRevision;
             ResidentPhase = model.ResidentPhase;
             ResidentLocalPosition = model.ResidentLocalPosition;
             ResidentLocalYawDegrees = model.ResidentLocalYawDegrees;
@@ -172,6 +174,14 @@ namespace Game.NomadWorkshop.Foundation
     {
         public FoundationFacilityConditionState[] Execute(ICommandContext ctx) =>
             ctx.GetModel<NomadFoundationModel>().GetFacilityConditionSnapshot();
+    }
+
+    [Description("读取已落位世界物品及其精确区域姿态")]
+    public readonly struct GetFoundationWorldItemPlacementsCommand :
+        ICommand<FoundationItemPlacementState[]>
+    {
+        public FoundationItemPlacementState[] Execute(ICommandContext ctx) =>
+            ctx.GetModel<NomadFoundationModel>().GetWorldItemPlacementSnapshot();
     }
 
     [Description("读取当前可建造设施选项")]

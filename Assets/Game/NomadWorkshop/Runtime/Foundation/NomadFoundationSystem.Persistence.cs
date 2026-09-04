@@ -112,6 +112,7 @@ namespace Game.NomadWorkshop.Foundation
                         conditionCheckpoint.LastSettledSimulationTick,
                 });
             }
+            CapturePlacedWorldItems(data);
 
             data.Inventories.Add(CreateInventorySaveData(
                 _vehicleWater,
@@ -190,6 +191,155 @@ namespace Game.NomadWorkshop.Foundation
 
             NomadWorkshopSaveContract.ValidateForSave(data);
             return data;
+        }
+
+        private void CapturePlacedWorldItems(NomadWorkshopSaveData data)
+        {
+            IReadOnlyList<PlacementRegionItem> placements =
+                _worldItemPlacementLedger.CreateStableSnapshot();
+            for (var i = 0; i < placements.Count; i++)
+            {
+                PlacementRegionItem placement = placements[i];
+                // 水罐本身是带 mL 内容的 Inventory；它的区域字段随同一库存保存，不能重复成第二份实体。
+                if (string.Equals(placement.ItemId, WaterCanItemId, StringComparison.Ordinal))
+                    continue;
+                if (!_worldItemDefinitions.ContainsKey(placement.Footprint.DefinitionId))
+                    throw new InvalidOperationException(
+                        $"世界物品 {placement.ItemId} 使用未知定义 " +
+                        $"{placement.Footprint.DefinitionId}，无法保存。");
+                data.WorldItems.Add(new NomadWorldItemSaveData
+                {
+                    ItemId = placement.ItemId,
+                    DefinitionId = placement.Footprint.DefinitionId,
+                    OwnerEntityId = placement.Region.OwnerEntityId,
+                    PlacementRegionId = placement.Region.RegionId,
+                    PlacementLocalPose = QuantizedPlacementPose.FromPlacementPose(
+                        placement.LocalPose),
+                });
+            }
+        }
+
+        private void RestorePlacedWorldItems(IReadOnlyList<NomadWorldItemSaveData> worldItems)
+        {
+            for (var i = 0; i < worldItems.Count; i++)
+            {
+                NomadWorldItemSaveData item = worldItems[i];
+                if (!_worldItemPlacementLedger.TryRestorePlacement(
+                        item.ItemId,
+                        GetRequiredWorldItemFootprint(item.DefinitionId),
+                        item.PlacementRegionId,
+                        item.PlacementLocalPose.ToPlacementPose(),
+                        out _,
+                        out PlacementRegionFailure failure))
+                    throw new InvalidOperationException(
+                        $"世界物品 {item.ItemId} 无法恢复到区域 " +
+                        $"{item.PlacementRegionId}：{failure}。");
+            }
+        }
+
+        private List<NomadWorldItemSaveData> ResolvePlacedWorldItems(
+            IReadOnlyList<NomadWorldItemSaveData> savedItems,
+            IReadOnlyList<NomadFacilitySaveData> facilities,
+            IReadOnlyDictionary<string, NomadFacilityDefinition> facilityDefinitionsByInstance,
+            PlacementRegionLedger validationLedger)
+        {
+            var result = new List<NomadWorldItemSaveData>(savedItems.Count + 1);
+            var hasStarterCup = false;
+            for (var i = 0; i < savedItems.Count; i++)
+            {
+                NomadWorldItemSaveData item = savedItems[i];
+                if (string.Equals(item.ItemId, WaterCanItemId, StringComparison.Ordinal) ||
+                    string.Equals(item.DefinitionId, WaterCanDefinitionId, StringComparison.Ordinal))
+                    throw new NotSupportedException(
+                        "唯一水罐必须由带内容的 Inventory 保存，不能重复出现在 WorldItems。");
+                if (!_worldItemFootprints.TryGetValue(
+                        item.DefinitionId,
+                        out PlacementFootprint footprint))
+                    throw new NotSupportedException(
+                        $"世界物品 {item.ItemId} 使用当前版本不存在的定义 {item.DefinitionId}。");
+                if (!facilityDefinitionsByInstance.ContainsKey(item.OwnerEntityId))
+                    throw new InvalidOperationException(
+                        $"世界物品 {item.ItemId} 的支撑设施 {item.OwnerEntityId} 不存在。");
+                if (string.Equals(item.ItemId, StarterCupItemId, StringComparison.Ordinal))
+                {
+                    if (!string.Equals(
+                            item.DefinitionId,
+                            StarterCupDefinitionId,
+                            StringComparison.Ordinal))
+                        throw new InvalidOperationException(
+                            $"初始杯 {StarterCupItemId} 使用了错误定义 {item.DefinitionId}。");
+                    hasStarterCup = true;
+                }
+
+                if (!validationLedger.TryRestorePlacement(
+                        item.ItemId,
+                        footprint,
+                        item.PlacementRegionId,
+                        item.PlacementLocalPose.ToPlacementPose(),
+                        out _,
+                        out PlacementRegionFailure failure))
+                    throw new InvalidOperationException(
+                        $"世界物品 {item.ItemId} 的区域姿态无效：{failure}。");
+                result.Add(item);
+            }
+
+            if (!hasStarterCup && TryFindStarterCupSurface(
+                    facilities,
+                    facilityDefinitionsByInstance,
+                    out NomadFacilitySaveData starterSurface))
+            {
+                // v4 以前没有 WorldItems 字段，而当前杯子还不能被拿走，因此“厨房存在但杯子缺失”
+                // 可以无歧义地补成旧存档默认值。杯子一旦进入可搬运/消耗闭环，必须升级 Schema
+                // 或保存显式迁移标记，不能继续把空列表解释成旧存档。
+                var starterCup = new NomadWorldItemSaveData
+                {
+                    ItemId = StarterCupItemId,
+                    DefinitionId = StarterCupDefinitionId,
+                    OwnerEntityId = starterSurface.InstanceId,
+                    PlacementRegionId = PlacementRegionLedger.ComposeRegionId(
+                        starterSurface.InstanceId,
+                        CountertopRegionLocalId),
+                    PlacementLocalPose = QuantizedPlacementPose.FromPlacementPose(
+                        PlacementRegionPose.Centered),
+                };
+                if (!validationLedger.TryRestorePlacement(
+                        starterCup.ItemId,
+                        GetRequiredWorldItemFootprint(starterCup.DefinitionId),
+                        starterCup.PlacementRegionId,
+                        starterCup.PlacementLocalPose.ToPlacementPose(),
+                        out _,
+                        out PlacementRegionFailure failure))
+                    throw new InvalidOperationException(
+                        $"旧存档补入初始杯时找不到合法台面姿态：{failure}。");
+                result.Add(starterCup);
+            }
+
+            result.Sort((left, right) =>
+                string.Compare(left.ItemId, right.ItemId, StringComparison.Ordinal));
+            return result;
+        }
+
+        private static bool TryFindStarterCupSurface(
+            IReadOnlyList<NomadFacilitySaveData> facilities,
+            IReadOnlyDictionary<string, NomadFacilityDefinition> definitionsByInstance,
+            out NomadFacilitySaveData surface)
+        {
+            surface = null;
+            for (var i = 0; i < facilities.Count; i++)
+            {
+                NomadFacilitySaveData candidate = facilities[i];
+                if (!definitionsByInstance.TryGetValue(
+                        candidate.InstanceId,
+                        out NomadFacilityDefinition definition) ||
+                    !definition.TryGetPlacementRegion(CountertopRegionLocalId, out _))
+                    continue;
+                if (surface == null || string.Compare(
+                        candidate.InstanceId,
+                        surface.InstanceId,
+                        StringComparison.Ordinal) < 0)
+                    surface = candidate;
+            }
+            return surface != null;
         }
 
         /// <summary>
@@ -303,6 +453,7 @@ namespace Game.NomadWorkshop.Foundation
                 RegisterFacilityPlacementRegions(restoredFacility);
             }
             _model.ReplaceFacilities(restoredFacilities);
+            RestorePlacedWorldItems(restore.WorldItems);
 
             _navigation.BuildNow();
             Vector3 requestedResidentPosition = ToNavigationPoint(
@@ -506,8 +657,11 @@ namespace Game.NomadWorkshop.Foundation
                     "当前 Foundation 尚未接入饥饿、卫生或晕车运行状态，不能静默丢弃这些值。");
 
             var validationLedger = deckLayout.CreatePlacementLedger();
+            var worldItemValidationLedger = new PlacementRegionLedger();
             var facilityFunctions = new Dictionary<string, NomadFacilityFunction>(
                 StringComparer.Ordinal);
+            var facilityDefinitionsByInstance =
+                new Dictionary<string, NomadFacilityDefinition>(StringComparer.Ordinal);
             for (var i = 0; i < data.Facilities.Count; i++)
             {
                 NomadFacilitySaveData facility = data.Facilities[i];
@@ -530,6 +684,20 @@ namespace Game.NomadWorkshop.Foundation
                     throw new InvalidOperationException(
                         $"检查点设施 {facility.InstanceId} 的连续摆放真值无效：{failure}。");
                 facilityFunctions.Add(facility.InstanceId, definition.Function);
+                facilityDefinitionsByInstance.Add(facility.InstanceId, definition);
+                IReadOnlyList<NomadPlacementRegionDefinition> regions =
+                    definition.PlacementRegions;
+                for (var regionIndex = 0; regionIndex < regions.Count; regionIndex++)
+                {
+                    PlacementRegionDefinition region = regions[regionIndex].CreateRegion(
+                        facility.InstanceId,
+                        facility.Pose.ToDeckPose());
+                    PlacementRegionFailure regionFailure =
+                        worldItemValidationLedger.RegisterRegion(region);
+                    if (regionFailure != PlacementRegionFailure.None)
+                        throw new InvalidOperationException(
+                            $"检查点设施 {facility.InstanceId} 的放置区域重复：{regionFailure}。");
+                }
             }
             if (!ContainsFunction(facilityFunctions, NomadFacilityFunction.VehicleWaterTank))
                 throw new InvalidOperationException("Foundation 检查点缺少已放置的车辆水箱。");
@@ -662,6 +830,21 @@ namespace Game.NomadWorkshop.Foundation
                     $"水罐区域 {waterCanRegionId} 与所有者 {waterCan.OwnerEntityId} 不匹配。");
             PlacementRegionPose waterCanLocalPose =
                 waterCan.PlacementLocalPose.ToPlacementPose();
+            List<NomadWorldItemSaveData> worldItems = ResolvePlacedWorldItems(
+                data.WorldItems,
+                data.Facilities,
+                facilityDefinitionsByInstance,
+                worldItemValidationLedger);
+            if (waterCanLocation != FoundationWaterCanLocation.Resident &&
+                !worldItemValidationLedger.TryRestorePlacement(
+                    WaterCanItemId,
+                    GetRequiredWorldItemFootprint(WaterCanDefinitionId),
+                    waterCanRegionId,
+                    waterCanLocalPose,
+                    out _,
+                    out PlacementRegionFailure waterCanPlacementFailure))
+                throw new InvalidOperationException(
+                    $"检查点水罐放置姿态无效：{waterCanPlacementFailure}。");
             return new FoundationRestoreData(
                 resident,
                 vehicleWater,
@@ -678,6 +861,7 @@ namespace Game.NomadWorkshop.Foundation
                 waterCanAnchor,
                 waterCanRegionId,
                 waterCanLocalPose,
+                worldItems,
                 stations);
         }
 
@@ -1022,6 +1206,7 @@ namespace Game.NomadWorkshop.Foundation
                 string waterCanAnchor,
                 string waterCanRegionId,
                 PlacementRegionPose waterCanLocalPose,
+                List<NomadWorldItemSaveData> worldItems,
                 Dictionary<string, NomadInventorySaveData> stationInventories)
             {
                 Resident = resident;
@@ -1039,6 +1224,7 @@ namespace Game.NomadWorkshop.Foundation
                 WaterCanAnchor = waterCanAnchor;
                 WaterCanRegionId = waterCanRegionId;
                 WaterCanLocalPose = waterCanLocalPose;
+                WorldItems = worldItems;
                 StationInventories = stationInventories;
             }
 
@@ -1057,6 +1243,7 @@ namespace Game.NomadWorkshop.Foundation
             public string WaterCanAnchor { get; }
             public string WaterCanRegionId { get; }
             public PlacementRegionPose WaterCanLocalPose { get; }
+            public List<NomadWorldItemSaveData> WorldItems { get; }
             public Dictionary<string, NomadInventorySaveData> StationInventories { get; }
         }
     }

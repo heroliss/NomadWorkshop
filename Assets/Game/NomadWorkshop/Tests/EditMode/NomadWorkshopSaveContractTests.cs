@@ -136,6 +136,36 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void ValidateForSave_WorldItemRequiresExistingOwnerCanonicalRegionAndYaw()
+        {
+            NomadWorkshopSaveData coherent = CreateValidSave();
+            coherent.WorldItems.Add(CreatePlacedCup());
+            Assert.DoesNotThrow(() => NomadWorkshopSaveContract.ValidateForSave(coherent));
+
+            NomadWorkshopSaveData missingOwner = CreateValidSave();
+            NomadWorldItemSaveData orphan = CreatePlacedCup();
+            orphan.OwnerEntityId = "facility-missing";
+            orphan.PlacementRegionId = "facility-missing/placement/countertop-center";
+            missingOwner.WorldItems.Add(orphan);
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(missingOwner));
+
+            NomadWorkshopSaveData foreignRegion = CreateValidSave();
+            NomadWorldItemSaveData misplaced = CreatePlacedCup();
+            misplaced.PlacementRegionId = "another-owner/placement/countertop-center";
+            foreignRegion.WorldItems.Add(misplaced);
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(foreignRegion));
+
+            NomadWorkshopSaveData invalidYaw = CreateValidSave();
+            NomadWorldItemSaveData unnormalized = CreatePlacedCup();
+            unnormalized.PlacementLocalPose.LocalYawDeciDegrees = 3600;
+            invalidYaw.WorldItems.Add(unnormalized);
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(invalidYaw));
+        }
+
+        [Test]
         public void ValidateForSave_RejectsOutOfRangePersistentContaminationAndResidentConditions()
         {
             NomadWorkshopSaveData dirtyContainer = CreateValidSave();
@@ -368,5 +398,14 @@ namespace Game.NomadWorkshop.Simulation.Tests
             });
             return save;
         }
+
+        private static NomadWorldItemSaveData CreatePlacedCup() => new()
+        {
+            ItemId = "cup-01",
+            DefinitionId = "drinking-cup",
+            OwnerEntityId = "facility-cabinet-01",
+            PlacementRegionId = "facility-cabinet-01/placement/countertop-center",
+            PlacementLocalPose = new QuantizedPlacementPose(20, -10, 370),
+        };
     }
 }

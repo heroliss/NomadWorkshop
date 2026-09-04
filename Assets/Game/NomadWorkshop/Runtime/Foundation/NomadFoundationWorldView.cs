@@ -22,6 +22,9 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, Tooltip("用于把设施业务记录转换为可替换 3D 表现的定义目录。")]
         private NomadFacilityDefinition[] facilityDefinitions =
             Array.Empty<NomadFacilityDefinition>();
+        [SerializeField, Tooltip("可搬动物品的占地与灰盒表现目录；运行位置仍由 Model 的区域姿态投影决定。")]
+        private NomadWorldItemDefinition[] worldItemDefinitions =
+            Array.Empty<NomadWorldItemDefinition>();
         [SerializeField, Tooltip("车辆甲板的表现空间；设施、居民、网格和镜头焦点都使用它的局部坐标。")]
         private Transform deckRoot;
         [SerializeField, Tooltip("Foundation 世界相机。View 只操作表现镜头，不改玩法状态。")]
@@ -53,6 +56,10 @@ namespace Game.NomadWorkshop.Foundation
 
         private readonly Dictionary<string, NomadFacilityDefinition> _definitions =
             new(StringComparer.Ordinal);
+        private readonly Dictionary<string, NomadWorldItemDefinition> _worldItemDefinitions =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Material> _worldItemMaterials =
+            new(StringComparer.Ordinal);
         private readonly Dictionary<string, FacilityVisual> _facilityVisuals =
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, FoundationFacilityAccessState> _facilityAccess =
@@ -68,6 +75,7 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationPlacementPreviewState _preview;
         private FoundationFacilityState[] _facilityStates = Array.Empty<FoundationFacilityState>();
         private Transform _facilityRoot;
+        private Transform _worldItemRoot;
         private Transform _gridRoot;
         private Transform _ghostRoot;
         private Transform _interactionPreviewRoot;
@@ -111,10 +119,13 @@ namespace Game.NomadWorkshop.Foundation
             Light configuredFillLight = null,
             Material configuredSkyboxMaterial = null,
             ReflectionProbe configuredReflectionProbe = null,
-            NomadFoundationDebugView configuredScreenUi = null)
+            NomadFoundationDebugView configuredScreenUi = null,
+            NomadWorldItemDefinition[] configuredWorldItemDefinitions = null)
         {
             deckLayout = configuredLayout;
             facilityDefinitions = configuredDefinitions;
+            worldItemDefinitions = configuredWorldItemDefinitions ??
+                                   Array.Empty<NomadWorldItemDefinition>();
             deckRoot = configuredDeckRoot;
             worldCamera = configuredCamera;
             keyLight = configuredLight;
@@ -156,6 +167,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.FacilityConditionRevision, _ =>
                 UpdateFacilityConditions(
                     this.ExecuteCommand(new GetFoundationFacilityConditionsCommand())));
+            Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
+                RebuildWorldItems(
+                    this.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand())));
             Bag.Subscribe(readModel.ResidentLocalPosition, position =>
             {
                 if (_residentRoot != null) _residentRoot.localPosition = position;
@@ -370,6 +384,18 @@ namespace Game.NomadWorkshop.Foundation
                     throw new InvalidOperationException($"WorldView 设施 id '{definition.Id}' 重复。 ");
 
             }
+
+            _worldItemDefinitions.Clear();
+            for (var i = 0; i < worldItemDefinitions.Length; i++)
+            {
+                NomadWorldItemDefinition definition = worldItemDefinitions[i];
+                if (definition == null)
+                    throw new MissingReferenceException($"WorldView 世界物品定义第 {i} 项为空。 ");
+                definition.ValidateOrThrow();
+                if (!_worldItemDefinitions.TryAdd(definition.Id, definition))
+                    throw new InvalidOperationException(
+                        $"WorldView 世界物品 id '{definition.Id}' 重复。 ");
+            }
         }
 
         private void BuildGrayboxWorld()
@@ -498,6 +524,8 @@ namespace Game.NomadWorkshop.Foundation
 
             _facilityRoot = new GameObject("Facilities").transform;
             _facilityRoot.SetParent(deckRoot, false);
+            _worldItemRoot = new GameObject("World Items").transform;
+            _worldItemRoot.SetParent(deckRoot, false);
             _ghostRoot = new GameObject("Placement Ghost").transform;
             _ghostRoot.SetParent(deckRoot, false);
             _interactionPreviewRoot = new GameObject("Placement Interaction Slots").transform;
@@ -588,6 +616,147 @@ namespace Game.NomadWorkshop.Foundation
                 water).transform;
             _waterCanFillVisual.gameObject.SetActive(false);
             UpdateWaterCanVisual();
+        }
+
+        private void RebuildWorldItems(IReadOnlyList<FoundationItemPlacementState> items)
+        {
+            if (_worldItemRoot == null) return;
+            DestroyChildren(_worldItemRoot);
+            if (items == null) return;
+
+            for (var i = 0; i < items.Count; i++)
+            {
+                FoundationItemPlacementState item = items[i];
+                if (!item.Active || !_worldItemDefinitions.TryGetValue(
+                        item.DefinitionId,
+                        out NomadWorldItemDefinition definition))
+                    continue;
+                // 水罐已有随居民手部切换和液位显示的专用表现；区域列表只为它提供同一位置真值。
+                if (definition.PrototypeStyle == NomadWorldItemPrototypeStyle.WaterCan) continue;
+
+                var root = new GameObject(
+                    $"{definition.DisplayName} [{item.ItemId}]").transform;
+                root.SetParent(_worldItemRoot, false);
+                root.localPosition = deckLayout.PoseToLocal(
+                    item.WorldPose,
+                    item.SupportHeightMillimeters / 1000f);
+                root.localRotation = Quaternion.Euler(
+                    0f,
+                    (float)item.WorldPose.YawDegrees,
+                    0f);
+                BuildWorldItemPrototype(root, definition);
+            }
+        }
+
+        private void BuildWorldItemPrototype(
+            Transform root,
+            NomadWorldItemDefinition definition)
+        {
+            Vector2 footprint = definition.FootprintSizeMeters;
+            float height = definition.HeightMeters;
+            Material material = GetWorldItemMaterial(definition);
+            switch (definition.PrototypeStyle)
+            {
+                case NomadWorldItemPrototypeStyle.Box:
+                    CreatePrimitive(
+                        PrimitiveType.Cube,
+                        "Prototype Body",
+                        root,
+                        new Vector3(0f, height * 0.5f, 0f),
+                        new Vector3(footprint.x, height, footprint.y),
+                        material);
+                    break;
+                case NomadWorldItemPrototypeStyle.Cylinder:
+                    CreatePrimitive(
+                        PrimitiveType.Cylinder,
+                        "Prototype Body",
+                        root,
+                        new Vector3(0f, height * 0.5f, 0f),
+                        new Vector3(footprint.x * 0.5f, height * 0.5f, footprint.y * 0.5f),
+                        material);
+                    break;
+                case NomadWorldItemPrototypeStyle.Cup:
+                    BuildCupPrototype(root, definition, material);
+                    break;
+            }
+        }
+
+        private void BuildCupPrototype(
+            Transform root,
+            NomadWorldItemDefinition definition,
+            Material material)
+        {
+            Vector2 footprint = definition.FootprintSizeMeters;
+            float height = definition.HeightMeters;
+            // Unity 内置 Cylinder 的 X/Z 缩放量是最终直径，高度则是原始 2m 的一半。
+            float bodyDiameterX = footprint.x * 0.8f;
+            float bodyDiameterZ = footprint.y * 0.8f;
+            CreatePrimitive(
+                PrimitiveType.Cylinder,
+                "Enamel Cup Body",
+                root,
+                new Vector3(0f, height * 0.5f, 0f),
+                new Vector3(bodyDiameterX, height * 0.5f, bodyDiameterZ),
+                material);
+            CreatePrimitive(
+                PrimitiveType.Cylinder,
+                "Dark Inner Opening",
+                root,
+                new Vector3(0f, height + 0.001f, 0f),
+                new Vector3(bodyDiameterX * 0.76f, 0.003f, bodyDiameterZ * 0.76f),
+                GetWorldItemInnerMaterial(definition));
+
+            float handleX = bodyDiameterX * 0.5f + footprint.x * 0.12f;
+            float handleWidth = footprint.x * 0.24f;
+            float handleThickness = Mathf.Max(0.007f, footprint.x * 0.08f);
+            CreatePrimitive(
+                PrimitiveType.Cube,
+                "Handle Top",
+                root,
+                new Vector3(handleX, height * 0.72f, 0f),
+                new Vector3(handleWidth, handleThickness, handleThickness),
+                material);
+            CreatePrimitive(
+                PrimitiveType.Cube,
+                "Handle Outer",
+                root,
+                new Vector3(handleX + handleWidth * 0.5f, height * 0.5f, 0f),
+                new Vector3(handleThickness, height * 0.44f, handleThickness),
+                material);
+            CreatePrimitive(
+                PrimitiveType.Cube,
+                "Handle Bottom",
+                root,
+                new Vector3(handleX, height * 0.28f, 0f),
+                new Vector3(handleWidth, handleThickness, handleThickness),
+                material);
+        }
+
+        private Material GetWorldItemMaterial(NomadWorldItemDefinition definition)
+        {
+            if (_worldItemMaterials.TryGetValue(definition.Id, out Material material))
+                return material;
+            material = CreateLitMaterial(
+                $"M_{definition.Id}",
+                definition.PrototypeColor,
+                definition.PrototypeStyle == NomadWorldItemPrototypeStyle.Cup ? 0.18f : 0.08f,
+                definition.PrototypeStyle == NomadWorldItemPrototypeStyle.Cup ? 0.5f : 0.28f);
+            _worldItemMaterials.Add(definition.Id, material);
+            return material;
+        }
+
+        private Material GetWorldItemInnerMaterial(NomadWorldItemDefinition definition)
+        {
+            string materialKey = definition.Id + ":inner";
+            if (_worldItemMaterials.TryGetValue(materialKey, out Material material))
+                return material;
+            material = CreateLitMaterial(
+                $"M_{definition.Id}_Inner",
+                new Color(0.08f, 0.09f, 0.085f),
+                0.08f,
+                0.2f);
+            _worldItemMaterials.Add(materialKey, material);
+            return material;
         }
 
         private void RebuildFacilities(IReadOnlyList<FoundationFacilityState> facilities)

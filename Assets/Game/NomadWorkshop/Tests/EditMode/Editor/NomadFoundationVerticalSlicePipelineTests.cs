@@ -18,6 +18,10 @@ namespace Game.NomadWorkshop.Editor.Tests
         {
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<DeckLayoutDefinition>(
                 NomadFoundationVerticalSlicePipeline.DeckLayoutPath));
+            Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<NomadWorldItemDefinition>(
+                NomadFoundationVerticalSlicePipeline.WaterCanItemPath));
+            Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<NomadWorldItemDefinition>(
+                NomadFoundationVerticalSlicePipeline.DrinkingCupItemPath));
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<SceneAsset>(
                 NomadFoundationVerticalSlicePipeline.ScenePath));
 
@@ -83,6 +87,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                     "逻辑与表现必须引用同一份甲板布局，避免边界与可选网格漂移。");
                 Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
                 Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
+                Assert.That(systemSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(2));
+                Assert.That(viewSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(2));
                 Assert.That(
                     systemSerialized.FindProperty("worldSeed").intValue,
                     Is.EqualTo(1729),
@@ -107,6 +113,30 @@ namespace Game.NomadWorkshop.Editor.Tests
                     Assert.That(definition.CreateFootprint().Parts.Count, Is.GreaterThan(0));
                     Assert.That(definition.InteractionGroups.Count, Is.GreaterThan(0));
                 }
+                for (var i = 0; i < 2; i++)
+                {
+                    Object systemItem = systemSerialized.FindProperty("worldItemDefinitions")
+                        .GetArrayElementAtIndex(i).objectReferenceValue;
+                    Object viewItem = viewSerialized.FindProperty("worldItemDefinitions")
+                        .GetArrayElementAtIndex(i).objectReferenceValue;
+                    Assert.AreSame(
+                        systemItem,
+                        viewItem,
+                        $"逻辑与表现的世界物品定义第 {i} 项必须是同一资产。 ");
+                    var itemDefinition = (NomadWorldItemDefinition)systemItem;
+                    Assert.DoesNotThrow(itemDefinition.ValidateOrThrow);
+                    Assert.That(itemDefinition.CreateFootprint().DefinitionId, Is.EqualTo(itemDefinition.Id));
+                }
+
+                var fieldKitchen = AssetDatabase.LoadAssetAtPath<NomadFacilityDefinition>(
+                    NomadFoundationVerticalSlicePipeline.FieldKitchenPath);
+                Assert.That(fieldKitchen, Is.Not.Null);
+                Assert.That(
+                    fieldKitchen.TryGetPlacementRegion("countertop-center", out var countertop),
+                    Is.True,
+                    "野战厨房必须从定义资产声明台面，而不是由 WorldView 硬编码杯子位置。 ");
+                Assert.That(countertop.SupportHeightMeters, Is.EqualTo(0.97f).Within(0.001f));
+                Assert.That(countertop.AcceptedCategories, Does.Contain("cup"));
 
                 var observationEasel = AssetDatabase.LoadAssetAtPath<NomadFacilityDefinition>(
                     NomadFoundationVerticalSlicePipeline.ObservationEaselPath);

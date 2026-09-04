@@ -29,6 +29,8 @@ namespace Game.NomadWorkshop.Editor
         public const string FieldKitchenPath = DefinitionRoot + "/NW_Facility_FieldKitchen.asset";
         public const string ToiletPath = DefinitionRoot + "/NW_Facility_Toilet.asset";
         public const string ObservationEaselPath = DefinitionRoot + "/NW_Facility_ObservationEasel.asset";
+        public const string WaterCanItemPath = DefinitionRoot + "/NW_Item_WaterCan.asset";
+        public const string DrinkingCupItemPath = DefinitionRoot + "/NW_Item_DrinkingCup.asset";
 
         [MenuItem("Assets/SSFramework/游牧工坊/Foundation/创建或打开最小垂直切片")]
         public static void CreateOrOpen()
@@ -58,6 +60,11 @@ namespace Game.NomadWorkshop.Editor
                 RequireAsset<NomadFacilityDefinition>(ToiletPath),
                 RequireAsset<NomadFacilityDefinition>(ObservationEaselPath),
             };
+            NomadWorldItemDefinition[] itemDefinitions =
+            {
+                RequireAsset<NomadWorldItemDefinition>(WaterCanItemPath),
+                RequireAsset<NomadWorldItemDefinition>(DrinkingCupItemPath),
+            };
             Material skyboxMaterial = RequireAsset<Material>(
                 NomadRenderingSpikePipeline.FoundationSkyboxMaterialPath);
             VolumeProfile volumeProfile = RequireAsset<VolumeProfile>(
@@ -73,7 +80,7 @@ namespace Game.NomadWorkshop.Editor
 
             GameObject logic = CreateChild(rootObject.transform, "Logic · Mono System");
             NomadFoundationSystem system = logic.AddComponent<NomadFoundationSystem>();
-            WireSystem(system, layout, definitions);
+            WireSystem(system, layout, definitions, itemDefinitions);
 
             GameObject presentation = CreateChild(rootObject.transform, "Presentation · Mono Views");
             GameObject deck = CreateChild(presentation.transform, "Vehicle Deck Root");
@@ -100,7 +107,8 @@ namespace Game.NomadWorkshop.Editor
                 fillLight,
                 skyboxMaterial,
                 reflectionProbe,
-                debugView);
+                debugView,
+                itemDefinitions);
             ConfigureEnvironmentLighting(keyLight, skyboxMaterial);
 
             Selection.activeGameObject = rootObject;
@@ -270,6 +278,31 @@ namespace Game.NomadWorkshop.Editor
                 new Vector3(0.86f, 1.38f, 0.62f),
                 new Color(0.58f, 0.28f, 0.13f));
 
+            ConfigureWorldItemDefinition(
+                WaterCanItemPath,
+                "water-can",
+                "防漏水罐",
+                "water-can",
+                new Vector2(0.34f, 0.24f),
+                0.59f,
+                0.02f,
+                allowAnyYaw: false,
+                new[] { 0f, 90f },
+                NomadWorldItemPrototypeStyle.WaterCan,
+                new Color(0.1f, 0.54f, 0.62f));
+            ConfigureWorldItemDefinition(
+                DrinkingCupItemPath,
+                "drinking-cup",
+                "搪瓷杯",
+                "cup",
+                new Vector2(0.09f, 0.09f),
+                0.12f,
+                0.01f,
+                allowAnyYaw: true,
+                new[] { 0f },
+                NomadWorldItemPrototypeStyle.Cup,
+                new Color(0.83f, 0.48f, 0.16f));
+
             EditorUtility.SetDirty(layout);
             AssetDatabase.SaveAssets();
         }
@@ -332,8 +365,52 @@ namespace Game.NomadWorkshop.Editor
                         0.02f,
                         "water-can"),
                 },
+                NomadFacilityFunction.FieldKitchen =>
+                new[]
+                {
+                    new NomadPlacementRegionDefinition(
+                        "countertop-center",
+                        new Vector2(0f, -0.08f),
+                        new Vector2(0.42f, 0.42f),
+                        0f,
+                        0.97f,
+                        0.03f,
+                        "cup",
+                        "plate",
+                        "food-serving",
+                        "tool-small"),
+                },
                 _ => Array.Empty<NomadPlacementRegionDefinition>(),
             };
+
+        private static void ConfigureWorldItemDefinition(
+            string path,
+            string id,
+            string displayName,
+            string categoryId,
+            Vector2 footprintSizeMeters,
+            float heightMeters,
+            float safetyMarginMeters,
+            bool allowAnyYaw,
+            float[] stableYawDegrees,
+            NomadWorldItemPrototypeStyle prototypeStyle,
+            Color prototypeColor)
+        {
+            NomadWorldItemDefinition definition =
+                LoadOrCreate<NomadWorldItemDefinition>(path);
+            definition.ConfigureForEditor(
+                id,
+                displayName,
+                categoryId,
+                footprintSizeMeters,
+                heightMeters,
+                safetyMarginMeters,
+                allowAnyYaw,
+                stableYawDegrees,
+                prototypeStyle,
+                prototypeColor);
+            EditorUtility.SetDirty(definition);
+        }
 
         private static NomadFacilityInteractionGroupDefinition[] RequiredGroup(
             string groupId,
@@ -392,11 +469,13 @@ namespace Game.NomadWorkshop.Editor
         private static void WireSystem(
             NomadFoundationSystem system,
             DeckLayoutDefinition layout,
-            NomadFacilityDefinition[] definitions)
+            NomadFacilityDefinition[] definitions,
+            NomadWorldItemDefinition[] itemDefinitions)
         {
             var serialized = new SerializedObject(system);
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
             SetObjectArray(serialized.FindProperty("facilityDefinitions"), definitions);
+            SetObjectArray(serialized.FindProperty("worldItemDefinitions"), itemDefinitions);
             serialized.FindProperty("worldSeed").intValue = 1729;
             serialized.FindProperty("residentStartLocalPosition").vector3Value =
                 new Vector3(0f, 0f, 2.4f);
@@ -413,11 +492,13 @@ namespace Game.NomadWorkshop.Editor
             Light fillLight,
             Material skyboxMaterial,
             ReflectionProbe reflectionProbe,
-            NomadFoundationDebugView debugView)
+            NomadFoundationDebugView debugView,
+            NomadWorldItemDefinition[] itemDefinitions)
         {
             var serialized = new SerializedObject(view);
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
             SetObjectArray(serialized.FindProperty("facilityDefinitions"), definitions);
+            SetObjectArray(serialized.FindProperty("worldItemDefinitions"), itemDefinitions);
             serialized.FindProperty("deckRoot").objectReferenceValue = deck;
             serialized.FindProperty("worldCamera").objectReferenceValue = camera;
             serialized.FindProperty("keyLight").objectReferenceValue = keyLight;

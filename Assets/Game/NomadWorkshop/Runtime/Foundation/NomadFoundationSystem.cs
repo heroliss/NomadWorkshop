@@ -35,15 +35,11 @@ namespace Game.NomadWorkshop.Foundation
         private const int MaximumPreviewInteractionSlots = 64;
         private const float ResidentExactNavMeshTolerance = 0.02f;
         private const string WaterCanItemId = "water-can-01";
+        private const string WaterCanDefinitionId = "water-can";
         private const string WaterCanParkingRegionLocalId = "water-can-parking";
-        private static readonly PlacementFootprint WaterCanPlacementFootprint = new(
-            "water-can",
-            "water-can",
-            widthMillimeters: 340,
-            depthMillimeters: 240,
-            heightMillimeters: 590,
-            safetyMarginMillimeters: 20,
-            allowedYawDeciDegrees: new[] { 0, 900 });
+        private const string StarterCupItemId = "cup-01";
+        private const string StarterCupDefinitionId = "drinking-cup";
+        private const string CountertopRegionLocalId = "countertop-center";
         private static readonly NomadCalendarPolicy CalendarPolicy = NomadCalendarPolicy.Default;
         // 50% 以下不为如厕单独生成意图，随后平滑非线性上升；90% 起必然进入紧急处理。
         // 相同数学原语也可用于饥饿、疲劳、卫生等需求，只需使用各自可调参数和随机流。
@@ -59,6 +55,9 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, Tooltip("本切片允许建造或预置的设施定义；运行时按稳定 id 建立目录。")]
         private NomadFacilityDefinition[] facilityDefinitions =
             Array.Empty<NomadFacilityDefinition>();
+        [SerializeField, Tooltip("水罐、杯子等可搬动物品的稳定占地与灰盒表现定义。")]
+        private NomadWorldItemDefinition[] worldItemDefinitions =
+            Array.Empty<NomadWorldItemDefinition>();
         [SerializeField, Tooltip("确定性世界种子；居民决策、需求机会与行动级随机流都从它派生，运行检查点会保存并恢复。")]
         private int worldSeed = 1729;
 
@@ -151,6 +150,10 @@ namespace Game.NomadWorkshop.Foundation
             DefaultToiletHoldingCapacityMilliliters;
 
         private readonly Dictionary<string, NomadFacilityDefinition> _definitions =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, NomadWorldItemDefinition> _worldItemDefinitions =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PlacementFootprint> _worldItemFootprints =
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, DeckNavigationObstacleHandle> _navigationObstacles =
             new(StringComparer.Ordinal);
@@ -630,12 +633,15 @@ namespace Game.NomadWorkshop.Foundation
         /// <summary>只供未激活 GameObject 上的隔离装配；必须在 Awake 前调用。</summary>
         public void ConfigureDefinitionsForTests(
             DeckLayoutDefinition configuredLayout,
-            NomadFacilityDefinition[] configuredDefinitions)
+            NomadFacilityDefinition[] configuredDefinitions,
+            NomadWorldItemDefinition[] configuredWorldItemDefinitions = null)
         {
             if (_initialized)
                 throw new InvalidOperationException("测试定义必须在 NomadFoundationSystem.Awake 前配置。");
             deckLayout = configuredLayout;
             facilityDefinitions = configuredDefinitions;
+            worldItemDefinitions = configuredWorldItemDefinitions ??
+                                   Array.Empty<NomadWorldItemDefinition>();
         }
 
         /// <summary>隔离测试可替换容器能力与洁净度，再经 ResetScenario 重建同一业务起点。</summary>
@@ -810,7 +816,10 @@ namespace Game.NomadWorkshop.Foundation
             }
             _model.ReplaceFacilities(initialFacilities);
             for (var i = 0; i < initialFacilities.Count; i++)
+            {
                 RegisterFacilityPlacementRegions(initialFacilities[i]);
+                TryCreateStarterCupForFacility(initialFacilities[i]);
+            }
             _model.ResidentLocalPosition.Value = ToNavigationPoint(residentStartLocalPosition);
             _model.ResidentLocalYawDegrees.Value = 180f;
 
@@ -913,6 +922,27 @@ namespace Game.NomadWorkshop.Foundation
                 throw new MissingReferenceException("NomadFoundationSystem 缺少 DeckLayoutDefinition。");
             if (facilityDefinitions == null || facilityDefinitions.Length == 0)
                 throw new MissingReferenceException("NomadFoundationSystem 至少需要一个设施定义。");
+            if (worldItemDefinitions == null || worldItemDefinitions.Length == 0)
+                throw new MissingReferenceException("NomadFoundationSystem 至少需要一个世界物品定义。");
+
+            _worldItemDefinitions.Clear();
+            _worldItemFootprints.Clear();
+            for (var i = 0; i < worldItemDefinitions.Length; i++)
+            {
+                NomadWorldItemDefinition itemDefinition = worldItemDefinitions[i];
+                if (itemDefinition == null)
+                    throw new MissingReferenceException($"世界物品定义数组第 {i} 项为空。");
+                itemDefinition.ValidateOrThrow();
+                if (!_worldItemDefinitions.TryAdd(itemDefinition.Id, itemDefinition))
+                    throw new InvalidOperationException(
+                        $"世界物品稳定 id '{itemDefinition.Id}' 重复。");
+                _worldItemFootprints.Add(itemDefinition.Id, itemDefinition.CreateFootprint());
+            }
+            if (!_worldItemFootprints.ContainsKey(WaterCanDefinitionId) ||
+                !_worldItemFootprints.ContainsKey(StarterCupDefinitionId))
+                throw new InvalidOperationException(
+                    $"Foundation 需要 '{WaterCanDefinitionId}' 与 " +
+                    $"'{StarterCupDefinitionId}' 两种世界物品定义。");
 
             _definitions.Clear();
             var functions = new HashSet<NomadFacilityFunction>();
@@ -1453,6 +1483,7 @@ namespace Game.NomadWorkshop.Foundation
                 _pendingPlacement.InstanceId,
                 CreateFacilityCondition(_pendingPlacement.InstanceId));
             AddFacilityInventory(facility);
+            TryCreateStarterCupForFacility(facility);
         }
 
         private void RollbackPartiallyCommittedPlacementTruth()
@@ -1460,6 +1491,7 @@ namespace Game.NomadWorkshop.Foundation
             string instanceId = _pendingPlacement.InstanceId;
             if (string.IsNullOrWhiteSpace(instanceId)) return;
             _placementLedger.Remove(instanceId);
+            RemovePlacedItemsOwnedByFacility(instanceId);
             RemoveFacilityPlacementRegions(instanceId, _pendingPlacement.DefinitionId);
             _navigationObstacles.Remove(instanceId);
             _model.RemoveFacility(instanceId);
@@ -3752,6 +3784,76 @@ namespace Game.NomadWorkshop.Foundation
             }
         }
 
+        /// <summary>
+        /// 第一座带中央台面区域的设施会提供一只空杯，作为区域容量、精确姿态与存档的最小运行样本。
+        /// 杯子暂不接入饮水行动；它不会凭空复制到后续厨房。
+        /// </summary>
+        private void TryCreateStarterCupForFacility(in FoundationFacilityState facility)
+        {
+            if (_worldItemPlacementLedger.TryGetPlacement(StarterCupItemId, out _)) return;
+            if (!_definitions.TryGetValue(
+                    facility.DefinitionId,
+                    out NomadFacilityDefinition facilityDefinition) ||
+                !facilityDefinition.TryGetPlacementRegion(CountertopRegionLocalId, out _))
+                return;
+
+            string regionId = PlacementRegionLedger.ComposeRegionId(
+                facility.InstanceId,
+                CountertopRegionLocalId);
+            if (!_worldItemPlacementLedger.TryRestorePlacement(
+                    StarterCupItemId,
+                    GetRequiredWorldItemFootprint(StarterCupDefinitionId),
+                    regionId,
+                    PlacementRegionPose.Centered,
+                    out _,
+                    out PlacementRegionFailure failure))
+                throw new InvalidOperationException(
+                    $"设施 {facility.InstanceId} 的初始杯子无法放到台面：{failure}。");
+            PublishWorldItemPlacements();
+        }
+
+        private void RemovePlacedItemsOwnedByFacility(string facilityInstanceId)
+        {
+            if (_worldItemPlacementLedger == null ||
+                string.IsNullOrWhiteSpace(facilityInstanceId))
+                return;
+
+            IReadOnlyList<PlacementRegionItem> snapshot =
+                _worldItemPlacementLedger.CreateStableSnapshot();
+            for (var i = 0; i < snapshot.Count; i++)
+            {
+                PlacementRegionItem item = snapshot[i];
+                if (!string.Equals(
+                        item.Region.OwnerEntityId,
+                        facilityInstanceId,
+                        StringComparison.Ordinal))
+                    continue;
+                if (string.Equals(item.ItemId, WaterCanItemId, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"设施 {facilityInstanceId} 仍停放唯一水罐，不能回滚建造事务。");
+                _worldItemPlacementLedger.RemoveItem(item.ItemId);
+            }
+            PublishWorldItemPlacements();
+        }
+
+        private PlacementFootprint GetRequiredWorldItemFootprint(string definitionId)
+        {
+            if (_worldItemFootprints.TryGetValue(definitionId, out PlacementFootprint footprint))
+                return footprint;
+            throw new InvalidOperationException($"缺少世界物品占地定义 '{definitionId}'。");
+        }
+
+        private void PublishWorldItemPlacements()
+        {
+            if (_model == null || _worldItemPlacementLedger == null) return;
+            IReadOnlyList<PlacementRegionItem> snapshot =
+                _worldItemPlacementLedger.CreateStableSnapshot();
+            var projection = new FoundationItemPlacementState[snapshot.Count];
+            for (var i = 0; i < snapshot.Count; i++)
+                projection[i] = new FoundationItemPlacementState(snapshot[i]);
+            _model.ReplaceWorldItemPlacements(projection);
+        }
+
         private static string BuildDrinkingStationInventoryId(string facilityInstanceId) =>
             $"facility:{facilityInstanceId}:drinking-water";
 
@@ -4087,14 +4189,14 @@ namespace Game.NomadWorkshop.Foundation
                     bool reserved = savedLocalPose.HasValue
                         ? _worldItemPlacementLedger.TryReserveExact(
                             WaterCanItemId,
-                            WaterCanPlacementFootprint,
+                            GetRequiredWorldItemFootprint(WaterCanDefinitionId),
                             regionId,
                             savedLocalPose.Value,
                             out reservation,
                             out failure)
                         : _worldItemPlacementLedger.TryReserveStable(
                             WaterCanItemId,
-                            WaterCanPlacementFootprint,
+                            GetRequiredWorldItemFootprint(WaterCanDefinitionId),
                             regionId,
                             out reservation,
                             out failure);
@@ -4126,6 +4228,7 @@ namespace Game.NomadWorkshop.Foundation
                 : new FoundationItemPlacementState(_waterCanPlacement);
             if (!_model.WaterCanPlacement.Value.Equals(placementState))
                 _model.WaterCanPlacement.Value = placementState;
+            PublishWorldItemPlacements();
         }
 
         private void ReleaseActiveTasks()

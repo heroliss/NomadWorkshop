@@ -33,7 +33,18 @@ MonoBehaviour:
     - slotId: right
       localPositionMeters: {x: 0.62, y: -0.9}
       localYawDegrees: 0
-  placementRegions: []
+  placementRegions:
+  - regionId: countertop-center
+    localCenterMeters: {x: 0, y: -0.08}
+    sizeMeters: {x: 0.42, y: 0.42}
+    localYawDegrees: 0
+    supportHeightMeters: 0.97
+    edgeInsetMeters: 0.03
+    acceptedCategories:
+    - cup
+    - plate
+    - food-serving
+    - tool-small
   placeAtStart: 0
   startPositionMeters: {x: 0, y: 0}
   startYawDegrees: 0

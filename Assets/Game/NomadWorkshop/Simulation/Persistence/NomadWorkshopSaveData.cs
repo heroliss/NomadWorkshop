@@ -136,6 +136,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public NomadVehicleSaveData Vehicle = new();
         public List<NomadFacilitySaveData> Facilities = new();
         public List<NomadBlueprintSaveData> Blueprints = new();
+        public List<NomadWorldItemSaveData> WorldItems = new();
         public List<NomadInventorySaveData> Inventories = new();
         public List<NomadResidentSaveData> Residents = new();
         public List<NomadRandomStreamSaveData> RandomStreams = new();
@@ -224,6 +225,20 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public int AmountBaseUnits;
         public int ConditionPermille = 1000;
         public int ContaminationPermille;
+    }
+
+    /// <summary>
+    /// 放在设施或支撑面上的离散物品。容器内容继续由 Inventory 保存，这里只记录实例身份、
+    /// 支撑所有者与精确区域姿态，避免一件物品同时拥有两套位置真值。
+    /// </summary>
+    [Serializable]
+    public sealed class NomadWorldItemSaveData
+    {
+        public string ItemId = string.Empty;
+        public string DefinitionId = string.Empty;
+        public string OwnerEntityId = string.Empty;
+        public string PlacementRegionId = string.Empty;
+        public QuantizedPlacementPose PlacementLocalPose;
     }
 
     /// <summary>
@@ -361,6 +376,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             var entityIds = new HashSet<string>(StringComparer.Ordinal);
             ValidateFacilities(data.Facilities, entityIds, data.SimulationTick);
             ValidateBlueprints(data.Blueprints, entityIds);
+            ValidateWorldItems(data.WorldItems, entityIds);
 
             var inventoryIds = new HashSet<string>(StringComparer.Ordinal);
             var stackIds = new HashSet<string>(StringComparer.Ordinal);
@@ -408,6 +424,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             data.Vehicle ??= new NomadVehicleSaveData();
             data.Facilities ??= new List<NomadFacilitySaveData>();
             data.Blueprints ??= new List<NomadBlueprintSaveData>();
+            data.WorldItems ??= new List<NomadWorldItemSaveData>();
             data.Inventories ??= new List<NomadInventorySaveData>();
             data.Residents ??= new List<NomadResidentSaveData>();
             data.RandomStreams ??= new List<NomadRandomStreamSaveData>();
@@ -484,6 +501,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         private static void RequireCollections(NomadWorkshopSaveData data)
         {
             if (data.Facilities == null || data.Blueprints == null ||
+                data.WorldItems == null ||
                 data.Inventories == null || data.Residents == null || data.RandomStreams == null)
                 throw new InvalidOperationException("存档集合不能为 null；无内容时使用空列表。");
         }
@@ -616,6 +634,32 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                     $"蓝图 {blueprint.InstanceId} 建造进度");
                 if (!Enum.IsDefined(typeof(NomadBlueprintSaveStage), blueprint.Stage))
                     throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 阶段无效。");
+            }
+        }
+
+        private static void ValidateWorldItems(
+            IReadOnlyList<NomadWorldItemSaveData> worldItems,
+            HashSet<string> entityIds)
+        {
+            for (var i = 0; i < worldItems.Count; i++)
+            {
+                NomadWorldItemSaveData item = worldItems[i] ??
+                    throw new InvalidOperationException($"世界物品列表第 {i} 项为空。");
+                RequireUniqueId(item.ItemId, "世界物品实例", entityIds);
+                RequireId(item.DefinitionId, $"世界物品 {item.ItemId} 定义");
+                RequireId(item.OwnerEntityId, $"世界物品 {item.ItemId} 所有者");
+                if (!entityIds.Contains(item.OwnerEntityId))
+                    throw new InvalidOperationException(
+                        $"世界物品 {item.ItemId} 引用不存在的支撑实体 {item.OwnerEntityId}。");
+                RequireId(item.PlacementRegionId, $"世界物品 {item.ItemId} 放置区域");
+                string ownerPrefix = item.OwnerEntityId + "/placement/";
+                if (!item.PlacementRegionId.StartsWith(ownerPrefix, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"世界物品 {item.ItemId} 的区域不属于支撑实体 {item.OwnerEntityId}。");
+                if (item.PlacementLocalPose.LocalYawDeciDegrees < 0 ||
+                    item.PlacementLocalPose.LocalYawDeciDegrees >= 3600)
+                    throw new InvalidOperationException(
+                        $"世界物品 {item.ItemId} 的区域局部角度必须位于 [0, 3600)。");
             }
         }
 

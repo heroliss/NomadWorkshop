@@ -197,6 +197,113 @@ namespace Game.NomadWorkshop.Simulation.Tests
             Assert.That(roundTripped.WorldPose, Is.EqualTo(original.WorldPose));
         }
 
+        [Test]
+        public void ExactPose_AllowsArbitraryYawWhenFootprintOptsIn()
+        {
+            var ledger = new PlacementRegionLedger();
+            var region = new PlacementRegionDefinition(
+                PlacementRegionLedger.ComposeRegionId("counter", "surface"),
+                "surface",
+                "counter",
+                default,
+                300,
+                300,
+                970,
+                10,
+                new[] { "cup" });
+            var cup = new PlacementFootprint(
+                "drinking-cup",
+                "cup",
+                90,
+                70,
+                120,
+                10,
+                new[] { 0 },
+                allowsAnyYaw: true);
+            ledger.RegisterRegion(region);
+
+            var requestedPose = new PlacementRegionPose(20, -10, 370);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    region.RegionId,
+                    requestedPose,
+                    out PlacementRegionItem placed,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(placed.LocalPose, Is.EqualTo(requestedPose));
+            Assert.That(placed.WorldPose.YawDeciDegrees, Is.EqualTo(370));
+        }
+
+        [Test]
+        public void OneRegion_PacksDifferentFootprintsAndRejectsOnlyTrueOverlap()
+        {
+            var ledger = new PlacementRegionLedger();
+            var region = new PlacementRegionDefinition(
+                PlacementRegionLedger.ComposeRegionId("counter", "surface"),
+                "surface",
+                "counter",
+                default,
+                500,
+                240,
+                970,
+                10,
+                new[] { "cup", "plate" });
+            var cup = new PlacementFootprint(
+                "cup",
+                "cup",
+                90,
+                90,
+                120,
+                5,
+                new[] { 0 });
+            var plate = new PlacementFootprint(
+                "plate",
+                "plate",
+                160,
+                100,
+                30,
+                5,
+                new[] { 0 });
+            ledger.RegisterRegion(region);
+
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    region.RegionId,
+                    new PlacementRegionPose(-150, 0, 0),
+                    out _,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "plate-01",
+                    plate,
+                    region.RegionId,
+                    new PlacementRegionPose(80, 0, 0),
+                    out _,
+                    out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(ledger.PlacedItemCount, Is.EqualTo(2));
+
+            Assert.That(
+                ledger.TryReserveExact(
+                    "cup-02",
+                    cup,
+                    region.RegionId,
+                    PlacementRegionPose.Centered,
+                    out _,
+                    out failure),
+                Is.False);
+            Assert.That(failure, Is.EqualTo(PlacementRegionFailure.PoseOverlapsItem));
+            Assert.That(ledger.PlacedItemCount, Is.EqualTo(2));
+        }
+
         private static PlacementRegionDefinition Region(
             string owner,
             DeckPose pose,
