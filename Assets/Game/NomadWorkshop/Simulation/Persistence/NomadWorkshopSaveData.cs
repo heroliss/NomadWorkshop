@@ -83,12 +83,30 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     {
         public int Version = NomadWorkshopSaveSchema.CurrentVersion;
         public int WorldSeed;
+
+        /// <summary>
+        /// 统一模拟时钟的毫秒 Tick。生活日、气候相位和离线推进都从它投影，
+        /// 不分别保存可能互相漂移的“当前小时”和“当前季节进度”。
+        /// </summary>
         public long SimulationTick;
         public NomadVehicleSaveData Vehicle = new();
         public List<NomadFacilitySaveData> Facilities = new();
         public List<NomadBlueprintSaveData> Blueprints = new();
         public List<NomadInventorySaveData> Inventories = new();
         public List<NomadResidentSaveData> Residents = new();
+        public List<NomadRandomStreamSaveData> RandomStreams = new();
+    }
+
+    /// <summary>
+    /// 一个领域随机流的最小持久游标。世界 Seed 位于根快照；对象与领域共同确定流，
+    /// 只保存下一事件序号即可恢复后续轨迹，不序列化运行时 PRNG 对象。
+    /// </summary>
+    [Serializable]
+    public sealed class NomadRandomStreamSaveData
+    {
+        public string OwnerEntityId = string.Empty;
+        public string StreamId = string.Empty;
+        public long NextEventSequence;
     }
 
     /// <summary>宏观世界与车辆旅途的最小持久状态；地图表现和路边临时装饰按 Seed 重建。</summary>
@@ -266,6 +284,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             var stackIds = new HashSet<string>(StringComparer.Ordinal);
             ValidateInventories(data.Inventories, inventoryIds, stackIds);
             ValidateResidents(data.Residents, entityIds, inventoryIds);
+            ValidateRandomStreams(data.RandomStreams);
         }
 
         public static NomadActionRestoreDisposition GetRestoreDisposition(
@@ -309,6 +328,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             data.Blueprints ??= new List<NomadBlueprintSaveData>();
             data.Inventories ??= new List<NomadInventorySaveData>();
             data.Residents ??= new List<NomadResidentSaveData>();
+            data.RandomStreams ??= new List<NomadRandomStreamSaveData>();
             for (var i = 0; i < data.Inventories.Count; i++)
             {
                 NomadInventorySaveData inventory = data.Inventories[i];
@@ -319,8 +339,35 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         private static void RequireCollections(NomadWorkshopSaveData data)
         {
             if (data.Facilities == null || data.Blueprints == null ||
-                data.Inventories == null || data.Residents == null)
+                data.Inventories == null || data.Residents == null || data.RandomStreams == null)
                 throw new InvalidOperationException("存档集合不能为 null；无内容时使用空列表。");
+        }
+
+        private static void ValidateRandomStreams(
+            IReadOnlyList<NomadRandomStreamSaveData> randomStreams)
+        {
+            var identities = new HashSet<(string OwnerEntityId, string StreamId)>();
+            for (var i = 0; i < randomStreams.Count; i++)
+            {
+                NomadRandomStreamSaveData stream = randomStreams[i] ??
+                    throw new InvalidOperationException($"随机流列表第 {i} 项为空。");
+                RequireId(stream.OwnerEntityId, "随机流 owner");
+                RequireId(stream.StreamId, "随机流");
+                if (!string.Equals(
+                        stream.OwnerEntityId,
+                        stream.OwnerEntityId.Trim(),
+                        StringComparison.Ordinal) ||
+                    !string.Equals(stream.StreamId, stream.StreamId.Trim(), StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"随机流 {stream.OwnerEntityId}/{stream.StreamId} 必须使用无首尾空白的规范 id。");
+                if (stream.NextEventSequence < 0)
+                    throw new InvalidOperationException(
+                        $"随机流 {stream.OwnerEntityId}/{stream.StreamId} 的下一事件序号不能为负数。");
+
+                if (!identities.Add((stream.OwnerEntityId, stream.StreamId)))
+                    throw new InvalidOperationException(
+                        $"随机流 {stream.OwnerEntityId}/{stream.StreamId} 重复。");
+            }
         }
 
         private static void ValidateFacilities(

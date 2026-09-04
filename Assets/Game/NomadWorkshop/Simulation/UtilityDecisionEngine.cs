@@ -9,6 +9,8 @@ namespace Game.NomadWorkshop.Simulation
     /// </summary>
     public sealed class UtilityDecisionEngine
     {
+        private const string DecisionRandomStreamId = "resident-decision";
+
         /// <summary>
         /// 在不可变快照上完成候选过滤、同意图归并、紧急保护、短名单与确定性 Softmax 抽样。
         /// 配置错误抛出异常；没有正效用候选时返回无选择结果，并保留全部诊断轨迹。
@@ -57,7 +59,7 @@ namespace Game.NomadWorkshop.Simulation
 
             List<CandidateDecisionTrace> intentWinners = SelectIntentWinners(traces);
             if (intentWinners.Count == 0)
-                return new ResidentDecisionResult(null, DecisionRandom.Sample01(context), traces);
+                return new ResidentDecisionResult(null, SampleDecisionRoll(context), traces);
 
             var emergencyPool = new List<CandidateDecisionTrace>();
             for (int i = 0; i < intentWinners.Count; i++)
@@ -85,7 +87,7 @@ namespace Game.NomadWorkshop.Simulation
 
             selectionPool.Sort(CompareByUtilityThenId);
             List<CandidateDecisionTrace> shortlist = BuildShortlist(selectionPool, policy);
-            double roll = DecisionRandom.Sample01(context);
+            double roll = SampleDecisionRoll(context);
             ResidentActionCandidate selected = SelectBySoftmax(
                 shortlist,
                 emergencyDecision ? policy.EmergencyTemperature : policy.NormalTemperature,
@@ -340,24 +342,11 @@ namespace Game.NomadWorkshop.Simulation
             return value > 1f ? 1f : value;
         }
 
-        private static class DecisionRandom
-        {
-            public static double Sample01(ResidentDecisionContext context)
-            {
-                ulong value = unchecked((uint)context.WorldSeed);
-                value ^= Mix(context.ResidentId + 0x9E3779B97F4A7C15UL);
-                value ^= Mix(unchecked((ulong)context.DecisionSequence) + 0xD1B54A32D192ED03UL);
-                value = Mix(value);
-                return (value >> 11) * (1d / 9007199254740992d);
-            }
-
-            private static ulong Mix(ulong value)
-            {
-                value += 0x9E3779B97F4A7C15UL;
-                value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
-                value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
-                return value ^ (value >> 31);
-            }
-        }
+        private static double SampleDecisionRoll(ResidentDecisionContext context) =>
+            DeterministicRandom.Sample01(
+                context.WorldSeed,
+                context.ResidentId,
+                DecisionRandomStreamId,
+                context.DecisionSequence);
     }
 }

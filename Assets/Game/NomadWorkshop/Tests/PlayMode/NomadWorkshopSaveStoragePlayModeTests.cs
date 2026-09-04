@@ -67,6 +67,9 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     actual.Residents[0].HandContaminationPermille);
                 Assert.AreEqual(expected.Residents[0].MotionSicknessPermille,
                     actual.Residents[0].MotionSicknessPermille);
+                Assert.AreEqual(1, actual.RandomStreams.Count);
+                Assert.AreEqual("resident-decision", actual.RandomStreams[0].StreamId);
+                Assert.AreEqual(18, actual.RandomStreams[0].NextEventSequence);
                 Assert.AreEqual(
                     NomadActionRestoreDisposition.ResumePresentationAfterCommittedOutcome,
                     NomadWorkshopSaveContract.GetRestoreDisposition(actual.Residents[0].ActiveAction));
@@ -139,6 +142,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     ProgressPermille = 400,
                     OutcomeCommitted = true,
                 },
+            });
+            data.RandomStreams.Add(new NomadRandomStreamSaveData
+            {
+                OwnerEntityId = "resident-b",
+                StreamId = "resident-decision",
+                NextEventSequence = 18,
             });
             return data;
         }

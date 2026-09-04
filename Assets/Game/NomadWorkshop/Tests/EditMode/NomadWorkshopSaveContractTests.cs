@@ -79,6 +79,30 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void ValidateForSave_RejectsInvalidOrDuplicateRandomStreamCursor()
+        {
+            NomadWorkshopSaveData negative = CreateValidSave();
+            negative.RandomStreams[0].NextEventSequence = -1;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(negative));
+
+            NomadWorkshopSaveData duplicate = CreateValidSave();
+            duplicate.RandomStreams.Add(new NomadRandomStreamSaveData
+            {
+                OwnerEntityId = duplicate.RandomStreams[0].OwnerEntityId,
+                StreamId = duplicate.RandomStreams[0].StreamId,
+                NextEventSequence = 99,
+            });
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(duplicate));
+
+            NomadWorkshopSaveData nonCanonical = CreateValidSave();
+            nonCanonical.RandomStreams[0].StreamId = " resident-decision ";
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(nonCanonical));
+        }
+
+        [Test]
         public void RestoreOrder_IsStableAndTransientPathIsNeverPartOfContract()
         {
             NomadWorkshopSaveData save = CreateValidSave();
@@ -183,6 +207,12 @@ namespace Game.NomadWorkshop.Simulation.Tests
                     ProgressPermille = 400,
                     OutcomeCommitted = true,
                 },
+            });
+            save.RandomStreams.Add(new NomadRandomStreamSaveData
+            {
+                OwnerEntityId = "resident-b",
+                StreamId = "resident-decision",
+                NextEventSequence = 18,
             });
             return save;
         }
