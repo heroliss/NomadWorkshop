@@ -657,6 +657,9 @@ namespace Game.NomadWorkshop.PlayMode.Tests
 
             const int targetLeisureCount = 12;
             const int frameLimit = 720;
+            float entertainmentBeforeLeisure = _model.ResidentEntertainment.Value;
+            float fatigueBeforeLeisure = _model.ResidentFatigue.Value;
+            float stressBeforeLeisure = _model.ResidentStress.Value;
             for (var i = 0;
                  i < frameLimit && _model.CompletedLeisureCount.Value < targetLeisureCount;
                  i++)
@@ -669,7 +672,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(
                 _model.CompletedDaydreamCount.Value,
                 Is.GreaterThan(0),
-                "低娱乐缺口稳态仍应保留发呆候选。 ");
+                "发呆应作为疲劳与压力休整候选保留，而不是依赖娱乐缺口。 ");
             Assert.That(
                 _model.CompletedWanderCount.Value,
                 Is.GreaterThan(0),
@@ -681,6 +684,19 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     ResidentLeisurePlanFactory.DaydreamCandidateId));
             Assert.That(plan.Selected, Is.True);
             Assert.That(plan.SelectionProbability, Is.GreaterThan(0f));
+            Assert.That(
+                _model.ResidentEntertainment.Value,
+                Is.LessThan(entertainmentBeforeLeisure),
+                "发呆和闲逛不能把正向娱乐满足度补满；没有爱好设施时它应继续缓慢下降。 ");
+            Assert.That(
+                _model.ResidentFatigue.Value,
+                Is.LessThanOrEqualTo(fatigueBeforeLeisure),
+                "自主休整应连续缓解疲劳。 ");
+            Assert.That(
+                _model.ResidentStress.Value,
+                Is.LessThanOrEqualTo(stressBeforeLeisure),
+                "自主休整应连续缓解压力。 ");
+            Assert.That(_model.ResidentMood.Value, Is.InRange(0f, 1f));
         }
 
         [UnityTest]

@@ -134,7 +134,7 @@ namespace Game.NomadWorkshop
             _deficits[(int)ResidentNeed.Hunger] = 0.43f;
             _deficits[(int)ResidentNeed.Fatigue] = 0.28f;
             _deficits[(int)ResidentNeed.Health] = 0.06f;
-            _deficits[(int)ResidentNeed.Recreation] = 0.2f;
+            _deficits[(int)ResidentNeed.Entertainment] = 0.2f;
             _generatorDamage = 0.28f;
             _haulBacklog = 0.42f;
             _repairPriority = 0.2f;
@@ -350,8 +350,8 @@ namespace Game.NomadWorkshop
             _deficits[(int)ResidentNeed.Thirst] = Clamp01(_deficits[(int)ResidentNeed.Thirst] + 0.0022f * deltaTime);
             _deficits[(int)ResidentNeed.Hunger] = Clamp01(_deficits[(int)ResidentNeed.Hunger] + 0.00135f * deltaTime);
             _deficits[(int)ResidentNeed.Fatigue] = Clamp01(_deficits[(int)ResidentNeed.Fatigue] + 0.00105f * deltaTime);
-            _deficits[(int)ResidentNeed.Recreation] = Clamp01(
-                _deficits[(int)ResidentNeed.Recreation] + 0.0008f * deltaTime);
+            _deficits[(int)ResidentNeed.Entertainment] = Clamp01(
+                _deficits[(int)ResidentNeed.Entertainment] + 0.0008f * deltaTime);
 
             bool physicallyCritical = _deficits[(int)ResidentNeed.Thirst] > 0.96f
                                       || _deficits[(int)ResidentNeed.Hunger] > 0.97f
@@ -643,7 +643,7 @@ namespace Game.NomadWorkshop
             DrawNeed("饥饿", ResidentNeed.Hunger);
             DrawNeed("疲劳", ResidentNeed.Fatigue);
             DrawNeed("健康压力", ResidentNeed.Health);
-            DrawNeed("娱乐缺口", ResidentNeed.Recreation);
+            DrawPositiveNeed("娱乐满足", ResidentNeed.Entertainment);
             GUILayout.Label($"动力损伤 {_generatorDamage:P0}　搬运候选压力 {_haulBacklog:P0}　水 {_waterServings}　食物 {_foodServings}");
             string actionText = _currentAction == null ? "等待下一次决策" : $"{PhaseName(_phase)}：{_currentAction.DisplayName}";
             GUILayout.Label($"当前行动：{actionText}", _selectedStyle);
@@ -686,6 +686,25 @@ namespace Game.NomadWorkshop
                 ? new Color(0.95f, 0.25f, 0.18f)
                 : new Color(0.91f, 0.65f, 0.22f);
             GUI.Box(new Rect(rect.x + 2f, rect.y + 2f, (rect.width - 4f) * value, rect.height - 4f), GUIContent.none);
+            GUI.color = previous;
+            GUILayout.Label(value.ToString("P0"), GUILayout.Width(48f));
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawPositiveNeed(string label, ResidentNeed need)
+        {
+            float value = 1f - _deficits[(int)need];
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(74f));
+            Rect rect = GUILayoutUtility.GetRect(120f, 16f, GUILayout.ExpandWidth(true));
+            GUI.Box(rect, GUIContent.none);
+            Color previous = GUI.color;
+            GUI.color = value <= 1f - _decisionPolicy.UrgentNeedDeficit
+                ? new Color(0.95f, 0.25f, 0.18f)
+                : new Color(0.2f, 0.76f, 0.58f);
+            GUI.Box(
+                new Rect(rect.x + 2f, rect.y + 2f, (rect.width - 4f) * value, rect.height - 4f),
+                GUIContent.none);
             GUI.color = previous;
             GUILayout.Label(value.ToString("P0"), GUILayout.Width(48f));
             GUILayout.EndHorizontal();

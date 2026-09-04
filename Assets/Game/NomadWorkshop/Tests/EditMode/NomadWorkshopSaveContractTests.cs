@@ -47,6 +47,29 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void PrepareAfterLoad_MigratesVersionTwoWellbeingDefaults()
+        {
+            NomadWorkshopSaveData versionTwo = CreateValidSave();
+            versionTwo.Version = 2;
+            versionTwo.Residents[0].EntertainmentPermille = 0;
+            versionTwo.Residents[0].MoodPermille = 0;
+
+            NomadWorkshopSaveData migrated =
+                NomadWorkshopSaveContract.PrepareAfterLoad(versionTwo);
+
+            Assert.AreSame(versionTwo, migrated);
+            Assert.AreEqual(NomadWorkshopSaveSchema.CurrentVersion, migrated.Version);
+            Assert.AreEqual(
+                NomadWorkshopSaveSchema.DefaultEntertainmentPermille,
+                migrated.Residents[0].EntertainmentPermille,
+                "v2 没有该字段，不能把反序列化器给出的 0 当成真实的极度无聊状态。");
+            Assert.AreEqual(
+                NomadWorkshopSaveSchema.DefaultMoodPermille,
+                migrated.Residents[0].MoodPermille,
+                "v2 没有该字段，迁移后应采用首版身心系统的中性初值。");
+        }
+
+        [Test]
         public void ValidateForSave_RejectsDuplicateEntityAndOverfilledInventory()
         {
             NomadWorkshopSaveData duplicate = CreateValidSave();
@@ -92,6 +115,16 @@ namespace Game.NomadWorkshop.Simulation.Tests
             motionSickness.Residents[0].MotionSicknessPermille = 1200;
             Assert.Throws<InvalidOperationException>(
                 () => NomadWorkshopSaveContract.ValidateForSave(motionSickness));
+
+            NomadWorkshopSaveData entertainment = CreateValidSave();
+            entertainment.Residents[0].EntertainmentPermille = 1001;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(entertainment));
+
+            NomadWorkshopSaveData mood = CreateValidSave();
+            mood.Residents[0].MoodPermille = -1;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(mood));
         }
 
         [Test]
@@ -211,6 +244,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 ThirstPermille = 610,
                 FatiguePermille = 280,
                 StressPermille = 190,
+                EntertainmentPermille = 640,
+                MoodPermille = 710,
                 BodyHygieneDeficitPermille = 240,
                 HandContaminationPermille = 430,
                 MotionSicknessPermille = 170,

@@ -8,11 +8,19 @@ using UnityEngine;
 namespace Game.NomadWorkshop.Foundation
 {
     /// <summary>
-    /// 开发期 IMGUI 调试 View。它与正式 3D View 使用同一读模型和 Command，后续换成 UGUI/UI Toolkit
-    /// 不会改变 System；当前重点是让人和 AI 都能快速观察、暂停、加速和复位。
+    /// 首版 IMGUI 信息 View：默认只显示玩家需要的居民摘要，详情与开发控制台按需展开。
+    /// 它与正式 3D View 使用同一读模型和 Command，后续换成 UGUI / UI Toolkit 不会改变 System；
+    /// 当前重点是先验证信息层级、状态语义，以及让人和 AI 都能快速观察、暂停、加速和复位。
     /// </summary>
     public sealed class NomadFoundationDebugView : MonoViewBase
     {
+        private enum FoundationInformationPanel
+        {
+            None,
+            Resident,
+            Developer,
+        }
+
         private FoundationBuildOption[] _buildOptions = Array.Empty<FoundationBuildOption>();
         private bool _ready;
         private bool _paused;
@@ -44,7 +52,10 @@ namespace Game.NomadWorkshop.Foundation
         private int _waterCanCapacityMilliliters;
         private FoundationActionPlanProjection _latestActionPlan;
         private float _thirst;
-        private float _recreation;
+        private float _entertainment;
+        private float _mood;
+        private float _fatigue;
+        private float _stress;
         private int _vehicleWaterMilliliters;
         private int _vehicleWaterCapacityMilliliters;
         private int _stationWaterMilliliters;
@@ -63,9 +74,18 @@ namespace Game.NomadWorkshop.Foundation
         private float _actionProgress;
         private string _currentTask = string.Empty;
         private string _lastBlocker = string.Empty;
+        [SerializeField, HideInInspector]
+        private FoundationInformationPanel _openPanel;
+        private Vector2 _residentPanelScroll;
+        private Vector2 _developerPanelScroll;
         private GUIStyle _titleStyle;
         private GUIStyle _sectionStyle;
         private GUIStyle _smallStyle;
+        private GUIStyle _compactNameStyle;
+        private GUIStyle _compactTaskStyle;
+        private GUIStyle _meterLabelStyle;
+        private GUIStyle _meterValueStyle;
+        private GUIStyle _iconStyle;
 
         protected override void Awake()
         {
@@ -114,7 +134,10 @@ namespace Game.NomadWorkshop.Foundation
                 value => _waterCanCapacityMilliliters = value);
             Bag.Subscribe(readModel.LatestActionPlan, value => _latestActionPlan = value);
             Bag.Subscribe(readModel.ResidentThirst, value => _thirst = value);
-            Bag.Subscribe(readModel.ResidentRecreation, value => _recreation = value);
+            Bag.Subscribe(readModel.ResidentEntertainment, value => _entertainment = value);
+            Bag.Subscribe(readModel.ResidentMood, value => _mood = value);
+            Bag.Subscribe(readModel.ResidentFatigue, value => _fatigue = value);
+            Bag.Subscribe(readModel.ResidentStress, value => _stress = value);
             Bag.Subscribe(
                 readModel.VehicleWaterMilliliters,
                 value => _vehicleWaterMilliliters = value);
@@ -158,11 +181,344 @@ namespace Game.NomadWorkshop.Foundation
         private void OnGUI()
         {
             EnsureStyles();
+            DrawCompactResidentCard();
+            DrawCornerToolbar();
+
+            if (_openPanel == FoundationInformationPanel.Resident)
+                DrawResidentDetailsPanel();
+            else if (_openPanel == FoundationInformationPanel.Developer ||
+                     _interactionMode == FoundationInteractionMode.Build)
+                DrawDeveloperPanel();
+
+            DrawTooltip();
+        }
+
+        /// <summary>
+        /// 默认常驻信息只保留一个居民摘要卡，避免开发数据遮住车辆。当前只有一名居民，后续改为集合绑定时
+        /// 这里会成为居民列表的紧凑行，而 System 与读模型仍不需要知道具体 UI 技术。
+        /// </summary>
+        private void DrawCompactResidentCard()
+        {
+            float width = Mathf.Min(370f, Mathf.Max(280f, Screen.width - 28f));
+            var outer = new Rect(14f, 14f, width, 112f);
+            DrawPanelBackground(
+                outer,
+                new Color(0.10f, 0.13f, 0.14f, 0.94f),
+                new Color(0.22f, 0.66f, 0.68f, 0.95f));
+
+            GUILayout.BeginArea(new Rect(outer.x + 10f, outer.y + 8f, outer.width - 20f, outer.height - 16f));
+            GUILayout.BeginHorizontal();
+            Rect avatar = GUILayoutUtility.GetRect(28f, 28f, GUILayout.Width(28f), GUILayout.Height(28f));
+            DrawIconBadge(avatar, "人", new Color(0.2f, 0.72f, 0.74f));
+            GUILayout.BeginVertical();
+            GUILayout.Label("居民 01", _compactNameStyle, GUILayout.Height(18f));
+            GUILayout.Label(
+                $"{Describe(_residentPhase)} · {_currentTask}",
+                _compactTaskStyle,
+                GUILayout.Height(17f));
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(2f);
+            GUILayout.BeginHorizontal();
+            DrawMiniStatus("水", "水分", 1f - _thirst, new Color(0.2f, 0.72f, 0.94f));
+            DrawMiniStatus("能", "精力", 1f - _fatigue, new Color(0.35f, 0.82f, 0.48f));
+            DrawMiniStatus("心", "心情", _mood, new Color(0.92f, 0.62f, 0.3f));
+            GUILayout.EndHorizontal();
+
+            Rect actionRect = GUILayoutUtility.GetRect(1f, 5f, GUILayout.ExpandWidth(true));
+            DrawProgressBar(actionRect, _actionProgress, new Color(0.22f, 0.78f, 0.82f));
+            GUILayout.EndArea();
+        }
+
+        private void DrawCornerToolbar()
+        {
+            float width = Mathf.Min(310f, Mathf.Max(250f, Screen.width - 28f));
+            var outer = new Rect(Mathf.Max(14f, Screen.width - width - 14f), 14f, width, 36f);
+            DrawPanelBackground(
+                outer,
+                new Color(0.09f, 0.11f, 0.12f, 0.94f),
+                new Color(0.28f, 0.32f, 0.33f, 0.95f));
+            GUILayout.BeginArea(new Rect(outer.x + 4f, outer.y + 4f, outer.width - 8f, outer.height - 8f));
+            GUILayout.BeginHorizontal();
+            if (DrawToolbarButton(
+                    new GUIContent("居民详情", "查看居民的水分、精力、心情、娱乐、压力与生理状态。"),
+                    _openPanel == FoundationInformationPanel.Resident))
+            {
+                _openPanel = _openPanel == FoundationInformationPanel.Resident
+                    ? FoundationInformationPanel.None
+                    : FoundationInformationPanel.Resident;
+            }
+
+            if (DrawToolbarButton(
+                    new GUIContent(
+                        _interactionMode == FoundationInteractionMode.Build ? "退出建造" : "建造",
+                        "进入建造模式并打开设施、吸附与可达性控制。"),
+                    _interactionMode == FoundationInteractionMode.Build))
+            {
+                if (_interactionMode == FoundationInteractionMode.Build)
+                {
+                    this.ExecuteCommand(new ExitFoundationBuildModeCommand());
+                    _openPanel = FoundationInformationPanel.None;
+                }
+                else
+                {
+                    this.ExecuteCommand(new EnterFoundationBuildModeCommand());
+                    _openPanel = FoundationInformationPanel.Developer;
+                }
+            }
+
+            if (DrawToolbarButton(
+                    new GUIContent("开发", "打开完整的方案、资源、建造与 Harness 诊断。"),
+                    _openPanel == FoundationInformationPanel.Developer))
+            {
+                _openPanel = _openPanel == FoundationInformationPanel.Developer
+                    ? FoundationInformationPanel.None
+                    : FoundationInformationPanel.Developer;
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        private void DrawResidentDetailsPanel()
+        {
+            float width = Mathf.Min(390f, Mathf.Max(300f, Screen.width - 28f));
+            float height = Mathf.Max(160f, Screen.height - 72f);
+            var outer = new Rect(Mathf.Max(14f, Screen.width - width - 14f), 58f, width, height);
+            DrawPanelBackground(
+                outer,
+                new Color(0.08f, 0.105f, 0.115f, 0.97f),
+                new Color(0.24f, 0.7f, 0.72f, 0.95f));
+
+            GUILayout.BeginArea(new Rect(outer.x + 10f, outer.y + 8f, outer.width - 20f, outer.height - 16f));
+            _residentPanelScroll = GUILayout.BeginScrollView(_residentPanelScroll);
+            GUILayout.Label("居民 01 · 身心状态", _titleStyle);
+            GUILayout.Label(
+                $"{Describe(_residentPhase)} · {_currentTask}",
+                _smallStyle);
+            GUILayout.Space(6f);
+
+            DrawStatusMeter(
+                "水",
+                "水分",
+                1f - _thirst,
+                higherIsBetter: true,
+                new Color(0.2f, 0.72f, 0.94f),
+                "由口渴缺口反向显示；越高表示当前越不需要喝水。");
+            DrawStatusMeter(
+                "能",
+                "精力",
+                1f - _fatigue,
+                higherIsBetter: true,
+                new Color(0.35f, 0.82f, 0.48f),
+                "疲劳负担的反向显示；发呆与闲逛只能缓慢恢复。");
+            DrawStatusMeter(
+                "心",
+                "心情",
+                _mood,
+                higherIsBetter: true,
+                new Color(0.92f, 0.62f, 0.3f),
+                "娱乐不足、持续压力和疲劳会让心情连续下降。");
+            DrawStatusMeter(
+                "趣",
+                "娱乐满足",
+                _entertainment,
+                higherIsBetter: true,
+                new Color(0.72f, 0.46f, 0.92f),
+                "只有真实爱好、社交或娱乐设施才会明显提高；普通发呆和闲逛不会补充。");
+            DrawStatusMeter(
+                "压",
+                "压力",
+                _stress,
+                higherIsBetter: false,
+                new Color(0.28f, 0.78f, 0.68f),
+                "越低越好；缺水、憋尿、阻塞、疲劳和无聊都会增加压力。");
+            DrawStatusMeter(
+                "尿",
+                "膀胱负担",
+                SafeRatio(_bladderWasteMilliliters, _bladderCapacityMilliliters),
+                higherIsBetter: false,
+                new Color(0.34f, 0.76f, 0.88f),
+                "达到 50% 后如厕机会平滑上升，90% 后进入紧迫风险层。");
+
+            GUILayout.Space(7f);
+            GUILayout.Label("当前行动", _sectionStyle);
+            DrawStatusMeter(
+                "行",
+                "动作进度",
+                _actionProgress,
+                higherIsBetter: true,
+                new Color(0.22f, 0.78f, 0.82f),
+                "仅表示当前阶段的表现进度，不代表整个复合行动已经提交结果。");
+            if (_remainingPathMeters > 0f)
+            {
+                GUILayout.Label(
+                    $"剩余路程 {_remainingPathMeters:0.00} m · {_remainingPathCorners} 个路径拐点",
+                    _smallStyle);
+            }
+
+            GUILayout.Space(7f);
+            GUILayout.Label("生理与生活解释", _sectionStyle);
+            GUILayout.Label(
+                "发呆和闲逛属于休整：它们缓慢降低疲劳与压力，并略微改善心情；" +
+                "娱乐满足度仍会下降，直到居民真正进行爱好、社交或使用娱乐设施。",
+                _smallStyle);
+            GUILayout.Label(
+                $"体内待代谢水 {FormatVolume(_bodyWaterMilliliters, _bodyWaterCapacityMilliliters)} · " +
+                $"膀胱内容物 {FormatVolume(_bladderWasteMilliliters, _bladderCapacityMilliliters)}",
+                _smallStyle);
+            GUILayout.Label(
+                $"完成：饮水 {_completedDrinks} · 如厕 {_completedToiletUses} · " +
+                $"休整 {_completedLeisure}（发呆 {_completedDaydreams} / 闲逛 {_completedWanders}）",
+                _smallStyle);
+
+            if (!string.IsNullOrEmpty(_lastBlocker))
+            {
+                GUILayout.Space(5f);
+                Color previous = GUI.color;
+                GUI.color = _residentPhase == FoundationResidentPhase.Blocked
+                    ? new Color(1f, 0.48f, 0.4f)
+                    : new Color(1f, 0.72f, 0.34f);
+                GUILayout.Label($"状态提示：{_lastBlocker}", _smallStyle);
+                GUI.color = previous;
+            }
+            else if (_entertainment < 0.35f)
+            {
+                GUILayout.Space(5f);
+                Color previous = GUI.color;
+                GUI.color = new Color(0.88f, 0.62f, 1f);
+                GUILayout.Label("娱乐偏低：当前 Foundation 尚未放置真实娱乐设施。", _smallStyle);
+                GUI.color = previous;
+            }
+
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        private void DrawMiniStatus(
+            string symbol,
+            string label,
+            float value,
+            Color accent)
+        {
+            GUILayout.BeginVertical(GUILayout.MinWidth(80f), GUILayout.ExpandWidth(true));
+            GUILayout.BeginHorizontal();
+            Rect icon = GUILayoutUtility.GetRect(17f, 17f, GUILayout.Width(17f), GUILayout.Height(17f));
+            DrawIconBadge(icon, symbol, accent);
+            GUILayout.Label(label, _meterLabelStyle, GUILayout.Width(30f));
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(Mathf.Clamp01(value).ToString("P0"), _meterValueStyle, GUILayout.Width(34f));
+            GUILayout.EndHorizontal();
+            Rect bar = GUILayoutUtility.GetRect(1f, 6f, GUILayout.ExpandWidth(true));
+            DrawProgressBar(bar, value, EvaluateStateColor(value, higherIsBetter: true, accent));
+            GUILayout.EndVertical();
+        }
+
+        private void DrawStatusMeter(
+            string symbol,
+            string label,
+            float value,
+            bool higherIsBetter,
+            Color accent,
+            string tooltip)
+        {
+            float normalized = Mathf.Clamp01(value);
+            Color stateColor = EvaluateStateColor(normalized, higherIsBetter, accent);
+            GUILayout.BeginHorizontal();
+            Rect icon = GUILayoutUtility.GetRect(24f, 24f, GUILayout.Width(24f), GUILayout.Height(24f));
+            DrawIconBadge(icon, symbol, stateColor);
+            GUILayout.BeginVertical();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(new GUIContent(label, tooltip), _meterLabelStyle);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(normalized.ToString("P0"), _meterValueStyle, GUILayout.Width(42f));
+            GUILayout.EndHorizontal();
+            Rect bar = GUILayoutUtility.GetRect(1f, 10f, GUILayout.ExpandWidth(true));
+            DrawProgressBar(bar, normalized, stateColor);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(3f);
+        }
+
+        private static bool DrawToolbarButton(GUIContent content, bool active)
+        {
+            Color previous = GUI.backgroundColor;
+            if (active) GUI.backgroundColor = new Color(0.24f, 0.78f, 0.8f);
+            bool clicked = GUILayout.Button(content, GUILayout.Height(28f), GUILayout.ExpandWidth(true));
+            GUI.backgroundColor = previous;
+            return clicked;
+        }
+
+        private void DrawIconBadge(Rect rect, string symbol, Color color)
+        {
+            Color previous = GUI.color;
+            GUI.color = new Color(color.r, color.g, color.b, 0.92f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(rect, symbol, _iconStyle);
+            GUI.color = previous;
+        }
+
+        private static void DrawProgressBar(Rect rect, float value, Color fillColor)
+        {
+            Color previous = GUI.color;
+            GUI.color = new Color(0.02f, 0.035f, 0.04f, 0.92f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            Rect inner = new(rect.x + 1f, rect.y + 1f, Mathf.Max(0f, rect.width - 2f), Mathf.Max(0f, rect.height - 2f));
+            inner.width *= Mathf.Clamp01(value);
+            GUI.color = fillColor;
+            GUI.DrawTexture(inner, Texture2D.whiteTexture);
+            GUI.color = previous;
+        }
+
+        private static void DrawPanelBackground(Rect rect, Color background, Color border)
+        {
+            Color previous = GUI.color;
+            GUI.color = border;
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = background;
+            GUI.DrawTexture(
+                new Rect(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.height - 2f),
+                Texture2D.whiteTexture);
+            GUI.color = previous;
+        }
+
+        private static Color EvaluateStateColor(float value, bool higherIsBetter, Color accent)
+        {
+            float health = higherIsBetter ? Mathf.Clamp01(value) : 1f - Mathf.Clamp01(value);
+            Color warning = health < 0.35f
+                ? new Color(0.95f, 0.3f, 0.24f)
+                : new Color(0.96f, 0.66f, 0.24f);
+            return Color.Lerp(warning, accent, Mathf.SmoothStep(0f, 1f, health));
+        }
+
+        private void DrawTooltip()
+        {
+            if (string.IsNullOrWhiteSpace(GUI.tooltip)) return;
+            float width = Mathf.Min(420f, Screen.width - 28f);
+            var rect = new Rect(14f, Mathf.Max(14f, Screen.height - 54f), width, 40f);
+            DrawPanelBackground(
+                rect,
+                new Color(0.06f, 0.075f, 0.08f, 0.98f),
+                new Color(0.42f, 0.62f, 0.64f, 0.95f));
+            GUI.Label(
+                new Rect(rect.x + 8f, rect.y + 5f, rect.width - 16f, rect.height - 10f),
+                GUI.tooltip,
+                _smallStyle);
+        }
+
+        private static float SafeRatio(int amount, int capacity) =>
+            capacity <= 0 ? 0f : Mathf.Clamp01(amount / (float)capacity);
+
+        private void DrawDeveloperPanel()
+        {
             const float width = 390f;
+            float x = Mathf.Max(14f, Screen.width - width - 14f);
             GUILayout.BeginArea(
-                new Rect(14f, 14f, width, Mathf.Min(Screen.height - 28f, 710f)),
+                new Rect(x, 58f, width, Mathf.Max(120f, Screen.height - 72f)),
                 GUI.skin.box);
-            GUILayout.Label("游牧工坊 · 最小垂直切片", _titleStyle);
+            _developerPanelScroll = GUILayout.BeginScrollView(_developerPanelScroll);
+            GUILayout.Label("游牧工坊 · 开发控制台", _titleStyle);
             GUILayout.Label(
                 "连续建造 → 实体容器搬水 → 饮水；完整方案参与 Utility 决策",
                 _smallStyle);
@@ -304,7 +660,10 @@ namespace Game.NomadWorkshop.Foundation
                     $"{_remainingPathCorners} 拐点 · {_activePathSummary}",
                     _smallStyle);
             DrawMeter("口渴", _thirst);
-            DrawMeter("娱乐缺口", _recreation);
+            DrawMeter("娱乐满足", _entertainment);
+            DrawMeter("心情", _mood);
+            DrawMeter("疲劳", _fatigue);
+            DrawMeter("压力", _stress);
             DrawMeter("当前动作", _actionProgress);
             GUILayout.Label(
                 $"车辆水箱 {FormatVolume(_vehicleWaterMilliliters, _vehicleWaterCapacityMilliliters)}   " +
@@ -375,6 +734,7 @@ namespace Game.NomadWorkshop.Foundation
             if (GUILayout.Button("复位")) this.ExecuteCommand(new ResetFoundationSliceCommand());
             GUILayout.EndHorizontal();
             GUILayout.Label($"Ready={_ready} · Speed={_speed:0.##}×", _smallStyle);
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
 
@@ -418,6 +778,39 @@ namespace Game.NomadWorkshop.Foundation
                 fontSize = 11,
                 wordWrap = true,
                 normal = { textColor = new Color(0.74f, 0.78f, 0.78f) },
+            };
+            _compactNameStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 14,
+                fontStyle = FontStyle.Bold,
+                padding = new RectOffset(3, 0, 0, 0),
+                normal = { textColor = new Color(0.94f, 0.96f, 0.94f) },
+            };
+            _compactTaskStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 10,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(3, 0, 0, 0),
+                normal = { textColor = new Color(0.68f, 0.74f, 0.74f) },
+            };
+            _meterLabelStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 11,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = new Color(0.84f, 0.88f, 0.86f) },
+            };
+            _meterValueStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 10,
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = new Color(0.8f, 0.84f, 0.82f) },
+            };
+            _iconStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 10,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white },
             };
         }
 
@@ -531,7 +924,7 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.MovingToToilet => "前往旱厕",
             FoundationResidentPhase.UsingToilet => "如厕",
             FoundationResidentPhase.MovingToLeisure => "前往空地",
-            FoundationResidentPhase.Relaxing => "休息娱乐",
+            FoundationResidentPhase.Relaxing => "自主休整",
             FoundationResidentPhase.Blocked => "阻塞",
             _ => phase.ToString(),
         };

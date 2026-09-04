@@ -4,12 +4,14 @@ using System.Collections.Generic;
 namespace Game.NomadWorkshop.Simulation.Persistence
 {
     /// <summary>
-    /// 《游牧工坊》存档格式的稳定入口。版本只在字段语义或结构发生不兼容变化时递增；
-    /// 普通新增字段继续利用 JSON 的缺省值兼容。
+    /// 《游牧工坊》存档格式的稳定入口。版本只在字段语义、结构，或新字段需要非零迁移默认值时递增；
+    /// 不改变旧存档含义的普通新增字段仍可利用 JSON 缺省值兼容。
     /// </summary>
     public static class NomadWorkshopSaveSchema
     {
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
+        public const int DefaultEntertainmentPermille = 680;
+        public const int DefaultMoodPermille = 700;
     }
 
     /// <summary>
@@ -214,7 +216,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     }
 
     /// <summary>
-    /// 居民的持久状态；手部污染、身体卫生缺口和晕车跨行动保留，
+    /// 居民的持久状态；娱乐、心情、疲劳、压力、卫生与晕车都跨行动保留，
     /// 寻路走廊与 RVO 速度则在加载后按位置、目标和行动阶段重新计算。
     /// </summary>
     [Serializable]
@@ -227,6 +229,10 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public int ThirstPermille;
         public int FatiguePermille;
         public int StressPermille;
+        /// <summary>正向娱乐满足度；0 表示极度无聊，1000 表示充分满足。</summary>
+        public int EntertainmentPermille = NomadWorkshopSaveSchema.DefaultEntertainmentPermille;
+        /// <summary>正向心情值；0 表示极差，1000 表示极好。</summary>
+        public int MoodPermille = NomadWorkshopSaveSchema.DefaultMoodPermille;
         public int BodyHygieneDeficitPermille;
         public int HandContaminationPermille;
         public int MotionSicknessPermille;
@@ -251,17 +257,18 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public static NomadWorkshopSaveData PrepareAfterLoad(NomadWorkshopSaveData data)
         {
             if (data == null) return null;
-            if (data.Version != NomadWorkshopSaveSchema.CurrentVersion)
+            if (data.Version < 2 || data.Version > NomadWorkshopSaveSchema.CurrentVersion)
             {
                 string direction = data.Version > NomadWorkshopSaveSchema.CurrentVersion
                     ? "比当前游戏更新"
                     : "缺少对应的链式迁移";
                 throw new NotSupportedException(
-                    $"游牧工坊存档版本 {data.Version} {direction}；当前只支持版本 " +
-                    $"{NomadWorkshopSaveSchema.CurrentVersion}。");
+                    $"游牧工坊存档版本 {data.Version} {direction}；当前版本为 " +
+                    $"{NomadWorkshopSaveSchema.CurrentVersion}，可迁移的最早版本为 2。");
             }
 
             RepairOptionalCollections(data);
+            MigrateToCurrentVersion(data);
             ValidateForSave(data);
             return data;
         }
@@ -338,6 +345,36 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             {
                 NomadInventorySaveData inventory = data.Inventories[i];
                 if (inventory != null) inventory.Contents ??= new List<NomadResourceStackSaveData>();
+            }
+        }
+
+        /// <summary>
+        /// 按版本逐级迁移业务语义。v2 尚未保存娱乐与心情；不能依赖 JSON 反序列化器是否执行字段初始化，
+        /// 因此统一赋予当时新游戏的中性初值，再升级版本。未来迁移继续在此 switch 中逐级追加。
+        /// </summary>
+        private static void MigrateToCurrentVersion(NomadWorkshopSaveData data)
+        {
+            while (data.Version < NomadWorkshopSaveSchema.CurrentVersion)
+            {
+                switch (data.Version)
+                {
+                    case 2:
+                        for (var i = 0; i < data.Residents.Count; i++)
+                        {
+                            NomadResidentSaveData resident = data.Residents[i];
+                            if (resident == null) continue;
+                            resident.EntertainmentPermille =
+                                NomadWorkshopSaveSchema.DefaultEntertainmentPermille;
+                            resident.MoodPermille = NomadWorkshopSaveSchema.DefaultMoodPermille;
+                        }
+
+                        data.Version = 3;
+                        break;
+                    default:
+                        throw new NotSupportedException(
+                            $"游牧工坊存档版本 {data.Version} 缺少到版本 " +
+                            $"{NomadWorkshopSaveSchema.CurrentVersion} 的链式迁移。");
+                }
             }
         }
 
@@ -474,6 +511,8 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                 ValidateRange(resident.ThirstPermille, $"居民 {resident.ResidentId} 口渴");
                 ValidateRange(resident.FatiguePermille, $"居民 {resident.ResidentId} 疲劳");
                 ValidateRange(resident.StressPermille, $"居民 {resident.ResidentId} 压力");
+                ValidateRange(resident.EntertainmentPermille, $"居民 {resident.ResidentId} 娱乐满足");
+                ValidateRange(resident.MoodPermille, $"居民 {resident.ResidentId} 心情");
                 ValidateRange(resident.BodyHygieneDeficitPermille, $"居民 {resident.ResidentId} 身体卫生缺口");
                 ValidateRange(resident.HandContaminationPermille, $"居民 {resident.ResidentId} 手部污染");
                 ValidateRange(resident.MotionSicknessPermille, $"居民 {resident.ResidentId} 晕车");

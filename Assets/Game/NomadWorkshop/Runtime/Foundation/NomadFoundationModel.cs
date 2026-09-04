@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Game.Framework.Model;
 using R3;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Game.NomadWorkshop.Foundation
 {
@@ -62,8 +63,17 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<int> WaterCanCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationActionPlanProjection> LatestActionPlan { get; private set; } =
             new(FoundationActionPlanProjection.None);
-        [field: SerializeField] public RP<float> ResidentThirst { get; private set; } = new(0f);
-        [field: SerializeField] public RP<float> ResidentRecreation { get; private set; } = new(0f);
+        [field: SerializeField, Tooltip("口渴缺口，0 表示不渴，1 表示达到危险上限。")]
+        public RP<float> ResidentThirst { get; private set; } = new(0f);
+        [field: FormerlySerializedAs("<ResidentRecreation>k__BackingField")]
+        [field: SerializeField, Tooltip("正向娱乐满足度，0 表示极度无聊，1 表示兴趣得到充分满足；普通发呆和闲逛不会补充它。")]
+        public RP<float> ResidentEntertainment { get; private set; } = new(0f);
+        [field: SerializeField, Tooltip("正向心情值，0 表示极差，1 表示极好；娱乐不足、疲劳和压力会连续影响它。")]
+        public RP<float> ResidentMood { get; private set; } = new(0f);
+        [field: SerializeField, Tooltip("疲劳负担，0 表示精力充足，1 表示极度疲劳。玩家界面会反向显示为精力。")]
+        public RP<float> ResidentFatigue { get; private set; } = new(0f);
+        [field: SerializeField, Tooltip("压力负担，0 表示平静，1 表示压力极高；缺水、憋尿、阻塞与疲劳都会增加它。")]
+        public RP<float> ResidentStress { get; private set; } = new(0f);
         [field: SerializeField] public RP<int> VehicleWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> VehicleWaterCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> DrinkingStationWaterMilliliters { get; private set; } = new(0);

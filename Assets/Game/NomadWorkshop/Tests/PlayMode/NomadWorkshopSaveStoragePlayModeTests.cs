@@ -70,6 +70,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     actual.Residents[0].HandContaminationPermille);
                 Assert.AreEqual(expected.Residents[0].MotionSicknessPermille,
                     actual.Residents[0].MotionSicknessPermille);
+                Assert.AreEqual(expected.Residents[0].EntertainmentPermille,
+                    actual.Residents[0].EntertainmentPermille);
+                Assert.AreEqual(expected.Residents[0].MoodPermille,
+                    actual.Residents[0].MoodPermille);
                 Assert.AreEqual(1, actual.RandomStreams.Count);
                 Assert.AreEqual("resident-decision", actual.RandomStreams[0].StreamId);
                 Assert.AreEqual(18, actual.RandomStreams[0].NextEventSequence);
@@ -132,6 +136,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 ThirstPermille = 610,
                 FatiguePermille = 280,
                 StressPermille = 190,
+                EntertainmentPermille = 640,
+                MoodPermille = 710,
                 BodyHygieneDeficitPermille = 240,
                 HandContaminationPermille = 430,
                 MotionSicknessPermille = 170,

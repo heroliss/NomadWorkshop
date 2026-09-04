@@ -10,9 +10,13 @@ namespace Game.NomadWorkshop.Simulation
         Hunger = 1,
         Fatigue = 2,
         Health = 3,
-        Recreation = 4,
+        /// <summary>
+        /// 兴趣与有意义刺激的缺口。运行时真值使用正向 Entertainment，只有决策快照在边界转为缺口。
+        /// </summary>
+        Entertainment = 4,
         Bladder = 5,
-        Count = 6,
+        Stress = 6,
+        Count = 7,
     }
 
     /// <summary>候选在一次决策中的筛选和选择终态，用于测试与开发诊断。</summary>

@@ -4,7 +4,8 @@ namespace Game.NomadWorkshop.Simulation
 {
     /// <summary>
     /// 为没有固定设施目标的低优先级休闲生成完整行动方案。目标点与真实 NavMesh 路径由 Unity Adapter
-    /// 提供，本类只负责把行程、休息收益和娱乐需求恢复表达成可测试的 Utility 输入。
+    /// 提供，本类只负责把行程与真实的休整收益表达成可测试的 Utility 输入。普通发呆和闲逛
+    /// 不再伪装成兴趣娱乐；只有未来的爱好、社交或娱乐设施才恢复 Entertainment。
     /// </summary>
     public static class ResidentLeisurePlanFactory
     {
@@ -25,12 +26,10 @@ namespace Game.NomadWorkshop.Simulation
             float pathDistanceMeters,
             float moveSpeedMetersPerSecond,
             float restSeconds,
-            float recreationRestore,
             string targetLabel)
         {
             ValidatePositiveFinite(moveSpeedMetersPerSecond, nameof(moveSpeedMetersPerSecond));
             ValidatePositiveFinite(restSeconds, nameof(restSeconds));
-            ValidateNormalized(recreationRestore, nameof(recreationRestore));
             if (!float.IsFinite(pathDistanceMeters) || pathDistanceMeters < 0f)
                 throw new ArgumentOutOfRangeException(nameof(pathDistanceMeters));
 
@@ -60,19 +59,15 @@ namespace Game.NomadWorkshop.Simulation
                 RestQuality = 0.28f,
                 Effort = 0.07f,
                 WorkIntensity = 0.04f,
-                NeedEffects = new[]
-                {
-                    new NeedEffect(ResidentNeed.Recreation, recreationRestore),
-                },
+                NeedEffects = ResidentWellbeing.CreateExpectedEffects(
+                    ResidentWellbeingActivity.Wander,
+                    restSeconds),
             };
         }
 
-        public static ResidentActionPlanProposal CreateDaydream(
-            float restSeconds,
-            float recreationRestore)
+        public static ResidentActionPlanProposal CreateDaydream(float restSeconds)
         {
             ValidatePositiveFinite(restSeconds, nameof(restSeconds));
-            ValidateNormalized(recreationRestore, nameof(recreationRestore));
             return new ResidentActionPlanProposal(
                 DaydreamCandidateId,
                 "leisure-daydream",
@@ -92,10 +87,9 @@ namespace Game.NomadWorkshop.Simulation
                 // 不需要另写“空闲时掷固定百分比”的第二套决策规则。
                 PersonalAffinity = 0.17f,
                 RestQuality = 0.42f,
-                NeedEffects = new[]
-                {
-                    new NeedEffect(ResidentNeed.Recreation, recreationRestore),
-                },
+                NeedEffects = ResidentWellbeing.CreateExpectedEffects(
+                    ResidentWellbeingActivity.Daydream,
+                    restSeconds),
             };
         }
 
@@ -105,10 +99,5 @@ namespace Game.NomadWorkshop.Simulation
                 throw new ArgumentOutOfRangeException(parameterName);
         }
 
-        private static void ValidateNormalized(float value, string parameterName)
-        {
-            if (!float.IsFinite(value) || value < 0f || value > 1f)
-                throw new ArgumentOutOfRangeException(parameterName);
-        }
     }
 }

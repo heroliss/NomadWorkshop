@@ -40,7 +40,10 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> WaterCanCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<FoundationActionPlanProjection> LatestActionPlan;
         public readonly ReadOnlyReactiveProperty<float> ResidentThirst;
-        public readonly ReadOnlyReactiveProperty<float> ResidentRecreation;
+        public readonly ReadOnlyReactiveProperty<float> ResidentEntertainment;
+        public readonly ReadOnlyReactiveProperty<float> ResidentMood;
+        public readonly ReadOnlyReactiveProperty<float> ResidentFatigue;
+        public readonly ReadOnlyReactiveProperty<float> ResidentStress;
         public readonly ReadOnlyReactiveProperty<int> VehicleWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> VehicleWaterCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<int> DrinkingStationWaterMilliliters;
@@ -95,7 +98,10 @@ namespace Game.NomadWorkshop.Foundation
             WaterCanCapacityMilliliters = model.WaterCanCapacityMilliliters;
             LatestActionPlan = model.LatestActionPlan;
             ResidentThirst = model.ResidentThirst;
-            ResidentRecreation = model.ResidentRecreation;
+            ResidentEntertainment = model.ResidentEntertainment;
+            ResidentMood = model.ResidentMood;
+            ResidentFatigue = model.ResidentFatigue;
+            ResidentStress = model.ResidentStress;
             VehicleWaterMilliliters = model.VehicleWaterMilliliters;
             VehicleWaterCapacityMilliliters = model.VehicleWaterCapacityMilliliters;
             DrinkingStationWaterMilliliters = model.DrinkingStationWaterMilliliters;
