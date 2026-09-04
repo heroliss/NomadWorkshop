@@ -34,16 +34,12 @@ namespace Game.NomadWorkshop.Foundation
         private Material skyboxMaterial;
         [SerializeField, Tooltip("覆盖车辆甲板的局部反射探针。灰盒几何在运行时生成，因此由本 View 在首帧完成后主动捕获一次。")]
         private ReflectionProbe reflectionProbe;
+        [SerializeField, Tooltip("当前场景的 HUD View；用于按真实可见矩形阻止 UI 下方的建造与镜头输入。隔离测试可留空并使用同布局的保守回退。")]
+        private NomadFoundationDebugView screenUi;
 
         [Header("图形基线")]
         [SerializeField, Tooltip("进入场景后是否为实时 Reflection Probe 捕获一次车辆周围环境。只捕获一次，不会每帧更新；低端平台可关闭。")]
         private bool captureReflectionProbeOnStart = true;
-
-        [Header("输入保护")]
-        [SerializeField, Min(0f), Tooltip("左上开发面板占用的屏幕宽度；该区域不向 3D 世界透传点击和滚轮。")]
-        private float debugPanelWidth = 410f;
-        [SerializeField, Min(0f), Tooltip("左上开发面板占用的屏幕高度。")]
-        private float debugPanelHeight = 730f;
 
         [Header("镜头操作")]
         [SerializeField, Min(0f), Tooltip("按住鼠标中键拖动时，每个屏幕像素对应的轨道旋转角度。")]
@@ -109,7 +105,8 @@ namespace Game.NomadWorkshop.Foundation
             Light configuredLight,
             Light configuredFillLight = null,
             Material configuredSkyboxMaterial = null,
-            ReflectionProbe configuredReflectionProbe = null)
+            ReflectionProbe configuredReflectionProbe = null,
+            NomadFoundationDebugView configuredScreenUi = null)
         {
             deckLayout = configuredLayout;
             facilityDefinitions = configuredDefinitions;
@@ -119,6 +116,7 @@ namespace Game.NomadWorkshop.Foundation
             fillLight = configuredFillLight;
             skyboxMaterial = configuredSkyboxMaterial;
             reflectionProbe = configuredReflectionProbe;
+            screenUi = configuredScreenUi;
         }
 #endif
 
@@ -230,8 +228,8 @@ namespace Game.NomadWorkshop.Foundation
             Mouse mouse = Mouse.current;
             if (mouse == null || worldCamera == null) return;
             Vector2 pointer = mouse.position.ReadValue();
-            bool overDebugPanel = IsOverDebugPanel(pointer);
-            if (!overDebugPanel)
+            bool overScreenUi = IsOverScreenUi(pointer);
+            if (!overScreenUi)
             {
                 if (mouse.middleButton.isPressed)
                     _cameraController?.Orbit(
@@ -243,7 +241,7 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             if (!_preview.Active) return;
-            if (!overDebugPanel && TryGetPointerPose(pointer, out DeckPose pose))
+            if (!overScreenUi && TryGetPointerPose(pointer, out DeckPose pose))
             {
                 if (!_hasPointerPose ||
                     pose.XMillimeters != _lastPointerXMillimeters ||
@@ -261,7 +259,7 @@ namespace Game.NomadWorkshop.Foundation
                     this.ExecuteCommand(new ConfirmFacilityPlacementCommand());
             }
 
-            if (!overDebugPanel && mouse.rightButton.wasPressedThisFrame)
+            if (!overScreenUi && mouse.rightButton.wasPressedThisFrame)
                 this.ExecuteCommand(new RotateFacilityPreviewCommand(-1));
         }
 
@@ -299,7 +297,7 @@ namespace Game.NomadWorkshop.Foundation
             {
                 _touchCameraGestureActive = true;
                 Vector2 centroid = (firstPosition + secondPosition) * 0.5f;
-                if (!IsOverDebugPanel(centroid) &&
+                if (!IsOverScreenUi(centroid) &&
                     FoundationTwoPointerGestureUtility.TryCalculate(
                         firstPosition,
                         firstDelta,
@@ -324,9 +322,17 @@ namespace Game.NomadWorkshop.Foundation
             return true;
         }
 
-        private bool IsOverDebugPanel(Vector2 pointer) =>
-            pointer.x <= debugPanelWidth &&
-            pointer.y >= Screen.height - debugPanelHeight;
+        private bool IsOverScreenUi(Vector2 pointer)
+        {
+            if (screenUi != null) return screenUi.IsScreenPointBlocked(pointer);
+
+            // 隔离测试不一定装配 IMGUI View；回退仍按真实 HUD 布局计算，绝不恢复旧的大矩形魔法数。
+            return FoundationHudLayout.IsScreenPointBlocked(
+                pointer,
+                Screen.width,
+                Screen.height,
+                _interactionMode == FoundationInteractionMode.Build);
+        }
 
         private void ValidateReferences()
         {
@@ -500,7 +506,11 @@ namespace Game.NomadWorkshop.Foundation
         private void BuildWaterCanVisual()
         {
             Material shell = CreateLitMaterial("M_WaterCan", new Color(0.12f, 0.58f, 0.63f));
-            Material hardware = CreateLitMaterial("M_WaterCanHardware", new Color(0.08f, 0.13f, 0.14f));
+            Material hardware = CreateLitMaterial(
+                "M_WaterCanHardware",
+                new Color(0.2f, 0.26f, 0.27f),
+                0.42f,
+                0.34f);
             Material water = CreateLitMaterial("M_WaterCanFilled", new Color(0.1f, 0.72f, 1f));
             _waterCanVisual = new GameObject("Water Can 01 [physical carrier]").transform;
             _waterCanVisual.SetParent(deckRoot, false);

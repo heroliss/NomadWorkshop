@@ -1,8 +1,11 @@
 using System.Collections;
+using Cysharp.Threading.Tasks;
 using Game.Framework.Storage;
 using Game.NomadWorkshop.Foundation;
 using Game.NomadWorkshop.Navigation;
+using Game.NomadWorkshop.Persistence;
 using Game.NomadWorkshop.Simulation;
+using Game.NomadWorkshop.Simulation.Persistence;
 using NUnit.Framework;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -405,6 +408,192 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 tapMaterial.GetFloat("_Metallic"),
                 Is.GreaterThan(0.5f),
                 "灰盒的金属、涂层和橡胶应使用可提前审查的 URP PBR 参数。 ");
+        }
+
+        [UnityTest]
+        public IEnumerator RuntimeCheckpoint_MidHaulRewindsToConservedBoundaryAndRestoresWorld()
+        {
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            yield return BuildFacility("drinking-station", 0, 0);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int frameLimit = 180;
+            for (var i = 0;
+                 i < frameLimit &&
+                 !(_model.WaterCanLocation.Value == FoundationWaterCanLocation.Resident &&
+                   _model.WaterCanWaterMilliliters.Value > 0);
+                 i++)
+                yield return null;
+            Assert.That(
+                _model.WaterCanWaterMilliliters.Value,
+                Is.EqualTo(2_000),
+                "回归必须在水已离开车辆、仍由居民携带的瞬时阶段捕获。 ");
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            int liveMaterialTotal = _model.VehicleWaterMilliliters.Value +
+                                    _model.WaterCanWaterMilliliters.Value +
+                                    _model.DrinkingStationWaterMilliliters.Value;
+            NomadWorkshopSaveData checkpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadInventorySaveData savedVehicle = FindInventory(
+                checkpoint,
+                "vehicle-water-tank");
+            NomadInventorySaveData savedCan = FindInventory(checkpoint, "water-can-01");
+
+            Assert.That(GetInventoryAmount(savedVehicle, "water"), Is.EqualTo(60_000));
+            Assert.That(GetInventoryAmount(savedCan, "water"), Is.Zero);
+            Assert.That(
+                savedCan.OwnerEntityId,
+                Is.EqualTo("initial-vehicle-water-tank"),
+                "未提交的携带阶段应回滚到精确水箱锚点，而不是保存半个资源租约。 ");
+            Assert.That(checkpoint.Residents[0].ActiveAction, Is.Null);
+            Assert.That(checkpoint.RandomStreams.Count, Is.EqualTo(4));
+
+            long checkpointTick = checkpoint.SimulationTick;
+            _context.ExecuteCommand(new ResetFoundationSliceCommand());
+            Assert.That(
+                _context.ExecuteCommand(new GetFoundationFacilitiesCommand()).Length,
+                Is.EqualTo(1));
+
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+            FoundationFacilityState[] restoredFacilities =
+                _context.ExecuteCommand(new GetFoundationFacilitiesCommand());
+            Assert.That(restoredFacilities.Length, Is.EqualTo(2));
+            Assert.That(_model.SimulationTick.Value, Is.EqualTo(checkpointTick));
+            Assert.That(
+                _model.WaterCanLocation.Value,
+                Is.EqualTo(FoundationWaterCanLocation.VehicleWaterTank));
+            Assert.That(
+                _model.WaterCanAnchorFacilityInstanceId.Value,
+                Is.EqualTo("initial-vehicle-water-tank"));
+            Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
+            Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(60_000));
+            Assert.That(
+                _model.VehicleWaterMilliliters.Value +
+                _model.WaterCanWaterMilliliters.Value +
+                _model.DrinkingStationWaterMilliliters.Value,
+                Is.EqualTo(liveMaterialTotal),
+                "加载前后车辆、容器与逐站库存中的水总量必须守恒。 ");
+            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Idle));
+            Assert.That(_model.RemainingPathMeters.Value, Is.Zero.Within(0.001f));
+            Assert.That(_model.RemainingPathCorners.Value, Is.Zero);
+
+            NomadWorkshopSaveData repeated = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            Assert.That(repeated.SimulationTick, Is.EqualTo(checkpoint.SimulationTick));
+            Assert.That(
+                repeated.Residents[0].WaterMetabolismPendingNanoliters,
+                Is.EqualTo(checkpoint.Residents[0].WaterMetabolismPendingNanoliters));
+            for (var i = 0; i < checkpoint.RandomStreams.Count; i++)
+            {
+                Assert.That(
+                    repeated.RandomStreams[i].StreamId,
+                    Is.EqualTo(checkpoint.RandomStreams[i].StreamId));
+                Assert.That(
+                    repeated.RandomStreams[i].NextEventSequence,
+                    Is.EqualTo(checkpoint.RandomStreams[i].NextEventSequence));
+            }
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            yield return null;
+            Assert.That(_model.SimulationTick.Value, Is.GreaterThan(checkpointTick));
+        }
+
+        [UnityTest]
+        public IEnumerator FrameworkCheckpointCommands_RoundTripLiveFoundationThroughStorage() =>
+            UniTask.ToCoroutine(async () =>
+            {
+                string slotId = $"foundation-{System.Guid.NewGuid():N}";
+                string storageKey = NomadWorkshopStorageKeys.ProgressSlot(slotId);
+                IStorageUtility storage = _context.GetUtility<IStorageUtility>();
+                try
+                {
+                    _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+                    NomadWorkshopSaveData expected = _context.ExecuteCommand(
+                        new CaptureFoundationCheckpointCommand());
+                    await _context.ExecuteCommandAsync(
+                        new SaveFoundationCheckpointCommand(slotId));
+                    Assert.That(storage.Exists(storageKey), Is.True);
+
+                    _context.ExecuteCommand(new ResetFoundationSliceCommand());
+                    Assert.That(_model.SimulationTick.Value, Is.Zero);
+                    bool loaded = await _context.ExecuteCommandAsync<
+                        LoadFoundationCheckpointCommand,
+                        bool>(new LoadFoundationCheckpointCommand(slotId));
+
+                    Assert.That(loaded, Is.True);
+                    Assert.That(_model.SimulationTick.Value, Is.EqualTo(expected.SimulationTick));
+                    Assert.That(_model.IsPaused.Value, Is.True);
+                    Assert.That(
+                        _model.VehicleWaterMilliliters.Value,
+                        Is.EqualTo(60_000));
+                    Assert.That(
+                        _context.ExecuteCommand(new GetFoundationFacilitiesCommand()).Length,
+                        Is.EqualTo(expected.Facilities.Count));
+                }
+                finally
+                {
+                    await storage.Delete(storageKey);
+                }
+            });
+
+        [UnityTest]
+        public IEnumerator InvalidCheckpoint_RebuildFailureRollsBackToPreviousBusinessBoundary()
+        {
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            NomadWorkshopSaveData before = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            int facilityCount = before.Facilities.Count;
+            int vehicleWater = _model.VehicleWaterMilliliters.Value;
+
+            NomadWorkshopSaveData invalid = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            invalid.Residents[0].Pose = new QuantizedDeckPose(999_000, 999_000, 0);
+            System.InvalidOperationException failure = Assert.Throws<System.InvalidOperationException>(
+                () => _context.ExecuteCommand(
+                    new RestoreFoundationCheckpointCommand(invalid)));
+
+            StringAssert.Contains("已回到加载前", failure.Message);
+            Assert.That(_model.IsReady.Value, Is.True);
+            Assert.That(_model.IsPaused.Value, Is.True);
+            Assert.That(_model.SimulationTick.Value, Is.EqualTo(before.SimulationTick));
+            Assert.That(
+                _context.ExecuteCommand(new GetFoundationFacilitiesCommand()).Length,
+                Is.EqualTo(facilityCount));
+            Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(vehicleWater));
+            yield return null;
+        }
+
+        [Test]
+        public void UnsupportedMidActionCheckpoint_IsRejectedBeforeMutatingWorld()
+        {
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            NomadWorkshopSaveData before = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadWorkshopSaveData unsupported = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            unsupported.Residents[0].ActiveAction = new NomadResidentActionSaveData
+            {
+                TaskId = "external-mid-action",
+                ActionId = "action-42",
+                TargetEntityId = "initial-vehicle-water-tank",
+                Stage = NomadResidentActionSaveStage.Moving,
+                ProgressPermille = 400,
+            };
+
+            System.NotSupportedException failure = Assert.Throws<System.NotSupportedException>(
+                () => _context.ExecuteCommand(
+                    new RestoreFoundationCheckpointCommand(unsupported)));
+
+            StringAssert.Contains("ActiveAction", failure.Message);
+            Assert.That(_model.IsReady.Value, Is.True);
+            Assert.That(_model.IsPaused.Value, Is.True);
+            Assert.That(_model.SimulationTick.Value, Is.EqualTo(before.SimulationTick));
+            Assert.That(
+                _context.ExecuteCommand(new GetFoundationFacilitiesCommand()).Length,
+                Is.EqualTo(before.Facilities.Count));
         }
 
         [UnityTest]
@@ -985,6 +1174,32 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 _model.BuildTransactionPhase.Value,
                 Is.EqualTo(FoundationBuildTransactionPhase.Idle),
                 "NavMesh 建造事务应在限定帧内提交或完整回滚。");
+        }
+
+        private static NomadInventorySaveData FindInventory(
+            NomadWorkshopSaveData checkpoint,
+            string inventoryId)
+        {
+            for (var i = 0; i < checkpoint.Inventories.Count; i++)
+            {
+                if (checkpoint.Inventories[i].InventoryId == inventoryId)
+                    return checkpoint.Inventories[i];
+            }
+            Assert.Fail($"检查点缺少库存 {inventoryId}。");
+            return null;
+        }
+
+        private static int GetInventoryAmount(
+            NomadInventorySaveData inventory,
+            string resourceId)
+        {
+            var amount = 0;
+            for (var i = 0; i < inventory.Contents.Count; i++)
+            {
+                if (inventory.Contents[i].ResourceId == resourceId)
+                    amount += inventory.Contents[i].AmountBaseUnits;
+            }
+            return amount;
         }
 
         private static NomadFacilityDefinition[] CreateDefinitions()

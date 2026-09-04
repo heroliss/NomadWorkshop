@@ -236,6 +236,13 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public int BodyHygieneDeficitPermille;
         public int HandContaminationPermille;
         public int MotionSicknessPermille;
+        /// <summary>
+        /// 体内水已经进入连续代谢、但尚不足以提交为整数 mL 转移的量，单位为 nL。
+        /// 它与体内水库存共同恢复，避免频繁保存 / 加载凭空损失小数余量。
+        /// </summary>
+        public long WaterMetabolismPendingNanoliters;
+        /// <summary>已提交的水代谢资源事务序号；下一次事务在此基础上递增。</summary>
+        public int WaterMetabolismSequence;
         public NomadResidentActionSaveData ActiveAction;
     }
 
@@ -346,7 +353,28 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                 NomadInventorySaveData inventory = data.Inventories[i];
                 if (inventory != null) inventory.Contents ??= new List<NomadResourceStackSaveData>();
             }
+            for (var i = 0; i < data.Residents.Count; i++)
+            {
+                NomadResidentSaveData resident = data.Residents[i];
+                if (resident?.ActiveAction != null && IsSerializedEmptyAction(resident.ActiveAction))
+                    resident.ActiveAction = null;
+            }
         }
+
+        /// <summary>
+        /// Unity JSON 会把某些 null 嵌套 DTO 还原成全默认值对象。只正规化真正全空的行动；
+        /// 若 Stage=None 却携带任何身份、进度或结算位，后续校验仍会按损坏数据拒绝。
+        /// </summary>
+        private static bool IsSerializedEmptyAction(NomadResidentActionSaveData action) =>
+            action.Stage == NomadResidentActionSaveStage.None &&
+            string.IsNullOrEmpty(action.TaskId) &&
+            string.IsNullOrEmpty(action.ActionId) &&
+            string.IsNullOrEmpty(action.TargetEntityId) &&
+            string.IsNullOrEmpty(action.InteractionGroupId) &&
+            string.IsNullOrEmpty(action.InteractionSlotId) &&
+            action.DestinationPose.Equals(default(QuantizedDeckPose)) &&
+            action.ProgressPermille == 0 &&
+            !action.OutcomeCommitted;
 
         /// <summary>
         /// 按版本逐级迁移业务语义。v2 尚未保存娱乐与心情；不能依赖 JSON 反序列化器是否执行字段初始化，
@@ -516,6 +544,12 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                 ValidateRange(resident.BodyHygieneDeficitPermille, $"居民 {resident.ResidentId} 身体卫生缺口");
                 ValidateRange(resident.HandContaminationPermille, $"居民 {resident.ResidentId} 手部污染");
                 ValidateRange(resident.MotionSicknessPermille, $"居民 {resident.ResidentId} 晕车");
+                if (resident.WaterMetabolismPendingNanoliters < 0L)
+                    throw new InvalidOperationException(
+                        $"居民 {resident.ResidentId} 的待提交水代谢量不能为负数。");
+                if (resident.WaterMetabolismSequence < 0)
+                    throw new InvalidOperationException(
+                        $"居民 {resident.ResidentId} 的水代谢序号不能为负数。");
                 ValidateAction(resident);
             }
         }

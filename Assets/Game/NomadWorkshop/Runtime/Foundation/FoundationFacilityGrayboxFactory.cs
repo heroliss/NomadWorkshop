@@ -406,14 +406,14 @@ namespace Game.NomadWorkshop.Foundation
                     0.48f),
                 CreateLit(
                     $"M_{definition.Id}_DarkMetal",
-                    new Color(0.16f, 0.19f, 0.20f),
-                    0.22f,
-                    0.26f),
+                    new Color(0.26f, 0.31f, 0.33f),
+                    0.48f,
+                    0.38f),
                 CreateLit(
                     $"M_{definition.Id}_Rubber",
-                    new Color(0.095f, 0.105f, 0.10f),
+                    new Color(0.15f, 0.17f, 0.16f),
                     0f,
-                    0.08f),
+                    0.14f),
                 CreateLit(
                     $"M_{definition.Id}_Warning",
                     new Color(0.95f, 0.32f, 0.06f),

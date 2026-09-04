@@ -74,6 +74,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     actual.Residents[0].EntertainmentPermille);
                 Assert.AreEqual(expected.Residents[0].MoodPermille,
                     actual.Residents[0].MoodPermille);
+                Assert.AreEqual(expected.Residents[0].WaterMetabolismPendingNanoliters,
+                    actual.Residents[0].WaterMetabolismPendingNanoliters);
+                Assert.AreEqual(expected.Residents[0].WaterMetabolismSequence,
+                    actual.Residents[0].WaterMetabolismSequence);
                 Assert.AreEqual(1, actual.RandomStreams.Count);
                 Assert.AreEqual("resident-decision", actual.RandomStreams[0].StreamId);
                 Assert.AreEqual(18, actual.RandomStreams[0].NextEventSequence);
@@ -141,6 +145,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 BodyHygieneDeficitPermille = 240,
                 HandContaminationPermille = 430,
                 MotionSicknessPermille = 170,
+                WaterMetabolismPendingNanoliters = 375_000L,
+                WaterMetabolismSequence = 9,
                 ActiveAction = new NomadResidentActionSaveData
                 {
                     TaskId = "pickup-parts-17",

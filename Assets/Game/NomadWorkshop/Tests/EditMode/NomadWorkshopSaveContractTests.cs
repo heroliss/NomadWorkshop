@@ -70,6 +70,27 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void PrepareAfterLoad_NormalizesOnlySerializerGeneratedEmptyAction()
+        {
+            NomadWorkshopSaveData serializedEmpty = CreateValidSave();
+            serializedEmpty.Residents[0].ActiveAction = new NomadResidentActionSaveData();
+
+            NomadWorkshopSaveContract.PrepareAfterLoad(serializedEmpty);
+
+            Assert.That(serializedEmpty.Residents[0].ActiveAction, Is.Null);
+
+            NomadWorkshopSaveData contradictory = CreateValidSave();
+            contradictory.Residents[0].ActiveAction = new NomadResidentActionSaveData
+            {
+                TaskId = "unexpected-payload",
+                Stage = NomadResidentActionSaveStage.None,
+            };
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.PrepareAfterLoad(contradictory),
+                "带有效载荷的 None 不是序列化器空壳，不能静默丢弃。 ");
+        }
+
+        [Test]
         public void ValidateForSave_RejectsDuplicateEntityAndOverfilledInventory()
         {
             NomadWorkshopSaveData duplicate = CreateValidSave();
@@ -125,6 +146,16 @@ namespace Game.NomadWorkshop.Simulation.Tests
             mood.Residents[0].MoodPermille = -1;
             Assert.Throws<InvalidOperationException>(
                 () => NomadWorkshopSaveContract.ValidateForSave(mood));
+
+            NomadWorkshopSaveData metabolismRemainder = CreateValidSave();
+            metabolismRemainder.Residents[0].WaterMetabolismPendingNanoliters = -1L;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(metabolismRemainder));
+
+            NomadWorkshopSaveData metabolismSequence = CreateValidSave();
+            metabolismSequence.Residents[0].WaterMetabolismSequence = -1;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(metabolismSequence));
         }
 
         [Test]
@@ -249,6 +280,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 BodyHygieneDeficitPermille = 240,
                 HandContaminationPermille = 430,
                 MotionSicknessPermille = 170,
+                WaterMetabolismPendingNanoliters = 375_000L,
+                WaterMetabolismSequence = 9,
                 ActiveAction = new NomadResidentActionSaveData
                 {
                     TaskId = "pickup-parts-17",

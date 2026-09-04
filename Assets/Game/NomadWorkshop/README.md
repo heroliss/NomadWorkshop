@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**统一模拟 Tick / 生活日投影 + 居民脚底根节点 + mL 水循环 / 饮水站实例库存 + 正向娱乐 / 心情 / 疲劳 / 压力连续状态 + 可建造观景画架 / 真实爱好恢复 + 平滑需求压力 / 确定性随机 + 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 原子资源改道 + Framework 分层连续建造 / 可回滚 NavMesh + 默认 URP 3D / 显式 2D 兼容 / HDR-PBR 图形基线 + 自主休整 + 折叠式居民 HUD + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.32**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 平滑产生如厕意图 → 空闲时漫步、发呆或前往观景画架作画 → 施工切路后按设施功能恢复或改道”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**统一模拟 Tick / 生活日投影 + 居民脚底根节点 + mL 水循环 / 饮水站实例库存 + 正向娱乐 / 心情 / 疲劳 / 压力连续状态 + 可建造观景画架 / 真实爱好恢复 + 平滑需求压力 / 确定性随机 + 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 原子资源改道 + Framework 分层连续建造 / 可回滚 NavMesh + Foundation 运行检查点 + 默认 URP 3D / 显式 2D 兼容 / HDR-PBR 图形基线 + 自主休整 + 互斥式居民 HUD + 导航 / 交互 Harness + 3D 资产 Harness v0.33**，更新于 2026-09-05。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 平滑产生如厕意图 → 空闲时漫步、发呆或前往观景画架作画 → 施工切路后按设施功能恢复或改道 → 已提交世界捕获 / 原子落盘 / 加载重建”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片、玩家存档交互或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -21,13 +21,13 @@
 - 居民已拥有正向娱乐满足与心情、负向疲劳与压力四项独立连续状态；发呆和闲逛只缓慢降低疲劳 / 压力并略微改善心情，不补充娱乐。可建造观景画架提供三个共享容量的备选 Slot；居民把实际路程、作画偏好与娱乐收益放进同一 Utility 方案，只有精确到位后的作画阶段才连续恢复娱乐；
 - 无必要水任务时，可达空地闲逛、原地发呆与已建爱好设施共同参与确定性 Utility / Softmax；没有画架时前两者的基础比仍约为 1:2，画架会按需求、个人倾向与路程自然分走概率。行动效果差异在开始时按命名随机流固定采样一次，不逐帧抖动；
 - 项目默认 Renderer 已切到共享 Universal 3D Renderer；Foundation 主相机仍显式选择它，三个既有 2D 场景则显式固定 Renderer2D，避免默认迁移静默改画面。Foundation 已有内部 HDR、ACES / 克制 Bloom、降采样 SSAO、两级软阴影、程序化天空与首帧一次性局部 Reflection Probe；实际 Game View 已校准深色甲板可读性，但仍只是灰盒图形基线，不冒充最终 Art Bible；
-- 运行界面默认只显示居民 01 的紧凑状态卡与水分 / 精力 / 心情进度条；角落按钮展开娱乐、压力、膀胱与行动详情，完整建造、方案和 Harness 数据收入可滚动开发控制台，不再常驻遮住约三分之一 Game View；
+- 运行界面默认只显示居民 01 的紧凑状态卡与水分 / 精力 / 心情进度条，长任务说明可完整换行；右上居民 / 建造 / 开发面板互斥展开。世界输入只拦截实际可见 HUD 矩形，不再因固定调试区把左侧约三分之一甲板错误冻结；
 - `NeedPressureCurve` 提供可复用的平滑需求曲线；当前膀胱在 50% 及以下不产生如厕驱动力，之后非线性上升，90% 起成为必处理的紧急需求。意图概率只在行动边界用领域隔离 Seed 采样，不会因每帧重试把小概率放大成必然；
 - 已锁定官方 AI Navigation 2.0.14；隔离 `NavigationInteractionSpike` 中 `DeckNavigationUtility : MonoUtilityBase` 同步构建小型甲板 NavMesh，空旷路径长度比为 1.000，穿过 27° 旋转柜体的路径长度比为 1.058；
 - 两名 NavMeshAgent 能相向通过，代表性最小间距约 0.69m；同一柜门的 left / center / right 是共享容量 1 的备选 Slot，A / B 会从相反方向选择 right / left，而不是沿格中心移动或同时穿手操作；
 - 柜门 InteractionGroup 的租约覆盖接近、Docking、开门、真实库存交接与关门全周期；资源提交不会提前释放设施容量，最终柜内 2 件物品分别进入两名居民携带库存；
-- 版本 3 存档骨架已覆盖世界 / 旅途、毫米 + 0.1° 甲板姿态、设施 / 蓝图、带计量维度的真实库存批次、居民饥饿 / 口渴 / 娱乐 / 心情 / 疲劳 / 压力、Group / Slot 与中途行动检查点；`OutcomeCommitted` 防止加载后重复交接，NavMesh 路径和 RVO 速度明确按派生缓存重建；v2 会显式补入娱乐 / 心情的中性初值，v1 无量纲开发存档仍明确拒绝，不猜测单位；
-- `SaveNomadWorkshopProgressCommand` / `LoadNomadWorkshopProgressCommand` 已真实穿过 SSFramework Context 与 `IStorageUtility` 的 JSON、FIFO、原子写和备份边界；当前证明协议与介质往返，尚未冒充玩家可操作的保存 / 读取流程；
+- 版本 3 存档协议覆盖世界 / 旅途、毫米 + 0.1° 甲板姿态、设施 / 蓝图、带计量维度的真实库存批次、居民连续状态、低于 1 mL 的 nL 代谢余量、随机流游标与中途行动检查点；`OutcomeCommitted` 防止加载后重复交接，NavMesh 路径和 RVO 速度明确按派生缓存重建；v2 会显式补入娱乐 / 心情中性初值，v1 无量纲开发存档仍明确拒绝；
+- `Capture/Restore/Save/LoadFoundationCheckpointCommand` 已把正式 Foundation 的已提交设施、逐站库存、水罐锚点、身体 / 膀胱、身心状态、模拟 Tick 和随机游标真实穿过 SSFramework Context 与 `IStorageUtility` 的 JSON、FIFO、原子写和备份边界；加载后重建 NavMesh、Slot 和可达诊断。携水中途保存会回滚到车辆水箱守恒边界，尚未冒充玩家可操作的存档 UI；
 - `DeckPose` 与 `ContinuousFacilityPlacementLedger` 已在无 Unity 依赖的 Simulation 中实现毫米 / 0.1° 连续姿态、位置 / 旋转独立可关吸附、复合有向矩形占地、多层甲板、稳定排序和原子提交；正式玩家场景的 Model / System / View 与存档 DTO 已共用这套姿态真值；
 - 同意图目标先归并，紧急候选优先进入选择池，再在相对高分短名单中用确定性 Softmax 抽样；
 - Foundation 的移动、动作计时、生理代谢与需求增长现在只消费 `NomadSimulationClock` 提交的整数模拟毫秒；不足 1 ms 的帧内余量会跨帧保留，暂停冻结唯一 `SimulationTick`，倍速只作用于这一入口；`NomadCalendarPolicy` 再从同一 Tick 投影 24 小时生活日与“一昼夜推进一气候周”的气候相位。默认十分钟生活日、十二周一季、四季一年仍是待试玩参数，尚未接入场景昼夜表现；
@@ -164,6 +164,8 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - Foundation 3D Renderer 修复：场景生成与共享 Renderer 契约 EditMode 3/3（job `51662455c919`），最终完整 NomadWorkshop PlayMode 27/27（job `bece7a403135`）；固定机位下双灯默认与强度归零对照为 `Screenshots/nomad-foundation-urp3d-renderer-default.png` 与 `Screenshots/nomad-foundation-urp3d-lights-off-control.png`，已人工确认前者具有方向性明暗、高光与阴影，后者立即接近全黑；
 - Game View 已实际检查“全部饮水站”聚合显示和水罐精确实例锚点无截断，3D 水罐仍位于匹配的车辆水箱旁；本地忽略证据为 `Screenshots/nomad-foundation-instance-inventory-game.png`；
 - 可重建场景管线 EditMode 1/1（job `c3046ae76822`）；
+- HUD 实际矩形 / 面板互斥 / 场景重建 EditMode 4/4（job `e3515b449afd`）；Game View 已检查长任务第二行、互斥建造面板和提亮后的深色材质，本地忽略证据为 `Screenshots/nomad-foundation-ui-readability-final.png`、`Screenshots/nomad-foundation-build-panel-final.png`；
+- Foundation 运行检查点最终完整 Simulation EditMode 120/120（job `92daa614078c`），中途携水守恒恢复 1/1（job `fc2444c1460e`），真实文件往返 1/1（job `4621a9139d5a`），无效检查点重建失败后自动回到加载前状态 1/1（job `2b7aae95abb8`）；最终 Foundation + 存储 PlayMode 24/24（job `08763c3fef3a`）还覆盖了半行动检查点在改动世界前被明确拒绝；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
 - Game View：已实际查看 45° 紧邻既有饮水站时 0/3 Slot 可达但仍可确认的红色幽灵；`Screenshots/nomad-foundation-45deg-preview-parity.png` 同时显示既有设施三个绿色 Slot 与候选三个红色 Slot，无需悬停。同步 0.2 m 网格与基础建造模式见 `Screenshots/nomad-foundation-exact-docking-build-mode.png`（两者均为本地忽略证据）。
 
@@ -178,10 +180,10 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 水罐寻找与最小旱厕使用已接入正式 Foundation；厕所清运、食物容器 / 餐具、洗手、洁净度和晕车仍只有旧 Harness 或纯 C# 方案规则，尚未接入完整设施、动画或长期平衡；
 - 正式废土服装、模块化发型/背包、人物差异、面部与布料；
 - Animation Rigging、手部 IK、工具挂点实际消费与专用交互修正；
-- 蓝图与居民搬料 / 施工、建造成本、拆除 / 搬移、边缘 / 连接口吸附、库存 UI，以及现有运行世界的完整捕获 / 加载重建和玩家存档界面；
+- 蓝图与居民搬料 / 施工、建造成本、拆除 / 搬移、边缘 / 连接口吸附、库存 UI，以及玩家存档界面、自动保存节奏、多槽管理、未完成蓝图 / 多居民恢复；
 - 目前只把饮水站拆成实例库存；多座旱厕仍共用一个暂存桶，厨房等复合设施也尚未迁入正式 Foundation 的逐实例多隔间库存；
 - 正式 UGUI / UI Toolkit、艺术指导、音效、性能采样、Player Build 与玩家体验验证；当前 IMGUI 是首版信息架构与开发 Harness，不是最终 UI 资产；
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 当前所有 Quality 仍共用一份 URP Asset；内部 HDR、后处理、SSAO、软阴影和局部反射已经形成桌面灰盒基线，但尚未拆成 Desktop / Mobile 质量资产。VFX、正式灯光风格、HDR 显示输出和目标设备性能预算仍未定型。
 
-下一步让统一 `SimulationTick`、行动开始样本、不足 1 mL 的代谢余量、饮水站实例库存、水罐锚点与新增身心状态真正进入运行检查点；随后用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”。首个真实爱好已经成立，下一轮可补最薄的姿势不适或微活动契约，并观察画架在正常娱乐区间内是否会自然分走而非垄断基础休整；再以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。昼夜光照和一种沙尘压力要从同一日历投影消费，但完整四季仍不抢跑；之后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。
+下一步用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”，并验证不同帧步长、暂停 / 加速及中途存取仍从同一风险阈值继续；同时增加长时分布 Harness，不把单条确定随机轨迹误当平衡成立。首个真实爱好已经成立，后续可补最薄的姿势不适或微活动契约，并观察画架在正常娱乐区间内是否自然分走而非垄断基础休整；再以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。昼夜光照和一种沙尘压力要从同一日历投影消费，但完整四季仍不抢跑；之后才继续蓝图搬料施工、玩家存档 UI 和正式多居民 Agent。

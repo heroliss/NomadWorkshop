@@ -122,6 +122,39 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void Checkpoint_RestoresSubMilliliterMetabolismAndFollowingTransfer()
+        {
+            var originalLedger = new ResourceFlowLedger();
+            ResidentWaterCycle original = DrankOneServing(originalLedger);
+            Assert.AreEqual(0, original.Advance(0.005f, originalLedger).MetabolizedMilliliters);
+
+            ResidentWaterCycleCheckpoint checkpoint = original.CaptureCheckpoint();
+            Assert.AreEqual(375_000L, checkpoint.PendingMetabolismNanoliters);
+
+            var restoredLedger = new ResourceFlowLedger();
+            var restored = new ResidentWaterCycle(
+                "ada",
+                0xADA01UL,
+                metabolismMillilitersPerSecond: 75f,
+                drinkServingMilliliters: ServingMilliliters,
+                initialThirst: 0f,
+                thirstIncreasePerSecond: 0f,
+                thirstReliefPerServing: 0.7f,
+                checkpoint: checkpoint);
+
+            ResidentWaterCycleTick originalNext = original.Advance(0.01f, originalLedger);
+            ResidentWaterCycleTick restoredNext = restored.Advance(0.01f, restoredLedger);
+
+            Assert.AreEqual(1, originalNext.MetabolizedMilliliters);
+            Assert.AreEqual(originalNext.MetabolizedMilliliters, restoredNext.MetabolizedMilliliters);
+            Assert.AreEqual(original.BodyWater.TotalAmount, restored.BodyWater.TotalAmount);
+            Assert.AreEqual(original.Bladder.TotalAmount, restored.Bladder.TotalAmount);
+            Assert.AreEqual(
+                original.CaptureCheckpoint().PendingMetabolismNanoliters,
+                restored.CaptureCheckpoint().PendingMetabolismNanoliters);
+        }
+
+        [Test]
         public void ToiletCancellation_KeepsBladderAndToiletUnchanged()
         {
             var ledger = new ResourceFlowLedger();

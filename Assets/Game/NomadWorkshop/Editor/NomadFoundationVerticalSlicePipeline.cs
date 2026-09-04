@@ -87,6 +87,9 @@ namespace Game.NomadWorkshop.Editor
             ReflectionProbe reflectionProbe =
                 CreateReflectionProbe(presentation.transform, layout);
             NomadFoundationWorldView worldView = presentation.AddComponent<NomadFoundationWorldView>();
+
+            GameObject debug = CreateChild(rootObject.transform, "Debug · Command View");
+            NomadFoundationDebugView debugView = debug.AddComponent<NomadFoundationDebugView>();
             WireWorldView(
                 worldView,
                 layout,
@@ -96,11 +99,9 @@ namespace Game.NomadWorkshop.Editor
                 keyLight,
                 fillLight,
                 skyboxMaterial,
-                reflectionProbe);
+                reflectionProbe,
+                debugView);
             ConfigureEnvironmentLighting(keyLight, skyboxMaterial);
-
-            GameObject debug = CreateChild(rootObject.transform, "Debug · Command View");
-            debug.AddComponent<NomadFoundationDebugView>();
 
             Selection.activeGameObject = rootObject;
             EditorSceneManager.MarkSceneDirty(scene);
@@ -365,6 +366,7 @@ namespace Game.NomadWorkshop.Editor
             var serialized = new SerializedObject(system);
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
             SetObjectArray(serialized.FindProperty("facilityDefinitions"), definitions);
+            serialized.FindProperty("worldSeed").intValue = 1729;
             serialized.FindProperty("residentStartLocalPosition").vector3Value =
                 new Vector3(0f, 0f, 2.4f);
             serialized.ApplyModifiedPropertiesWithoutUndo();
@@ -379,7 +381,8 @@ namespace Game.NomadWorkshop.Editor
             Light keyLight,
             Light fillLight,
             Material skyboxMaterial,
-            ReflectionProbe reflectionProbe)
+            ReflectionProbe reflectionProbe,
+            NomadFoundationDebugView debugView)
         {
             var serialized = new SerializedObject(view);
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
@@ -390,6 +393,7 @@ namespace Game.NomadWorkshop.Editor
             serialized.FindProperty("fillLight").objectReferenceValue = fillLight;
             serialized.FindProperty("skyboxMaterial").objectReferenceValue = skyboxMaterial;
             serialized.FindProperty("reflectionProbe").objectReferenceValue = reflectionProbe;
+            serialized.FindProperty("screenUi").objectReferenceValue = debugView;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 

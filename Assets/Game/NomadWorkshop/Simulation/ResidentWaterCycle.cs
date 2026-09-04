@@ -2,6 +2,44 @@ using System;
 
 namespace Game.NomadWorkshop.Simulation
 {
+    /// <summary>
+    /// 水循环的最小运行检查点。库存仍以整数 mL 保存；尚未提交成 1 mL 转移的连续代谢量以 nL
+    /// 量化，避免保存 / 加载或不同帧步长让小数余量凭空消失。
+    /// </summary>
+    public readonly struct ResidentWaterCycleCheckpoint
+    {
+        public ResidentWaterCycleCheckpoint(
+            float thirst,
+            int bodyWaterMilliliters,
+            int bladderWasteMilliliters,
+            long pendingMetabolismNanoliters,
+            int metabolismSequence)
+        {
+            if (!float.IsFinite(thirst) || thirst < 0f || thirst > 1f)
+                throw new ArgumentOutOfRangeException(nameof(thirst));
+            if (bodyWaterMilliliters < 0)
+                throw new ArgumentOutOfRangeException(nameof(bodyWaterMilliliters));
+            if (bladderWasteMilliliters < 0)
+                throw new ArgumentOutOfRangeException(nameof(bladderWasteMilliliters));
+            if (pendingMetabolismNanoliters < 0)
+                throw new ArgumentOutOfRangeException(nameof(pendingMetabolismNanoliters));
+            if (metabolismSequence < 0)
+                throw new ArgumentOutOfRangeException(nameof(metabolismSequence));
+
+            Thirst = thirst;
+            BodyWaterMilliliters = bodyWaterMilliliters;
+            BladderWasteMilliliters = bladderWasteMilliliters;
+            PendingMetabolismNanoliters = pendingMetabolismNanoliters;
+            MetabolismSequence = metabolismSequence;
+        }
+
+        public float Thirst { get; }
+        public int BodyWaterMilliliters { get; }
+        public int BladderWasteMilliliters { get; }
+        public long PendingMetabolismNanoliters { get; }
+        public int MetabolismSequence { get; }
+    }
+
     /// <summary>一次生理推进转化的真实毫升数与首个阻塞原因。</summary>
     public readonly struct ResidentWaterCycleTick
     {
@@ -45,7 +83,8 @@ namespace Game.NomadWorkshop.Simulation
             float thirstIncreasePerSecond = 0.004f,
             float thirstReliefPerServing = 0.72f,
             int bodyWaterCapacityMilliliters = DefaultBodyWaterCapacityMilliliters,
-            int bladderCapacityMilliliters = DefaultBladderCapacityMilliliters)
+            int bladderCapacityMilliliters = DefaultBladderCapacityMilliliters,
+            ResidentWaterCycleCheckpoint? checkpoint = null)
         {
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("居民水循环 id 不能为空。", nameof(id));
@@ -74,15 +113,41 @@ namespace Game.NomadWorkshop.Simulation
             _drinkServingMilliliters = drinkServingMilliliters;
             _thirstIncreasePerSecond = thirstIncreasePerSecond;
             _thirstReliefPerServing = thirstReliefPerServing;
-            Thirst = initialThirst;
+            ResidentWaterCycleCheckpoint restored = checkpoint ??
+                new ResidentWaterCycleCheckpoint(initialThirst, 0, 0, 0L, 0);
+            if (restored.BodyWaterMilliliters > bodyWaterCapacityMilliliters)
+                throw new ArgumentOutOfRangeException(
+                    nameof(checkpoint),
+                    "检查点中的体内水超过当前容量。");
+            if (restored.BladderWasteMilliliters > bladderCapacityMilliliters)
+                throw new ArgumentOutOfRangeException(
+                    nameof(checkpoint),
+                    "检查点中的膀胱内容物超过当前容量。");
+            long maximumPendingNanoliters =
+                checked((long)restored.BodyWaterMilliliters * 1_000_000L);
+            if (restored.PendingMetabolismNanoliters > maximumPendingNanoliters)
+                throw new ArgumentOutOfRangeException(
+                    nameof(checkpoint),
+                    "待提交代谢量不能超过体内仍存在的水量。");
+
+            Thirst = restored.Thirst;
             BodyWater = new ResourceInventory(
                 $"{_id}:body-water",
                 ResourceMeasure.Milliliter,
-                bodyWaterCapacityMilliliters);
+                bodyWaterCapacityMilliliters,
+                CreateInitialContents(
+                    NomadResourceIds.Water,
+                    restored.BodyWaterMilliliters));
             Bladder = new ResourceInventory(
                 $"{_id}:bladder",
                 ResourceMeasure.Milliliter,
-                bladderCapacityMilliliters);
+                bladderCapacityMilliliters,
+                CreateInitialContents(
+                    NomadResourceIds.HumanWaste,
+                    restored.BladderWasteMilliliters));
+            _pendingMetabolismMilliliters =
+                restored.PendingMetabolismNanoliters / 1_000_000d;
+            _metabolismSequence = restored.MetabolismSequence;
         }
 
         /// <summary>0 表示不渴，1 表示口渴达到当前原型上限。</summary>
@@ -108,6 +173,23 @@ namespace Game.NomadWorkshop.Simulation
 
         /// <summary>当前玩法参数下每个模拟秒最多转化的水量。</summary>
         public double MetabolismMillilitersPerSecond => _metabolismMillilitersPerSecond;
+
+        /// <summary>捕获库存、口渴和连续代谢余量；不包含任何运行时资源预留。</summary>
+        public ResidentWaterCycleCheckpoint CaptureCheckpoint()
+        {
+            double scaled = _pendingMetabolismMilliliters * 1_000_000d;
+            if (scaled > long.MaxValue)
+                throw new OverflowException("待提交代谢量超过可保存范围。");
+            long pendingNanoliters = Math.Max(
+                0L,
+                (long)Math.Round(scaled, MidpointRounding.AwayFromZero));
+            return new ResidentWaterCycleCheckpoint(
+                Thirst,
+                BodyWater.GetAmount(NomadResourceIds.Water),
+                Bladder.GetAmount(NomadResourceIds.HumanWaste),
+                pendingNanoliters,
+                _metabolismSequence);
+        }
 
         /// <summary>预留一次喝水行动；只有提交才会同时转移水并缓解口渴。</summary>
         public bool TryReserveDrink(
@@ -193,7 +275,7 @@ namespace Game.NomadWorkshop.Simulation
 
         /// <summary>
         /// 推进连续口渴和水代谢。速率先累积为不足 1 mL 的小数余量，再以整数 mL 原子转移；
-        /// 因而小步更新不会丢量；未来接入运行存档时，除整数库存外还需保存这份不足 1 mL 的余量。
+        /// 因而小步更新不会丢量；<see cref="CaptureCheckpoint"/> 会把余量量化为 nL 随运行检查点保存。
         /// 当前 Foundation 为守恒验证采用
         /// 1 mL 摄入水 → 1 mL 排泄物，未来呼吸、汗液等损失应作为显式去向加入，不能偷偷乘系数消失。
         /// </summary>
@@ -272,6 +354,13 @@ namespace Game.NomadWorkshop.Simulation
                     : ResourceFlowBlocker.None;
             return new ResidentWaterCycleTick(transferableMilliliters, remainingBlocker);
         }
+
+        private static ResourceQuantity[] CreateInitialContents(
+            ResourceId resource,
+            int amount) =>
+            amount <= 0
+                ? Array.Empty<ResourceQuantity>()
+                : new[] { new ResourceQuantity(resource, amount) };
     }
 
     /// <summary>喝水或如厕的原子行动句柄；取消不改变库存，也不提前修改连续需求。</summary>

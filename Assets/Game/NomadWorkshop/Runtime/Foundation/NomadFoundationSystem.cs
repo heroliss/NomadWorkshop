@@ -13,7 +13,7 @@ namespace Game.NomadWorkshop.Foundation
     /// Foundation 切片的唯一实时逻辑所有者：连续建造、可回滚 NavMesh 更新、居民路径与水搬运。
     /// Update 推进持续状态机，离散玩家意图仍只经 Command 进入。
     /// </summary>
-    public sealed class NomadFoundationSystem : MonoSystemBase
+    public sealed partial class NomadFoundationSystem : MonoSystemBase
     {
         private const ulong ResidentOwnerId = 0xF01UL;
         private const float DrinkNeedThreshold = 0.55f;
@@ -49,6 +49,8 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, Tooltip("本切片允许建造或预置的设施定义；运行时按稳定 id 建立目录。")]
         private NomadFacilityDefinition[] facilityDefinitions =
             Array.Empty<NomadFacilityDefinition>();
+        [SerializeField, Tooltip("确定性世界种子；居民决策、需求机会与行动级随机流都从它派生，运行检查点会保存并恢复。")]
+        private int worldSeed = 1729;
 
         [Header("居民灰盒节奏")]
         [SerializeField, Tooltip("居民脚底根节点的甲板局部出生位置；运行时会把 Y 规范为甲板表面 0，胶囊半高只由 View 的子视觉负责。")]
@@ -56,13 +58,13 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, Min(0.1f), Tooltip("居民沿连续 NavMesh 路径移动的米/秒。")]
         private float residentMoveSpeed = 2.8f;
         [SerializeField, Min(0.01f), Tooltip("取得容器或完成一次装水动作的灰盒时长；搬运毫升数不直接线性放大动画时间。")]
-        private float pickupSeconds = 0.45f;
+        private float pickupSeconds = 1.2f;
         [SerializeField, Min(0.01f), Tooltip("把容器中的物资交付到设施库存的灰盒动作时长。")]
-        private float deliverySeconds = 0.45f;
+        private float deliverySeconds = 1.2f;
         [SerializeField, Min(0.01f), Tooltip("居民在饮水站完成一次饮水的灰盒动作时长。")]
-        private float drinkingSeconds = 1.2f;
+        private float drinkingSeconds = 3.2f;
         [SerializeField, Min(0.01f), Tooltip("居民在旱厕完成一次排泄物转移的灰盒动作时长。")]
-        private float toiletSeconds = 1.4f;
+        private float toiletSeconds = 4f;
         [SerializeField, Min(0.1f), Tooltip("一份 300 mL 饮水全部转化为膀胱内容物所需的模拟秒数；这是玩法节奏，不是现实生理时长。")]
         private float drinkMetabolismSeconds = 8f;
         [SerializeField, Range(0f, 1f), Tooltip("新场景中居民的初始口渴缺口。")]
@@ -93,10 +95,10 @@ namespace Game.NomadWorkshop.Foundation
         private float initialStress = 0.22f;
 
         [Header("空闲休整灰盒节奏")]
-        [SerializeField, Min(0.1f), Tooltip("发呆或散步到达后的停留时长；当前短循环用于更快观察行为分布。")]
-        private float leisureSeconds = 1.2f;
+        [SerializeField, Min(0.1f), Tooltip("发呆或散步到达后的停留时长；首版保留足够观察窗口，后续再由性格与身心状态形成随机区间。")]
+        private float leisureSeconds = 3.5f;
         [SerializeField, Min(0.1f), Tooltip("居民在观景画架完成一次作画爱好的时长；只有实际使用设施的阶段才恢复娱乐满足度。")]
-        private float hobbySeconds = 5f;
+        private float hobbySeconds = 8f;
         [SerializeField, Range(0f, 1f), Tooltip("居民 01 对作画与观景的个人偏好。首版放在 System 便于 Inspector 调试，后续迁入居民档案数据。")]
         private float residentPaintingAffinity = 0.34f;
         [SerializeField, Min(0.2f), Tooltip("随机散步目标与当前位置的最小路径距离。")]
@@ -654,6 +656,7 @@ namespace Game.NomadWorkshop.Foundation
             foreach (DeckNavigationObstacleHandle obstacle in _navigationObstacles.Values)
                 _navigation.DeactivateAndDestroyObstacle(obstacle);
             _navigationObstacles.Clear();
+            _facilityConditions.Clear();
             _committedFacilityAccess.Clear();
             _facilityAccessProjection.Clear();
             _model.ReplaceFacilityAccess(_facilityAccessProjection);
@@ -687,7 +690,8 @@ namespace Game.NomadWorkshop.Foundation
             _nextFacilitySequence = 1;
             _residentActionSequence = 0;
             _leisureSequence = 0;
-            _residentDecisionSequence = 0;
+            // 统一把游标解释为“下一次要消费的事件序号”；首个居民决策沿用历史序号 1。
+            _residentDecisionSequence = 1;
             _bladderOpportunitySequence = 0;
             _lastPublishedDecisionDiagnostic = string.Empty;
             _routeRetryRemaining = 0f;
@@ -718,6 +722,7 @@ namespace Game.NomadWorkshop.Foundation
                     request.Pose,
                     request.Footprint);
                 _navigationObstacles.Add(instanceId, obstacle);
+                _facilityConditions.Add(instanceId, FoundationFacilityCondition.Default);
                 initialFacilities.Add(new FoundationFacilityState(
                     instanceId,
                     definition.Id,
@@ -1346,6 +1351,9 @@ namespace Game.NomadWorkshop.Foundation
                 _pendingPlacement.DefinitionId,
                 _pendingPlacement.Pose);
             _model.AddFacility(facility);
+            _facilityConditions.Add(
+                _pendingPlacement.InstanceId,
+                FoundationFacilityCondition.Default);
             AddFacilityInventory(facility);
         }
 
@@ -1356,6 +1364,7 @@ namespace Game.NomadWorkshop.Foundation
             _placementLedger.Remove(instanceId);
             _navigationObstacles.Remove(instanceId);
             _model.RemoveFacility(instanceId);
+            _facilityConditions.Remove(instanceId);
             RemoveFacilityInventory(instanceId);
             _committedFacilityAccess.Remove(instanceId);
             RebuildCommittedInteractionSpaces(reacquireActiveSpace: true);
@@ -1633,9 +1642,9 @@ namespace Game.NomadWorkshop.Foundation
             for (var i = 0; i < options.Count; i++)
                 candidates[i] = options[i].Evaluation.Candidate;
             var context = new ResidentDecisionContext(
-                worldSeed: 1729,
+                worldSeed: worldSeed,
                 residentId: ResidentOwnerId,
-                decisionSequence: ++_residentDecisionSequence,
+                decisionSequence: _residentDecisionSequence++,
                 needs: CreateResidentNeedSnapshot(),
                 candidates: candidates);
             ResidentDecisionResult decision = _decisionEngine.Decide(
@@ -1772,7 +1781,7 @@ namespace Game.NomadWorkshop.Foundation
             if (probability <= 0f) return false;
 
             double roll = DeterministicRandom.Sample01(
-                worldSeed: 1729,
+                worldSeed: worldSeed,
                 ownerId: ResidentOwnerId,
                 streamId: BladderOpportunityRandomStreamId,
                 eventSequence: _bladderOpportunitySequence++);
@@ -2217,7 +2226,7 @@ namespace Game.NomadWorkshop.Foundation
         private void BeginLeisure(FoundationResidentDecisionOption option)
         {
             _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
-                worldSeed: 1729,
+                worldSeed: worldSeed,
                 residentId: ResidentOwnerId,
                 leisureSequence: _leisureSequence++);
             if (option.Kind == FoundationResidentDecisionKind.Wander)
@@ -2248,7 +2257,7 @@ namespace Game.NomadWorkshop.Foundation
         private void BeginHobby(FoundationResidentDecisionOption option)
         {
             _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
-                worldSeed: 1729,
+                worldSeed: worldSeed,
                 residentId: ResidentOwnerId,
                 leisureSequence: _leisureSequence++);
             _activeLeisureKind = FoundationLeisureKind.Hobby;

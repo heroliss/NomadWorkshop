@@ -14,13 +14,6 @@ namespace Game.NomadWorkshop.Foundation
     /// </summary>
     public sealed class NomadFoundationDebugView : MonoViewBase
     {
-        private enum FoundationInformationPanel
-        {
-            None,
-            Resident,
-            Developer,
-        }
-
         private FoundationBuildOption[] _buildOptions = Array.Empty<FoundationBuildOption>();
         private bool _ready;
         private bool _paused;
@@ -76,7 +69,7 @@ namespace Game.NomadWorkshop.Foundation
         private string _currentTask = string.Empty;
         private string _lastBlocker = string.Empty;
         [SerializeField, HideInInspector]
-        private FoundationInformationPanel _openPanel;
+        private FoundationHudPanel _openPanel;
         private Vector2 _residentPanelScroll;
         private Vector2 _developerPanelScroll;
         private GUIStyle _titleStyle;
@@ -107,7 +100,7 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(
                 readModel.ClimateWeekInSeason,
                 value => _climateWeekInSeason = value);
-            Bag.Subscribe(readModel.InteractionMode, value => _interactionMode = value);
+            Bag.Subscribe(readModel.InteractionMode, OnInteractionModeChanged);
             Bag.Subscribe(readModel.PlacementPreview, value => _preview = value);
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
                 _facilityAccess = this.ExecuteCommand(
@@ -186,13 +179,45 @@ namespace Game.NomadWorkshop.Foundation
             DrawCompactResidentCard();
             DrawCornerToolbar();
 
-            if (_openPanel == FoundationInformationPanel.Resident)
-                DrawResidentDetailsPanel();
-            else if (_openPanel == FoundationInformationPanel.Developer ||
-                     _interactionMode == FoundationInteractionMode.Build)
-                DrawDeveloperPanel();
+            switch (_openPanel)
+            {
+                case FoundationHudPanel.Resident:
+                    DrawResidentDetailsPanel();
+                    break;
+                case FoundationHudPanel.Build:
+                    DrawDeveloperPanel(buildFocused: true);
+                    break;
+                case FoundationHudPanel.Developer:
+                    DrawDeveloperPanel(buildFocused: false);
+                    break;
+            }
 
             DrawTooltip();
+        }
+
+        /// <summary>
+        /// 供同一表现层的 3D 输入 View 查询实际可见 UI；不暴露或修改任何玩法状态。
+        /// </summary>
+        public bool IsScreenPointBlocked(Vector2 screenPoint) =>
+            FoundationHudLayout.IsScreenPointBlocked(
+                screenPoint,
+                Screen.width,
+                Screen.height,
+                _openPanel != FoundationHudPanel.None);
+
+        private void OnInteractionModeChanged(FoundationInteractionMode mode)
+        {
+            _interactionMode = mode;
+            if (mode == FoundationInteractionMode.Build &&
+                _openPanel == FoundationHudPanel.None)
+            {
+                _openPanel = FoundationHudPanel.Build;
+            }
+            else if (mode != FoundationInteractionMode.Build &&
+                     _openPanel == FoundationHudPanel.Build)
+            {
+                _openPanel = FoundationHudPanel.None;
+            }
         }
 
         /// <summary>
@@ -201,8 +226,7 @@ namespace Game.NomadWorkshop.Foundation
         /// </summary>
         private void DrawCompactResidentCard()
         {
-            float width = Mathf.Min(370f, Mathf.Max(280f, Screen.width - 28f));
-            var outer = new Rect(14f, 14f, width, 112f);
+            Rect outer = FoundationHudLayout.GetCompactResidentCardRect(Screen.width);
             DrawPanelBackground(
                 outer,
                 new Color(0.10f, 0.13f, 0.14f, 0.94f),
@@ -217,7 +241,8 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Label(
                 $"{Describe(_residentPhase)} · {_currentTask}",
                 _compactTaskStyle,
-                GUILayout.Height(17f));
+                GUILayout.MinHeight(28f),
+                GUILayout.MaxHeight(32f));
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
 
@@ -235,8 +260,12 @@ namespace Game.NomadWorkshop.Foundation
 
         private void DrawCornerToolbar()
         {
-            float width = Mathf.Min(310f, Mathf.Max(250f, Screen.width - 28f));
-            var outer = new Rect(Mathf.Max(14f, Screen.width - width - 14f), 14f, width, 36f);
+            Rect outer = FoundationHudLayout.GetCornerToolbarRect(Screen.width);
+            string buildButtonLabel = _interactionMode != FoundationInteractionMode.Build
+                ? "建造"
+                : _openPanel == FoundationHudPanel.Build
+                    ? "退出建造"
+                    : "建造面板";
             DrawPanelBackground(
                 outer,
                 new Color(0.09f, 0.11f, 0.12f, 0.94f),
@@ -245,38 +274,40 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.BeginHorizontal();
             if (DrawToolbarButton(
                     new GUIContent("居民详情", "查看居民的水分、精力、心情、娱乐、压力与生理状态。"),
-                    _openPanel == FoundationInformationPanel.Resident))
+                    _openPanel == FoundationHudPanel.Resident))
             {
-                _openPanel = _openPanel == FoundationInformationPanel.Resident
-                    ? FoundationInformationPanel.None
-                    : FoundationInformationPanel.Resident;
+                _openPanel = FoundationHudLayout.Toggle(
+                    _openPanel,
+                    FoundationHudPanel.Resident);
             }
 
             if (DrawToolbarButton(
                     new GUIContent(
-                        _interactionMode == FoundationInteractionMode.Build ? "退出建造" : "建造",
+                        buildButtonLabel,
                         "进入建造模式并打开设施、吸附与可达性控制。"),
-                    _interactionMode == FoundationInteractionMode.Build))
+                    _openPanel == FoundationHudPanel.Build))
             {
-                if (_interactionMode == FoundationInteractionMode.Build)
+                if (_interactionMode == FoundationInteractionMode.Build &&
+                    _openPanel == FoundationHudPanel.Build)
                 {
                     this.ExecuteCommand(new ExitFoundationBuildModeCommand());
-                    _openPanel = FoundationInformationPanel.None;
+                    _openPanel = FoundationHudPanel.None;
                 }
                 else
                 {
-                    this.ExecuteCommand(new EnterFoundationBuildModeCommand());
-                    _openPanel = FoundationInformationPanel.Developer;
+                    if (_interactionMode != FoundationInteractionMode.Build)
+                        this.ExecuteCommand(new EnterFoundationBuildModeCommand());
+                    _openPanel = FoundationHudPanel.Build;
                 }
             }
 
             if (DrawToolbarButton(
                     new GUIContent("开发", "打开完整的方案、资源、建造与 Harness 诊断。"),
-                    _openPanel == FoundationInformationPanel.Developer))
+                    _openPanel == FoundationHudPanel.Developer))
             {
-                _openPanel = _openPanel == FoundationInformationPanel.Developer
-                    ? FoundationInformationPanel.None
-                    : FoundationInformationPanel.Developer;
+                _openPanel = FoundationHudLayout.Toggle(
+                    _openPanel,
+                    FoundationHudPanel.Developer);
             }
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
@@ -284,9 +315,9 @@ namespace Game.NomadWorkshop.Foundation
 
         private void DrawResidentDetailsPanel()
         {
-            float width = Mathf.Min(390f, Mathf.Max(300f, Screen.width - 28f));
-            float height = Mathf.Max(160f, Screen.height - 72f);
-            var outer = new Rect(Mathf.Max(14f, Screen.width - width - 14f), 58f, width, height);
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(
+                Screen.width,
+                Screen.height);
             DrawPanelBackground(
                 outer,
                 new Color(0.08f, 0.105f, 0.115f, 0.97f),
@@ -512,15 +543,16 @@ namespace Game.NomadWorkshop.Foundation
         private static float SafeRatio(int amount, int capacity) =>
             capacity <= 0 ? 0f : Mathf.Clamp01(amount / (float)capacity);
 
-        private void DrawDeveloperPanel()
+        private void DrawDeveloperPanel(bool buildFocused)
         {
-            const float width = 390f;
-            float x = Mathf.Max(14f, Screen.width - width - 14f);
-            GUILayout.BeginArea(
-                new Rect(x, 58f, width, Mathf.Max(120f, Screen.height - 72f)),
-                GUI.skin.box);
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(
+                Screen.width,
+                Screen.height);
+            GUILayout.BeginArea(outer, GUI.skin.box);
             _developerPanelScroll = GUILayout.BeginScrollView(_developerPanelScroll);
-            GUILayout.Label("游牧工坊 · 开发控制台", _titleStyle);
+            GUILayout.Label(
+                buildFocused ? "游牧工坊 · 建造与通路" : "游牧工坊 · 开发控制台",
+                _titleStyle);
             GUILayout.Label(
                 "连续建造 → 实体容器搬水 → 饮水；完整方案参与 Utility 决策",
                 _smallStyle);
@@ -791,6 +823,7 @@ namespace Game.NomadWorkshop.Foundation
             _compactTaskStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 10,
+                wordWrap = true,
                 clipping = TextClipping.Clip,
                 padding = new RectOffset(3, 0, 0, 0),
                 normal = { textColor = new Color(0.68f, 0.74f, 0.74f) },

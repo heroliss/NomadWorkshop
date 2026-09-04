@@ -84,6 +84,10 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
                 Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
                 Assert.That(
+                    systemSerialized.FindProperty("worldSeed").intValue,
+                    Is.EqualTo(1729),
+                    "可重建场景必须显式保存确定性世界 Seed，不能依赖新增字段的隐式反序列化默认值。 ");
+                Assert.That(
                     systemSerialized.FindProperty("residentStartLocalPosition").vector3Value.y,
                     Is.EqualTo(0f).Within(0.0001f),
                     "居民根节点代表脚底，生成场景不得再把胶囊半高写入逻辑位置。");
@@ -146,6 +150,21 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Assert.That(
                     viewSerialized.FindProperty("reflectionProbe").objectReferenceValue,
                     Is.SameAs(reflectionProbe));
+                Assert.That(
+                    viewSerialized.FindProperty("screenUi").objectReferenceValue,
+                    Is.SameAs(debugView),
+                    "世界输入必须查询实际 HUD 布局，不能再维护一份固定像素遮挡区。 ");
+
+                Assert.That(
+                    systemSerialized.FindProperty("pickupSeconds").floatValue,
+                    Is.GreaterThanOrEqualTo(1f));
+                Assert.That(
+                    systemSerialized.FindProperty("drinkingSeconds").floatValue,
+                    Is.GreaterThanOrEqualTo(3f));
+                Assert.That(
+                    systemSerialized.FindProperty("leisureSeconds").floatValue,
+                    Is.GreaterThanOrEqualTo(3f),
+                    "首版行动阶段要给玩家留下读清状态的观察窗口。 ");
 
                 UniversalAdditionalCameraData cameraData =
                     worldCamera.GetComponent<UniversalAdditionalCameraData>();
