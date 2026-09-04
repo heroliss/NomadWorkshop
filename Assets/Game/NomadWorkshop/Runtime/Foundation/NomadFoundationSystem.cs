@@ -410,6 +410,32 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentPhase.EnjoyingHobby:
                     if (TickTimer(deltaTime)) CompleteHobby();
                     break;
+                case FoundationResidentPhase.MovingToWorldItemSource:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(
+                            FoundationResidentPhase.PickingUpWorldItem,
+                            pickupSeconds,
+                            "从已锁定来源姿态拿起世界物品");
+                    }
+                    break;
+                case FoundationResidentPhase.PickingUpWorldItem:
+                    if (TickTimer(deltaTime)) CompleteWorldItemPickup();
+                    break;
+                case FoundationResidentPhase.MovingToWorldItemDestination:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(
+                            FoundationResidentPhase.PlacingWorldItem,
+                            deliverySeconds,
+                            "把手中世界物品放到已锁定目标姿态");
+                    }
+                    break;
+                case FoundationResidentPhase.PlacingWorldItem:
+                    if (TickTimer(deltaTime)) CompleteWorldItemPlacement();
+                    break;
             }
 
             WriteSimulationProjection();
@@ -878,6 +904,7 @@ namespace Game.NomadWorkshop.Foundation
 
             _model.SimulationSpeed.Value = initialSimulationSpeed;
             _model.ResidentCarryingWater.Value = false;
+            _model.ResidentCarriedWorldItem.Value = default;
             SetWaterCanLocation(
                 FoundationWaterCanLocation.VehicleWaterTank,
                 initialWaterCanAnchor);
@@ -897,6 +924,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedWanderCount.Value = 0;
             _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
+            _model.CompletedWorldItemMoveCount.Value = 0;
             _model.LastBlocker.Value = string.Empty;
             _model.ActionProgress.Value = 0f;
             _activeLeisureKind = FoundationLeisureKind.None;
@@ -2994,11 +3022,15 @@ namespace Game.NomadWorkshop.Foundation
                     FoundationResidentPhase.MovingToWaterSource or
                     FoundationResidentPhase.MovingToDrinkingStation or
                     FoundationResidentPhase.MovingToToilet or
-                    FoundationResidentPhase.MovingToHobby =>
+                    FoundationResidentPhase.MovingToHobby or
+                    FoundationResidentPhase.MovingToWorldItemSource or
+                    FoundationResidentPhase.MovingToWorldItemDestination =>
                     ResidentWellbeingActivity.Travel,
                 FoundationResidentPhase.PickingUpWaterCan or
                     FoundationResidentPhase.PickingUpWater or
-                    FoundationResidentPhase.DeliveringWater =>
+                    FoundationResidentPhase.DeliveringWater or
+                    FoundationResidentPhase.PickingUpWorldItem or
+                    FoundationResidentPhase.PlacingWorldItem =>
                     ResidentWellbeingActivity.Work,
                 FoundationResidentPhase.Drinking or
                     FoundationResidentPhase.UsingToilet =>
@@ -3451,7 +3483,8 @@ namespace Game.NomadWorkshop.Foundation
 
             bool canSafelyReplan = _activeResidentAction != null ||
                                    (_activeHaul != null &&
-                                    _activeHaul.State == HaulTaskState.Reserved);
+                                    _activeHaul.State == HaulTaskState.Reserved) ||
+                                   _activeWorldItemMove != null;
             if (!canSafelyReplan) return;
 
             ReleaseActiveTasks();
@@ -3554,7 +3587,9 @@ namespace Game.NomadWorkshop.Foundation
         private static bool IsWorkTimedPhase(FoundationResidentPhase phase) =>
             phase is FoundationResidentPhase.PickingUpWaterCan or
                 FoundationResidentPhase.PickingUpWater or
-                FoundationResidentPhase.DeliveringWater;
+                FoundationResidentPhase.DeliveringWater or
+                FoundationResidentPhase.PickingUpWorldItem or
+                FoundationResidentPhase.PlacingWorldItem;
 
         private bool TickTimer(float deltaTime)
         {
@@ -3571,6 +3606,8 @@ namespace Game.NomadWorkshop.Foundation
             if (phase != FoundationResidentPhase.PickingUpWaterCan &&
                 phase != FoundationResidentPhase.PickingUpWater &&
                 phase != FoundationResidentPhase.DeliveringWater &&
+                phase != FoundationResidentPhase.PickingUpWorldItem &&
+                phase != FoundationResidentPhase.PlacingWorldItem &&
                 phase != FoundationResidentPhase.Drinking &&
                 phase != FoundationResidentPhase.UsingToilet &&
                 phase != FoundationResidentPhase.Relaxing &&
@@ -4238,6 +4275,7 @@ namespace Game.NomadWorkshop.Foundation
             _drinkAfterActiveHaul = false;
             _activeResidentAction?.Dispose();
             _activeResidentAction = null;
+            CancelActiveWorldItemMove();
             _activeWaterSourceFacilityInstanceId = string.Empty;
             _activeWaterTargetFacilityInstanceId = string.Empty;
             ReleaseActiveInteractionSpace(publishProjection: false);

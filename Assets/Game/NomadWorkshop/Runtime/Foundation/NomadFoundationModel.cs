@@ -65,6 +65,9 @@ namespace Game.NomadWorkshop.Foundation
         public RP<string> WaterCanAnchorFacilityInstanceId { get; private set; } = new(string.Empty);
         [field: SerializeField, Tooltip("水罐在设施放置区域中的精确局部姿态；居民携带时为空。")]
         public RP<FoundationItemPlacementState> WaterCanPlacement { get; private set; } = new(default);
+        [field: SerializeField, Tooltip("居民手中普通世界物品的短暂表现投影；存档仍回退到移动事务来源。")]
+        public RP<FoundationCarriedWorldItemState> ResidentCarriedWorldItem { get; private set; } =
+            new(default);
         [field: SerializeField] public RP<int> WaterCanWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> WaterCanCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationActionPlanProjection> LatestActionPlan { get; private set; } =
@@ -104,6 +107,8 @@ namespace Game.NomadWorkshop.Foundation
         public RP<int> CompletedGroundRestCount { get; private set; } = new(0);
         [field: SerializeField, Tooltip("已完成的真实爱好次数；与只恢复疲劳/压力的基础休整分开观察。")]
         public RP<int> CompletedHobbyCount { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("已由居民完成原子拿起与放下的普通世界物品次数。")]
+        public RP<int> CompletedWorldItemMoveCount { get; private set; } = new(0);
         [field: SerializeField] public RP<string> CurrentTask { get; private set; } = new("等待初始化");
         [field: SerializeField] public RP<string> LastBlocker { get; private set; } = new(string.Empty);
 

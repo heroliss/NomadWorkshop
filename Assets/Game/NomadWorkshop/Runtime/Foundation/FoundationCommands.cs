@@ -40,6 +40,8 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<FoundationWaterCanLocation> WaterCanLocation;
         public readonly ReadOnlyReactiveProperty<string> WaterCanAnchorFacilityInstanceId;
         public readonly ReadOnlyReactiveProperty<FoundationItemPlacementState> WaterCanPlacement;
+        public readonly ReadOnlyReactiveProperty<FoundationCarriedWorldItemState>
+            ResidentCarriedWorldItem;
         public readonly ReadOnlyReactiveProperty<int> WaterCanWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> WaterCanCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<FoundationActionPlanProjection> LatestActionPlan;
@@ -68,6 +70,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> CompletedWanderCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedGroundRestCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedHobbyCount;
+        public readonly ReadOnlyReactiveProperty<int> CompletedWorldItemMoveCount;
         public readonly ReadOnlyReactiveProperty<string> CurrentTask;
         public readonly ReadOnlyReactiveProperty<string> LastBlocker;
 
@@ -105,6 +108,7 @@ namespace Game.NomadWorkshop.Foundation
             WaterCanLocation = model.WaterCanLocation;
             WaterCanAnchorFacilityInstanceId = model.WaterCanAnchorFacilityInstanceId;
             WaterCanPlacement = model.WaterCanPlacement;
+            ResidentCarriedWorldItem = model.ResidentCarriedWorldItem;
             WaterCanWaterMilliliters = model.WaterCanWaterMilliliters;
             WaterCanCapacityMilliliters = model.WaterCanCapacityMilliliters;
             LatestActionPlan = model.LatestActionPlan;
@@ -133,6 +137,7 @@ namespace Game.NomadWorkshop.Foundation
             CompletedWanderCount = model.CompletedWanderCount;
             CompletedGroundRestCount = model.CompletedGroundRestCount;
             CompletedHobbyCount = model.CompletedHobbyCount;
+            CompletedWorldItemMoveCount = model.CompletedWorldItemMoveCount;
             CurrentTask = model.CurrentTask;
             LastBlocker = model.LastBlocker;
         }
@@ -182,6 +187,13 @@ namespace Game.NomadWorkshop.Foundation
     {
         public FoundationItemPlacementState[] Execute(ICommandContext ctx) =>
             ctx.GetModel<NomadFoundationModel>().GetWorldItemPlacementSnapshot();
+    }
+
+    [Description("启动首只杯具的原子拿取、携带与放下验证")]
+    public readonly struct TryStartFoundationCupMoveCommand : ICommand<bool>
+    {
+        public bool Execute(ICommandContext ctx) =>
+            ctx.GetSystem<NomadFoundationSystem>().TryStartCupMoveHarness();
     }
 
     [Description("读取当前可建造设施选项")]

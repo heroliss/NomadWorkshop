@@ -539,6 +539,93 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator CupMoveHarness_HoldsBothEndsCarriesAndCommitsExactDestination()
+        {
+            // 避免真实鼠标覆盖命令设置的候选；响应式投影仍会在 disabled 期间保持接线。
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            yield return BuildFacility("field-kitchen", 0, 0);
+            yield return BuildFacility("field-kitchen", 3000, 0);
+
+            FoundationItemPlacementState source = FindWorldItem(
+                _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                "cup-01");
+            string sourceOwner = source.OwnerEntityId;
+            Assert.That(
+                _context.ExecuteCommand(new TryStartFoundationCupMoveCommand()),
+                Is.True);
+            Assert.That(
+                _model.CompletedWorldItemMoveCount.Value,
+                Is.Zero);
+
+            _worldView.enabled = true;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            var sawCarriedProjection = false;
+            NomadWorkshopSaveData carryingCheckpoint = null;
+            for (var frame = 0; frame < 120; frame++)
+            {
+                yield return null;
+                if (_model.ResidentCarriedWorldItem.Value.Active)
+                {
+                    sawCarriedProjection = true;
+                    FoundationItemPlacementState[] duringCarry = _context.ExecuteCommand(
+                        new GetFoundationWorldItemPlacementsCommand());
+                    Assert.That(
+                        System.Array.Exists(duringCarry, item => item.ItemId == "cup-01"),
+                        Is.False,
+                        "携带时杯子不能同时保留一份台面投影。 ");
+                    carryingCheckpoint ??= _context.ExecuteCommand(
+                        new CaptureFoundationCheckpointCommand());
+                    Transform carriedVisual = _worldView.transform.Find(
+                        "Vehicle Deck Root/Resident 01/Right Hand Carry Anchor/" +
+                        "搪瓷杯 [cup-01] (carried)");
+                    Assert.That(
+                        carriedVisual,
+                        Is.Not.Null,
+                        "普通物品携带表现必须消费居民手部锚点，而不是留在原台面。 ");
+                }
+
+                if (_model.CompletedWorldItemMoveCount.Value > 0)
+                    break;
+            }
+
+            Assert.That(sawCarriedProjection, Is.True, "至少应观察到一帧真实携带状态。 ");
+            Assert.That(carryingCheckpoint, Is.Not.Null);
+            NomadWorldItemSaveData checkpointCup = carryingCheckpoint.WorldItems.Find(
+                item => item.ItemId == "cup-01");
+            Assert.That(checkpointCup, Is.Not.Null);
+            Assert.That(
+                checkpointCup.OwnerEntityId,
+                Is.EqualTo(sourceOwner),
+                "半途存档必须回退到拿取前来源，不保存悬空的半个动作。 ");
+            Assert.That(
+                checkpointCup.PlacementLocalPose,
+                Is.EqualTo(QuantizedPlacementPose.FromPlacementPose(source.LocalPose)));
+
+            Assert.That(_model.CompletedWorldItemMoveCount.Value, Is.EqualTo(1));
+            Assert.That(_model.ResidentCarriedWorldItem.Value.Active, Is.False);
+            FoundationItemPlacementState delivered = FindWorldItem(
+                _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                "cup-01");
+            Assert.That(
+                delivered.OwnerEntityId,
+                Is.Not.EqualTo(sourceOwner),
+                "存在第二座兼容台面时，Harness 应真实携带到另一座设施。 ");
+            Assert.That(delivered.RegionId, Does.EndWith("/placement/countertop-center"));
+            yield return null;
+            Transform deliveredVisual = _worldView.transform.Find(
+                "Vehicle Deck Root/World Items/搪瓷杯 [cup-01]");
+            Assert.That(deliveredVisual, Is.Not.Null);
+            Assert.That(
+                Vector3.Distance(
+                    deliveredVisual.localPosition,
+                    _layout.PoseToLocal(
+                        delivered.WorldPose,
+                        delivered.SupportHeightMillimeters / 1000f)),
+                Is.LessThanOrEqualTo(0.001f));
+        }
+
+        [UnityTest]
         public IEnumerator BuildDrinkingStation_ResidentHaulsRealWaterAndDrinks()
         {
             // 屏蔽真实鼠标位置对候选姿态的扰动；响应式表现订阅仍保留。

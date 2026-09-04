@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace Game.NomadWorkshop.Simulation.Tests
@@ -303,6 +304,168 @@ namespace Game.NomadWorkshop.Simulation.Tests
             Assert.That(failure, Is.EqualTo(PlacementRegionFailure.PoseOverlapsItem));
             Assert.That(ledger.PlacedItemCount, Is.EqualTo(2));
         }
+
+        [Test]
+        public void MoveLease_HoldsSourceRecoveryAndDestinationUntilAtomicDelivery()
+        {
+            var ledger = new PlacementRegionLedger();
+            PlacementRegionDefinition source = CupSurface("counter-a", -300);
+            PlacementRegionDefinition destination = CupSurface("counter-b", 300);
+            PlacementFootprint cup = CupFootprint();
+            ledger.RegisterRegion(source);
+            ledger.RegisterRegion(destination);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    new PlacementRegionPose(15, -20, 370),
+                    out _,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+
+            var targetPose = new PlacementRegionPose(20, 10, 1230);
+            Assert.That(
+                ledger.TryReserveMoveExact(
+                    "cup-01",
+                    destination.RegionId,
+                    targetPose,
+                    out PlacementRegionMoveLease move,
+                    out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(move.State, Is.EqualTo(PlacementRegionMoveState.Reserved));
+            Assert.That(ledger.ReservationCount, Is.EqualTo(1));
+            Assert.That(ledger.PlacedItemCount, Is.EqualTo(1));
+
+            Assert.That(move.TryPickUp(out failure), Is.True, failure.ToString());
+            Assert.That(move.State, Is.EqualTo(PlacementRegionMoveState.Carrying));
+            Assert.That(ledger.TryGetPlacement("cup-01", out _), Is.False);
+            Assert.That(ledger.PlacedItemCount, Is.Zero);
+            IReadOnlyList<PlacementRegionItem> checkpointWhileCarrying =
+                ledger.CreateCheckpointSnapshot();
+            Assert.That(checkpointWhileCarrying, Has.Count.EqualTo(1));
+            Assert.That(
+                checkpointWhileCarrying[0].Region.RegionId,
+                Is.EqualTo(source.RegionId),
+                "随时存档必须回到拿取前的守恒位置，而不是丢失半途携带物。 ");
+            Assert.That(
+                checkpointWhileCarrying[0].LocalPose,
+                Is.EqualTo(new PlacementRegionPose(15, -20, 370)));
+
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-source-thief",
+                    cup,
+                    source.RegionId,
+                    new PlacementRegionPose(15, -20, 0),
+                    out _,
+                    out failure),
+                Is.False,
+                "拿起后来源仍应为可中断恢复保留。 ");
+            Assert.That(failure, Is.EqualTo(PlacementRegionFailure.PoseOverlapsItem));
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-target-thief",
+                    cup,
+                    destination.RegionId,
+                    targetPose,
+                    out _,
+                    out failure),
+                Is.False,
+                "目标姿态必须从行动开始一直预留到放下。 ");
+            Assert.That(failure, Is.EqualTo(PlacementRegionFailure.PoseOverlapsItem));
+
+            Assert.That(
+                move.TryDeliver(out PlacementRegionItem delivered, out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(move.State, Is.EqualTo(PlacementRegionMoveState.Delivered));
+            Assert.That(move.IsActive, Is.False);
+            Assert.That(ledger.ReservationCount, Is.Zero);
+            Assert.That(ledger.PlacedItemCount, Is.EqualTo(1));
+            Assert.That(delivered.Region.RegionId, Is.EqualTo(destination.RegionId));
+            Assert.That(delivered.LocalPose, Is.EqualTo(targetPose));
+            Assert.That(
+                ledger.CreateCheckpointSnapshot()[0].Region.RegionId,
+                Is.EqualTo(destination.RegionId));
+        }
+
+        [Test]
+        public void MoveLease_CancelAfterPickupRestoresExactSourceAndReleasesTarget()
+        {
+            var ledger = new PlacementRegionLedger();
+            PlacementRegionDefinition source = CupSurface("counter-a", -300);
+            PlacementRegionDefinition destination = CupSurface("counter-b", 300);
+            PlacementFootprint cup = CupFootprint();
+            ledger.RegisterRegion(source);
+            ledger.RegisterRegion(destination);
+            var sourcePose = new PlacementRegionPose(-25, 30, 2170);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    sourcePose,
+                    out PlacementRegionItem original,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                ledger.TryReserveMoveStable(
+                    "cup-01",
+                    destination.RegionId,
+                    out PlacementRegionMoveLease move,
+                    out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(move.TryPickUp(out failure), Is.True, failure.ToString());
+
+            move.Dispose();
+
+            Assert.That(move.State, Is.EqualTo(PlacementRegionMoveState.Cancelled));
+            Assert.That(ledger.ReservationCount, Is.Zero);
+            Assert.That(
+                ledger.TryGetPlacement("cup-01", out PlacementRegionItem restored),
+                Is.True);
+            Assert.That(restored.Region.RegionId, Is.EqualTo(source.RegionId));
+            Assert.That(restored.LocalPose, Is.EqualTo(sourcePose));
+            Assert.That(restored.WorldPose, Is.EqualTo(original.WorldPose));
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-02",
+                    cup,
+                    destination.RegionId,
+                    PlacementRegionPose.Centered,
+                    out _,
+                    out failure),
+                Is.True,
+                "取消后目标空间应立即释放。 ");
+        }
+
+        private static PlacementRegionDefinition CupSurface(string owner, int worldX) =>
+            new(
+                PlacementRegionLedger.ComposeRegionId(owner, "countertop"),
+                "countertop",
+                owner,
+                new DeckPose(worldX, 0, 0),
+                260,
+                220,
+                970,
+                10,
+                new[] { "cup" });
+
+        private static PlacementFootprint CupFootprint() =>
+            new(
+                "drinking-cup",
+                "cup",
+                80,
+                70,
+                120,
+                5,
+                new[] { 0 },
+                allowsAnyYaw: true);
 
         private static PlacementRegionDefinition Region(
             string owner,

@@ -81,6 +81,7 @@ namespace Game.NomadWorkshop.Foundation
         private Transform _interactionPreviewRoot;
         private Transform _residentRoot;
         private Transform _residentBody;
+        private Transform _residentCarryAnchor;
         private Transform _waterCanVisual;
         private Transform _waterCanFillVisual;
         private FoundationWaterCanLocation _waterCanLocation;
@@ -170,6 +171,7 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
                 RebuildWorldItems(
                     this.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand())));
+            Bag.Subscribe(readModel.ResidentCarriedWorldItem, RebuildCarriedWorldItem);
             Bag.Subscribe(readModel.ResidentLocalPosition, position =>
             {
                 if (_residentRoot != null) _residentRoot.localPosition = position;
@@ -546,6 +548,11 @@ namespace Game.NomadWorkshop.Foundation
                 new Vector3(0f, 0.55f, 0f),
                 new Vector3(0.42f, 0.55f, 0.42f),
                 body).transform;
+            _residentCarryAnchor = new GameObject("Right Hand Carry Anchor").transform;
+            _residentCarryAnchor.SetParent(root, false);
+            // 灰盒居民还没有骨骼；先让表现消费稳定手部锚点，正式 Humanoid/IK 只替换锚点驱动。
+            _residentCarryAnchor.localPosition = new Vector3(0.34f, 0.68f, 0.12f);
+            _residentCarryAnchor.localRotation = Quaternion.Euler(0f, 0f, -8f);
         }
 
         private void UpdateResidentBodyPose(FoundationResidentPhase phase)
@@ -646,6 +653,22 @@ namespace Game.NomadWorkshop.Foundation
                     0f);
                 BuildWorldItemPrototype(root, definition);
             }
+        }
+
+        private void RebuildCarriedWorldItem(FoundationCarriedWorldItemState carried)
+        {
+            if (_residentCarryAnchor == null) return;
+            DestroyChildren(_residentCarryAnchor);
+            if (!carried.Active || !_worldItemDefinitions.TryGetValue(
+                    carried.DefinitionId,
+                    out NomadWorldItemDefinition definition) ||
+                definition.PrototypeStyle == NomadWorldItemPrototypeStyle.WaterCan)
+                return;
+
+            var root = new GameObject(
+                $"{definition.DisplayName} [{carried.ItemId}] (carried)").transform;
+            root.SetParent(_residentCarryAnchor, false);
+            BuildWorldItemPrototype(root, definition);
         }
 
         private void BuildWorldItemPrototype(

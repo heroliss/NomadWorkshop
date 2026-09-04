@@ -196,7 +196,7 @@ namespace Game.NomadWorkshop.Foundation
         private void CapturePlacedWorldItems(NomadWorkshopSaveData data)
         {
             IReadOnlyList<PlacementRegionItem> placements =
-                _worldItemPlacementLedger.CreateStableSnapshot();
+                _worldItemPlacementLedger.CreateCheckpointSnapshot();
             for (var i = 0; i < placements.Count; i++)
             {
                 PlacementRegionItem placement = placements[i];
@@ -593,6 +593,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.BladderCapacityMilliliters.Value = _residentWaterCycle.Bladder.Capacity;
             _model.ToiletHoldingCapacityMilliliters.Value = _toiletHolding.Capacity;
             _model.LatestActionPlan.Value = FoundationActionPlanProjection.None;
+            _model.ResidentCarriedWorldItem.Value = default;
             _model.ActionProgress.Value = 0f;
             _model.LastBlocker.Value = string.Empty;
             _model.CompletedDrinkCount.Value = 0;
@@ -602,6 +603,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedWanderCount.Value = 0;
             _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
+            _model.CompletedWorldItemMoveCount.Value = 0;
             SetWaterCanLocation(
                 waterCanLocation,
                 waterCanAnchor,

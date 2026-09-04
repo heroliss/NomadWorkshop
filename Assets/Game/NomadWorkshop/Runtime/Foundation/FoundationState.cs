@@ -64,6 +64,10 @@ namespace Game.NomadWorkshop.Foundation
         EnjoyingHobby = 16,
         RestingOnGround = 17,
         Dead = 18,
+        MovingToWorldItemSource = 19,
+        PickingUpWorldItem = 20,
+        MovingToWorldItemDestination = 21,
+        PlacingWorldItem = 22,
     }
 
     /// <summary>当前基础休闲的可观察类型；以后新增爱好时不会把所有休闲继续压成一个计数。</summary>
@@ -164,6 +168,37 @@ namespace Game.NomadWorkshop.Foundation
                 supportHeightMillimeters);
             return HashCode.Combine(identity, local, world);
         }
+    }
+
+    /// <summary>
+    /// 居民手中普通世界物品的短暂表现投影。物品移动事务仍由 System 独占，随时存档会回退到
+    /// 来源区域；这里不伪造第三套持久位置真值。
+    /// </summary>
+    [Serializable]
+    public struct FoundationCarriedWorldItemState : IEquatable<FoundationCarriedWorldItemState>
+    {
+        [SerializeField] private string itemId;
+        [SerializeField] private string definitionId;
+
+        public FoundationCarriedWorldItemState(string itemId, string definitionId)
+        {
+            this.itemId = itemId?.Trim() ?? string.Empty;
+            this.definitionId = definitionId?.Trim() ?? string.Empty;
+        }
+
+        public bool Active =>
+            !string.IsNullOrWhiteSpace(itemId) &&
+            !string.IsNullOrWhiteSpace(definitionId);
+        public string ItemId => itemId;
+        public string DefinitionId => definitionId;
+
+        public bool Equals(FoundationCarriedWorldItemState other) =>
+            string.Equals(itemId, other.itemId, StringComparison.Ordinal) &&
+            string.Equals(definitionId, other.definitionId, StringComparison.Ordinal);
+
+        public override bool Equals(object obj) =>
+            obj is FoundationCarriedWorldItemState other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(itemId, definitionId);
     }
 
     /// <summary>

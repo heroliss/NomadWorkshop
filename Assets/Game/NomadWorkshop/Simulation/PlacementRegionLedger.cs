@@ -11,6 +11,8 @@ namespace Game.NomadWorkshop.Simulation
         DuplicateRegionId,
         RegionUnavailable,
         ItemAlreadyLocated,
+        ItemNotLocated,
+        ItemTransferActive,
         CategoryRejected,
         FootprintTooLarge,
         OrientationRejected,
@@ -223,11 +225,14 @@ namespace Game.NomadWorkshop.Simulation
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, PendingReservation> _reservedByItem =
             new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PendingMove> _movesByItem =
+            new(StringComparer.Ordinal);
         private long _nextReservationId = 1;
 
         public int RegionCount => _regions.Count;
         public int PlacedItemCount => _placedByItem.Count;
-        public int ReservationCount => _reservedByItem.Count;
+        public int ReservationCount => _reservedByItem.Count + _movesByItem.Count;
+        public int MoveReservationCount => _movesByItem.Count;
 
         public static string ComposeRegionId(string ownerEntityId, string localRegionId)
         {
@@ -260,6 +265,18 @@ namespace Game.NomadWorkshop.Simulation
             {
                 if (string.Equals(
                         reservation.Candidate.Region.RegionId,
+                        regionId,
+                        StringComparison.Ordinal))
+                    return false;
+            }
+            foreach (PendingMove move in _movesByItem.Values)
+            {
+                if (string.Equals(
+                        move.Source.Region.RegionId,
+                        regionId,
+                        StringComparison.Ordinal) ||
+                    string.Equals(
+                        move.Destination.Region.RegionId,
                         regionId,
                         StringComparison.Ordinal))
                     return false;
@@ -361,15 +378,133 @@ namespace Game.NomadWorkshop.Simulation
                 return reservation.TryCommit(out placement, out failure);
         }
 
+        /// <summary>
+        /// 为已落位物品预留一个稳定目标，同时继续锁住原位置。拿起以后原位置仍作为恢复点占用，
+        /// 直至成功放下或事务取消，因此可中断行动不会让物品丢失或被迫穿插到其他物品中。
+        /// </summary>
+        public bool TryReserveMoveStable(
+            string itemId,
+            string targetRegionId,
+            out PlacementRegionMoveLease lease,
+            out PlacementRegionFailure failure)
+        {
+            failure = ValidateMoveRequest(
+                itemId,
+                targetRegionId,
+                out PlacementRegionItem source,
+                out PlacementRegionDefinition targetRegion);
+            if (failure != PlacementRegionFailure.None)
+            {
+                lease = null;
+                return false;
+            }
+
+            if (!TryFindStablePose(
+                    targetRegion,
+                    source.Footprint,
+                    out PlacementRegionPose targetPose,
+                    source.ItemId,
+                    string.Equals(
+                        source.Region.RegionId,
+                        targetRegion.RegionId,
+                        StringComparison.Ordinal)
+                        ? source.LocalPose
+                        : null))
+            {
+                lease = null;
+                failure = CanFitRegionBounds(targetRegion, source.Footprint)
+                    ? PlacementRegionFailure.RegionFull
+                    : PlacementRegionFailure.FootprintTooLarge;
+                return false;
+            }
+
+            return ReserveMoveCandidate(
+                source,
+                targetRegion,
+                targetPose,
+                out lease,
+                out failure);
+        }
+
+        /// <summary>为已落位物品预留一个精确目标；原位置与目标位置在整个事务中都不可被抢占。</summary>
+        public bool TryReserveMoveExact(
+            string itemId,
+            string targetRegionId,
+            in PlacementRegionPose targetPose,
+            out PlacementRegionMoveLease lease,
+            out PlacementRegionFailure failure)
+        {
+            failure = ValidateMoveRequest(
+                itemId,
+                targetRegionId,
+                out PlacementRegionItem source,
+                out PlacementRegionDefinition targetRegion);
+            if (failure != PlacementRegionFailure.None)
+            {
+                lease = null;
+                return false;
+            }
+
+            if (!source.Footprint.AllowsYaw(targetPose.LocalYawDeciDegrees))
+            {
+                lease = null;
+                failure = PlacementRegionFailure.OrientationRejected;
+                return false;
+            }
+            if (!Contains(targetRegion, source.Footprint, targetPose))
+            {
+                lease = null;
+                failure = PlacementRegionFailure.PoseOutsideRegion;
+                return false;
+            }
+            if (OverlapsAny(
+                    source.Footprint,
+                    targetRegion,
+                    targetPose,
+                    source.ItemId))
+            {
+                lease = null;
+                failure = PlacementRegionFailure.PoseOverlapsItem;
+                return false;
+            }
+
+            return ReserveMoveCandidate(
+                source,
+                targetRegion,
+                targetPose,
+                out lease,
+                out failure);
+        }
+
         public bool RemoveItem(string itemId)
         {
-            if (string.IsNullOrWhiteSpace(itemId)) return false;
+            if (string.IsNullOrWhiteSpace(itemId) || _movesByItem.ContainsKey(itemId))
+                return false;
             return _placedByItem.Remove(itemId);
         }
 
         public IReadOnlyList<PlacementRegionItem> CreateStableSnapshot()
         {
             var result = new List<PlacementRegionItem>(_placedByItem.Values);
+            result.Sort((left, right) =>
+                string.Compare(left.ItemId, right.ItemId, StringComparison.Ordinal));
+            return result;
+        }
+
+        /// <summary>
+        /// 为随时存档创建守恒快照。尚未拿起的移动仍使用当前来源；已经携带但未放下的物品也
+        /// 回退到事务保留的精确来源，加载后再重新决策，不把半个表现动作写成新的所有权事实。
+        /// </summary>
+        public IReadOnlyList<PlacementRegionItem> CreateCheckpointSnapshot()
+        {
+            var result = new List<PlacementRegionItem>(
+                _placedByItem.Count + _movesByItem.Count);
+            result.AddRange(_placedByItem.Values);
+            foreach (PendingMove move in _movesByItem.Values)
+            {
+                if (move.State == PlacementRegionMoveState.Carrying)
+                    result.Add(move.Source);
+            }
             result.Sort((left, right) =>
                 string.Compare(left.ItemId, right.ItemId, StringComparison.Ordinal));
             return result;
@@ -403,6 +538,67 @@ namespace Game.NomadWorkshop.Simulation
                 _reservedByItem.Remove(itemId);
         }
 
+        internal bool TryPickUpMove(
+            long reservationId,
+            string itemId,
+            out PlacementRegionFailure failure)
+        {
+            if (!_movesByItem.TryGetValue(itemId, out PendingMove move) ||
+                move.ReservationId != reservationId ||
+                move.State != PlacementRegionMoveState.Reserved)
+            {
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+            if (!_placedByItem.Remove(itemId))
+                throw new InvalidOperationException(
+                    $"物品移动事务 {itemId} 的来源位置已经丢失。 ");
+
+            move.State = PlacementRegionMoveState.Carrying;
+            failure = PlacementRegionFailure.None;
+            return true;
+        }
+
+        internal bool TryDeliverMove(
+            long reservationId,
+            string itemId,
+            out PlacementRegionItem placement,
+            out PlacementRegionFailure failure)
+        {
+            if (!_movesByItem.TryGetValue(itemId, out PendingMove move) ||
+                move.ReservationId != reservationId ||
+                move.State != PlacementRegionMoveState.Carrying)
+            {
+                placement = null;
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+
+            _movesByItem.Remove(itemId);
+            placement = move.Destination;
+            _placedByItem.Add(itemId, placement);
+            move.State = PlacementRegionMoveState.Delivered;
+            failure = PlacementRegionFailure.None;
+            return true;
+        }
+
+        internal void CancelMove(long reservationId, string itemId)
+        {
+            if (!_movesByItem.TryGetValue(itemId, out PendingMove move) ||
+                move.ReservationId != reservationId)
+                return;
+
+            _movesByItem.Remove(itemId);
+            if (move.State == PlacementRegionMoveState.Carrying)
+            {
+                if (_placedByItem.ContainsKey(itemId))
+                    throw new InvalidOperationException(
+                        $"物品移动事务 {itemId} 回滚时发现重复来源实体。 ");
+                _placedByItem.Add(itemId, move.Source);
+            }
+            move.State = PlacementRegionMoveState.Cancelled;
+        }
+
         private PlacementRegionFailure ValidateRequest(
             string itemId,
             PlacementFootprint footprint,
@@ -415,7 +611,8 @@ namespace Game.NomadWorkshop.Simulation
                 region = null;
                 return PlacementRegionFailure.InvalidRequest;
             }
-            if (_placedByItem.ContainsKey(itemId) || _reservedByItem.ContainsKey(itemId))
+            if (_placedByItem.ContainsKey(itemId) || _reservedByItem.ContainsKey(itemId) ||
+                _movesByItem.ContainsKey(itemId))
             {
                 region = null;
                 return PlacementRegionFailure.ItemAlreadyLocated;
@@ -423,6 +620,31 @@ namespace Game.NomadWorkshop.Simulation
             if (!_regions.TryGetValue(regionId, out region))
                 return PlacementRegionFailure.RegionUnavailable;
             if (!region.Accepts(footprint.CategoryId))
+                return PlacementRegionFailure.CategoryRejected;
+            return PlacementRegionFailure.None;
+        }
+
+        private PlacementRegionFailure ValidateMoveRequest(
+            string itemId,
+            string targetRegionId,
+            out PlacementRegionItem source,
+            out PlacementRegionDefinition targetRegion)
+        {
+            source = null;
+            targetRegion = null;
+            if (string.IsNullOrWhiteSpace(itemId) ||
+                string.IsNullOrWhiteSpace(targetRegionId))
+                return PlacementRegionFailure.InvalidRequest;
+
+            string stableItemId = itemId.Trim();
+            if (_movesByItem.ContainsKey(stableItemId) ||
+                _reservedByItem.ContainsKey(stableItemId))
+                return PlacementRegionFailure.ItemTransferActive;
+            if (!_placedByItem.TryGetValue(stableItemId, out source))
+                return PlacementRegionFailure.ItemNotLocated;
+            if (!_regions.TryGetValue(targetRegionId, out targetRegion))
+                return PlacementRegionFailure.RegionUnavailable;
+            if (!targetRegion.Accepts(source.Footprint.CategoryId))
                 return PlacementRegionFailure.CategoryRejected;
             return PlacementRegionFailure.None;
         }
@@ -443,10 +665,36 @@ namespace Game.NomadWorkshop.Simulation
             return true;
         }
 
+        private bool ReserveMoveCandidate(
+            PlacementRegionItem source,
+            PlacementRegionDefinition targetRegion,
+            in PlacementRegionPose targetPose,
+            out PlacementRegionMoveLease lease,
+            out PlacementRegionFailure failure)
+        {
+            long reservationId = _nextReservationId++;
+            var destination = new PlacementRegionItem(
+                source.ItemId,
+                source.Footprint,
+                targetRegion,
+                targetPose);
+            var move = new PendingMove(reservationId, source, destination);
+            _movesByItem.Add(source.ItemId, move);
+            lease = new PlacementRegionMoveLease(
+                this,
+                reservationId,
+                source,
+                destination);
+            failure = PlacementRegionFailure.None;
+            return true;
+        }
+
         private bool TryFindStablePose(
             PlacementRegionDefinition region,
             PlacementFootprint footprint,
-            out PlacementRegionPose result)
+            out PlacementRegionPose result,
+            string ignoredItemId = null,
+            PlacementRegionPose? excludedPose = null)
         {
             for (var yawIndex = 0; yawIndex < footprint.AllowedYawDeciDegrees.Count; yawIndex++)
             {
@@ -482,8 +730,10 @@ namespace Game.NomadWorkshop.Simulation
                             RoundCoordinate(xCandidates[xIndex]),
                             RoundCoordinate(zCandidates[zIndex]),
                             yaw);
+                        if (excludedPose.HasValue && candidate == excludedPose.Value)
+                            continue;
                         if (Contains(region, footprint, candidate) &&
-                            !OverlapsAny(footprint, region, candidate))
+                            !OverlapsAny(footprint, region, candidate, ignoredItemId))
                         {
                             result = candidate;
                             return true;
@@ -533,13 +783,14 @@ namespace Game.NomadWorkshop.Simulation
         private bool OverlapsAny(
             PlacementFootprint footprint,
             PlacementRegionDefinition region,
-            in PlacementRegionPose localPose)
+            in PlacementRegionPose localPose,
+            string ignoredItemId = null)
         {
             var candidate = new PlacementRegionItem("candidate", footprint, region, localPose);
             PlanarOrientedRectangle candidateRectangle = CreateWorldRectangle(
                 footprint,
                 candidate.WorldPose);
-            foreach (PlacementRegionItem occupied in EnumerateOccupied())
+            foreach (PlacementRegionItem occupied in EnumerateOccupied(ignoredItemId))
             {
                 PlanarOrientedRectangle occupiedRectangle = CreateWorldRectangle(
                     occupied.Footprint,
@@ -552,12 +803,30 @@ namespace Game.NomadWorkshop.Simulation
             return false;
         }
 
-        private IEnumerable<PlacementRegionItem> EnumerateOccupied()
+        private IEnumerable<PlacementRegionItem> EnumerateOccupied(string ignoredItemId = null)
         {
             foreach (PlacementRegionItem placement in _placedByItem.Values)
-                yield return placement;
+            {
+                if (!string.Equals(placement.ItemId, ignoredItemId, StringComparison.Ordinal))
+                    yield return placement;
+            }
             foreach (PendingReservation reservation in _reservedByItem.Values)
-                yield return reservation.Candidate;
+            {
+                if (!string.Equals(
+                        reservation.Candidate.ItemId,
+                        ignoredItemId,
+                        StringComparison.Ordinal))
+                    yield return reservation.Candidate;
+            }
+            foreach (PendingMove move in _movesByItem.Values)
+            {
+                if (string.Equals(move.Source.ItemId, ignoredItemId, StringComparison.Ordinal))
+                    continue;
+                // Reserved 状态的来源仍在 _placedByItem；拿起后则用恢复预留继续占住原位。
+                if (move.State == PlacementRegionMoveState.Carrying)
+                    yield return move.Source;
+                yield return move.Destination;
+            }
         }
 
         private static bool CanFitRegionBounds(
@@ -660,6 +929,111 @@ namespace Game.NomadWorkshop.Simulation
 
             public long ReservationId { get; }
             public PlacementRegionItem Candidate { get; }
+        }
+
+        private sealed class PendingMove
+        {
+            public PendingMove(
+                long reservationId,
+                PlacementRegionItem source,
+                PlacementRegionItem destination)
+            {
+                ReservationId = reservationId;
+                Source = source;
+                Destination = destination;
+                State = PlacementRegionMoveState.Reserved;
+            }
+
+            public long ReservationId { get; }
+            public PlacementRegionItem Source { get; }
+            public PlacementRegionItem Destination { get; }
+            public PlacementRegionMoveState State { get; set; }
+        }
+    }
+
+    public enum PlacementRegionMoveState
+    {
+        Reserved,
+        Carrying,
+        Delivered,
+        Cancelled,
+    }
+
+    /// <summary>
+    /// 一件已落位物品从来源到目标的原子移动句柄。来源恢复位与目标位同时预留；未调用
+    /// <see cref="TryDeliver"/> 前 Dispose 会把物品精确恢复到来源。
+    /// </summary>
+    public sealed class PlacementRegionMoveLease : IDisposable
+    {
+        private PlacementRegionLedger _ledger;
+        private readonly long _reservationId;
+
+        internal PlacementRegionMoveLease(
+            PlacementRegionLedger ledger,
+            long reservationId,
+            PlacementRegionItem source,
+            PlacementRegionItem destination)
+        {
+            _ledger = ledger;
+            _reservationId = reservationId;
+            Source = source;
+            Destination = destination;
+            State = PlacementRegionMoveState.Reserved;
+        }
+
+        public PlacementRegionItem Source { get; }
+        public PlacementRegionItem Destination { get; }
+        public PlacementRegionMoveState State { get; private set; }
+        public bool IsActive => _ledger != null;
+
+        public bool TryPickUp(out PlacementRegionFailure failure)
+        {
+            PlacementRegionLedger ledger = _ledger;
+            if (ledger == null || State != PlacementRegionMoveState.Reserved)
+            {
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+            if (!ledger.TryPickUpMove(
+                    _reservationId,
+                    Source.ItemId,
+                    out failure))
+                return false;
+
+            State = PlacementRegionMoveState.Carrying;
+            return true;
+        }
+
+        public bool TryDeliver(
+            out PlacementRegionItem placement,
+            out PlacementRegionFailure failure)
+        {
+            PlacementRegionLedger ledger = _ledger;
+            if (ledger == null || State != PlacementRegionMoveState.Carrying)
+            {
+                placement = null;
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+            if (!ledger.TryDeliverMove(
+                    _reservationId,
+                    Source.ItemId,
+                    out placement,
+                    out failure))
+                return false;
+
+            _ledger = null;
+            State = PlacementRegionMoveState.Delivered;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            PlacementRegionLedger ledger = _ledger;
+            if (ledger == null) return;
+            _ledger = null;
+            ledger.CancelMove(_reservationId, Source.ItemId);
+            State = PlacementRegionMoveState.Cancelled;
         }
     }
 

@@ -40,6 +40,7 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationWaterCanLocation _waterCanLocation;
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
         private FoundationItemPlacementState _waterCanPlacement;
+        private FoundationCarriedWorldItemState _carriedWorldItem;
         private FoundationItemPlacementState[] _worldItemPlacements =
             Array.Empty<FoundationItemPlacementState>();
         private FoundationFacilityInventoryState[] _facilityInventories =
@@ -73,6 +74,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _completedWanders;
         private int _completedGroundRests;
         private int _completedHobbies;
+        private int _completedWorldItemMoves;
         private float _actionProgress;
         private string _currentTask = string.Empty;
         private string _lastBlocker = string.Empty;
@@ -133,6 +135,9 @@ namespace Game.NomadWorkshop.Foundation
                 readModel.WaterCanAnchorFacilityInstanceId,
                 value => _waterCanAnchorFacilityInstanceId = value ?? string.Empty);
             Bag.Subscribe(readModel.WaterCanPlacement, value => _waterCanPlacement = value);
+            Bag.Subscribe(
+                readModel.ResidentCarriedWorldItem,
+                value => _carriedWorldItem = value);
             Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
                 _worldItemPlacements = this.ExecuteCommand(
                     new GetFoundationWorldItemPlacementsCommand()));
@@ -191,6 +196,9 @@ namespace Game.NomadWorkshop.Foundation
                 readModel.CompletedGroundRestCount,
                 value => _completedGroundRests = value);
             Bag.Subscribe(readModel.CompletedHobbyCount, value => _completedHobbies = value);
+            Bag.Subscribe(
+                readModel.CompletedWorldItemMoveCount,
+                value => _completedWorldItemMoves = value);
             Bag.Subscribe(readModel.ActionProgress, value => _actionProgress = value);
             Bag.Subscribe(readModel.CurrentTask, value => _currentTask = value);
             Bag.Subscribe(readModel.LastBlocker, value => _lastBlocker = value);
@@ -801,6 +809,13 @@ namespace Game.NomadWorkshop.Foundation
 
             GUILayout.Space(5f);
             GUILayout.Label("世界物品空间", _sectionStyle);
+            if (_carriedWorldItem.Active)
+            {
+                GUILayout.Label(
+                    $"居民手中：{_carriedWorldItem.ItemId} ({_carriedWorldItem.DefinitionId}) · " +
+                    "检查点会回退到拿取前来源",
+                    _smallStyle);
+            }
             if (_worldItemPlacements.Length == 0)
             {
                 GUILayout.Label("当前没有占用设施放置区域的物品。", _smallStyle);
@@ -819,6 +834,17 @@ namespace Game.NomadWorkshop.Foundation
                         _smallStyle);
                 }
             }
+            bool worldItemButtonEnabled = GUI.enabled;
+            GUI.enabled = worldItemButtonEnabled &&
+                          !_carriedWorldItem.Active &&
+                          (_residentPhase is FoundationResidentPhase.Idle or
+                              FoundationResidentPhase.WaitingForFacility) &&
+                          HasWorldItem("cup-01");
+            if (GUILayout.Button(new GUIContent(
+                    "验证杯具拿放",
+                    "只供 Harness：联合预留来源恢复位与目标台面，让居民真实走近、拿起、携带并原子放下。")))
+                this.ExecuteCommand(new TryStartFoundationCupMoveCommand());
+            GUI.enabled = worldItemButtonEnabled;
 
             GUILayout.Space(7f);
             GUILayout.Label("车辆水箱状态", _sectionStyle);
@@ -898,7 +924,7 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Label(
                 $"已完成饮水：{_completedDrinks}   如厕：{_completedToiletUses}   " +
                 $"自主休闲：{_completedLeisure}（发呆 {_completedDaydreams} / 散步 {_completedWanders} / 爱好 {_completedHobbies}）   " +
-                $"地面休息：{_completedGroundRests}");
+                $"地面休息：{_completedGroundRests}   物品拿放：{_completedWorldItemMoves}");
             if (!string.IsNullOrEmpty(_lastBlocker))
             {
                 bool hardBlocked = _residentPhase == FoundationResidentPhase.Blocked;
@@ -1102,6 +1128,19 @@ namespace Game.NomadWorkshop.Foundation
             return definitionId;
         }
 
+        private bool HasWorldItem(string itemId)
+        {
+            for (var i = 0; i < _worldItemPlacements.Length; i++)
+            {
+                if (string.Equals(
+                        _worldItemPlacements[i].ItemId,
+                        itemId,
+                        StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
         private static string Describe(FoundationBuildTransactionPhase phase) => phase switch
         {
             FoundationBuildTransactionPhase.UpdatingCandidateNavigation => "更新候选导航",
@@ -1150,6 +1189,10 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.MovingToHobby => "前往爱好设施",
             FoundationResidentPhase.EnjoyingHobby => "作画与观景",
             FoundationResidentPhase.RestingOnGround => "坐卧地面休息",
+            FoundationResidentPhase.MovingToWorldItemSource => "前往拿取物品",
+            FoundationResidentPhase.PickingUpWorldItem => "拿起物品",
+            FoundationResidentPhase.MovingToWorldItemDestination => "携带物品",
+            FoundationResidentPhase.PlacingWorldItem => "放下物品",
             FoundationResidentPhase.Dead => "死亡",
             FoundationResidentPhase.Blocked => "阻塞",
             _ => phase.ToString(),
