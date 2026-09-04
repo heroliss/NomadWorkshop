@@ -33,6 +33,7 @@ namespace Game.NomadWorkshop.Foundation
         private const int DefaultToiletHoldingCapacityMilliliters = 12_000;
         private const int MaximumPreviewInteractionSlots = 64;
         private const float ResidentExactNavMeshTolerance = 0.02f;
+        private static readonly NomadCalendarPolicy CalendarPolicy = NomadCalendarPolicy.Default;
 
         [Header("共享定义")]
         [SerializeField, Tooltip("车辆主甲板尺寸、业务坐标与默认吸附参数。")]
@@ -137,6 +138,7 @@ namespace Game.NomadWorkshop.Foundation
         private readonly ResidentActionPlanEvaluator _actionPlanEvaluator = new();
         private readonly ResidentActionPlanPolicy _actionPlanPolicy = new();
         private readonly UtilityDecisionEngine _decisionEngine = new();
+        private readonly NomadSimulationClock _simulationClock = new();
         private HaulTaskLease _activeHaul;
         private ResidentWaterActionLease _activeResidentAction;
         private FoundationWaterCanLocation _waterCanLocation;
@@ -185,7 +187,16 @@ namespace Game.NomadWorkshop.Foundation
             float clampedSpeed = Mathf.Clamp(_model.SimulationSpeed.Value, 0.25f, 16f);
             if (!Mathf.Approximately(clampedSpeed, _model.SimulationSpeed.Value))
                 _model.SimulationSpeed.Value = clampedSpeed;
-            float deltaTime = Time.unscaledDeltaTime * clampedSpeed;
+            long deltaMilliseconds = _simulationClock.Advance(
+                Time.unscaledDeltaTime,
+                clampedSpeed);
+            if (deltaMilliseconds == 0L)
+            {
+                WriteSimulationProjection();
+                return;
+            }
+
+            float deltaTime = deltaMilliseconds / 1000f;
             ResidentWaterCycleTick physiologyTick = _residentWaterCycle.Advance(
                 deltaTime,
                 _resourceFlow);
@@ -600,6 +611,7 @@ namespace Game.NomadWorkshop.Foundation
             _leisureSequence = 0;
             _residentDecisionSequence = 0;
             _routeRetryRemaining = 0f;
+            _simulationClock.Restore(0L);
 
             var initialFacilities = new List<FoundationFacilityState>();
             for (var i = 0; i < facilityDefinitions.Length; i++)
@@ -2820,6 +2832,16 @@ namespace Game.NomadWorkshop.Foundation
         private void WriteSimulationProjection()
         {
             if (_residentWaterCycle == null) return;
+            NomadCalendarSnapshot calendar = CalendarPolicy.Project(
+                _simulationClock.SimulationTick);
+            SetLong(_model.SimulationTick, _simulationClock.SimulationTick);
+            SetLong(_model.LifeDay, calendar.LifeDay);
+            SetInt(_model.LifeMinuteOfDay, calendar.LifeMinuteOfDay);
+            SetInt(_model.LifeDayProgressPermille, calendar.LifeDayProgressPermille);
+            SetLong(_model.ClimateYear, calendar.ClimateYear);
+            SetInt(_model.SeasonIndex, calendar.SeasonIndex);
+            SetInt(_model.ClimateWeekInSeason, calendar.ClimateWeekInSeason);
+            SetInt(_model.SeasonProgressPermille, calendar.SeasonProgressPermille);
             SetFloat(_model.ResidentThirst, _residentWaterCycle.Thirst);
             SetFloat(_model.ResidentRecreation, _residentRecreation);
             SetInt(
@@ -2932,6 +2954,11 @@ namespace Game.NomadWorkshop.Foundation
         }
 
         private static void SetInt(R3.RP<int> property, int value)
+        {
+            if (property.Value != value) property.Value = value;
+        }
+
+        private static void SetLong(R3.RP<long> property, long value)
         {
             if (property.Value != value) property.Value = value;
         }

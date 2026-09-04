@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**居民脚底根节点 + mL 水循环 / 同量纲库存 + 时间 / 随机 / 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.25**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**统一模拟 Tick / 生活日投影 + 居民脚底根节点 + mL 水循环 / 同量纲库存 + 随机 / 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.26**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -26,7 +26,7 @@
 - `SaveNomadWorkshopProgressCommand` / `LoadNomadWorkshopProgressCommand` 已真实穿过 SSFramework Context 与 `IStorageUtility` 的 JSON、FIFO、原子写和备份边界；当前证明协议与介质往返，尚未冒充玩家可操作的保存 / 读取流程；
 - `DeckPose` 与 `ContinuousFacilityPlacementLedger` 已在无 Unity 依赖的 Simulation 中实现毫米 / 0.1° 连续姿态、位置 / 旋转独立可关吸附、复合有向矩形占地、多层甲板、稳定排序和原子提交；正式玩家场景的 Model / System / View 与存档 DTO 已共用这套姿态真值；
 - 同意图目标先归并，紧急候选优先进入选择池，再在相对高分短名单中用确定性 Softmax 抽样；
-- 纯 C# `NomadCalendarPolicy` 已把唯一模拟毫秒投影为 24 小时生活日与“一昼夜推进一气候周”的连续气候相位；默认十分钟生活日、十二周一季、四季一年仍是待试玩参数，尚未接入场景昼夜表现；
+- Foundation 的移动、动作计时、生理代谢与需求增长现在只消费 `NomadSimulationClock` 提交的整数模拟毫秒；不足 1 ms 的帧内余量会跨帧保留，暂停冻结唯一 `SimulationTick`，倍速只作用于这一入口；`NomadCalendarPolicy` 再从同一 Tick 投影 24 小时生活日与“一昼夜推进一气候周”的气候相位。默认十分钟生活日、十二周一季、四季一年仍是待试玩参数，尚未接入场景昼夜表现；
 - `DeterministicRandom` 以世界 Seed、稳定 owner、领域 id、事件序号和显式样本槽隔离随机结果；Utility AI 已消费同一入口，领域流只需保存下一事件序号，新增调试采样不会挪动后续事件；
 - `FailureHazardAccumulator` 已验证预先取样阈值、分段风险积分、暂停和读取存档具有同一触发边界；老化 / 积尘到风险率、故障模式与严重度的正式设施模型尚未接线；
 - 同一世界 Seed、居民稳定 ID 与决策序号会重现相同随机值、候选分解和选择；
@@ -151,6 +151,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 正式 Foundation PlayMode 15/15（job `42c9a8476b07`），覆盖同步 0.2 / 0.6 m 网格、自由模式自动隐藏、精确停靠、45° 邻接预览 / 落地一致、施工后改去第二座饮水站，以及 `DestinationFull → 如厕 → 恢复饮水`；
 - mL 水循环、量纲边界与 v2 存档字段定向 EditMode 26/26（job `025bdf77a02d`）；完整 Simulation EditMode 94/94（job `4664dcc8e86e`）；完整 Nomad PlayMode 23/23（job `7f4f6d0d2b57`）；
 - 居民落地修复：场景生成契约 EditMode 1/1（job `c7c674513621`），完整 Foundation PlayMode 16/16（job `5853d84acfca`）；Game View 已确认胶囊底部接触甲板，本地忽略证据为 `Screenshots/nomad-foundation-resident-grounded.png`；
+- 统一模拟时钟与日历投影 EditMode 6/6（job `76d96758587e`），完整 Foundation PlayMode 17/17（job `865ea8826059`），覆盖小于 1 ms 余量、倍率、存档 Tick 恢复、暂停冻结和同 Tick 日历投影；Game View 已检查两行时间诊断无截断，本地忽略证据为 `Screenshots/nomad-foundation-unified-clock.png`；
 - 可重建场景管线 EditMode 1/1（job `c3046ae76822`）；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
 - Game View：已实际查看 45° 紧邻既有饮水站时 0/3 Slot 可达但仍可确认的红色幽灵；`Screenshots/nomad-foundation-45deg-preview-parity.png` 同时显示既有设施三个绿色 Slot 与候选三个红色 Slot，无需悬停。同步 0.2 m 网格与基础建造模式见 `Screenshots/nomad-foundation-exact-docking-build-mode.png`（两者均为本地忽略证据）。
@@ -170,4 +171,4 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步把纯内核时钟接入 Foundation 的统一推进与 Inspector 投影，按设施实例建立库存，并让行动样本与不足 1 mL 的代谢余量真正写入检查点；随后用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”，再用长椅或观景点抽离决策协调，并以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。完整四季不会在基础时钟成立前抢跑；之后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。
+下一步按设施实例建立库存，并让统一 `SimulationTick`、行动开始样本与不足 1 mL 的代谢余量真正进入运行检查点；随后用一个设施补齐“积尘 / 老化 / 保养 → 风险率 → 具体故障 / 修理”，再用长椅或观景点抽离决策协调，并以一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。昼夜光照和一种沙尘压力要从同一日历投影消费，但完整四季仍不抢跑；之后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。

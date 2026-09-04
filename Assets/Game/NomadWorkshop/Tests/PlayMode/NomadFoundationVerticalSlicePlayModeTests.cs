@@ -119,6 +119,42 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator UnifiedSimulationClock_PausesAndProjectsOneCalendarSnapshot()
+        {
+            yield return null;
+            long runningTick = _model.SimulationTick.Value;
+            Assert.That(runningTick, Is.GreaterThan(0L));
+
+            NomadCalendarSnapshot projected = NomadCalendarPolicy.Default.Project(runningTick);
+            Assert.That(_model.LifeDay.Value, Is.EqualTo(projected.LifeDay));
+            Assert.That(_model.LifeMinuteOfDay.Value, Is.EqualTo(projected.LifeMinuteOfDay));
+            Assert.That(
+                _model.LifeDayProgressPermille.Value,
+                Is.EqualTo(projected.LifeDayProgressPermille));
+            Assert.That(_model.ClimateYear.Value, Is.EqualTo(projected.ClimateYear));
+            Assert.That(_model.SeasonIndex.Value, Is.EqualTo(projected.SeasonIndex));
+            Assert.That(
+                _model.ClimateWeekInSeason.Value,
+                Is.EqualTo(projected.ClimateWeekInSeason));
+            Assert.That(
+                _model.SeasonProgressPermille.Value,
+                Is.EqualTo(projected.SeasonProgressPermille));
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            long pausedTick = _model.SimulationTick.Value;
+            yield return null;
+            yield return null;
+            Assert.That(
+                _model.SimulationTick.Value,
+                Is.EqualTo(pausedTick),
+                "暂停必须冻结唯一模拟 Tick，而不仅是隐藏日历变化。");
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            yield return null;
+            Assert.That(_model.SimulationTick.Value, Is.GreaterThan(pausedTick));
+        }
+
+        [UnityTest]
         public IEnumerator BuildMode_OwnsPersistentDiagnosticsAndSynchronizedSnapGrid()
         {
             Transform sourceVisual = FindFacilityVisual("initial-vehicle-water-tank");

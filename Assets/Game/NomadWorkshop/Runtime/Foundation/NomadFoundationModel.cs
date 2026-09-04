@@ -14,6 +14,23 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<bool> IsReady { get; private set; } = new(false);
         [field: SerializeField] public RP<bool> IsPaused { get; private set; } = new(false);
         [field: SerializeField] public RP<float> SimulationSpeed { get; private set; } = new(1f);
+        [field: Header("统一模拟时钟（运行时只读观察）")]
+        [field: SerializeField, Tooltip("从本局起点累计的唯一模拟毫秒；暂停时不增长，需求、动作与日历都由它推进。")]
+        public RP<long> SimulationTick { get; private set; } = new(0L);
+        [field: SerializeField, Tooltip("从 1 开始的居民生活日，由统一模拟毫秒投影。")]
+        public RP<long> LifeDay { get; private set; } = new(1L);
+        [field: SerializeField, Tooltip("当前生活日内的分钟，范围 0–1439。")]
+        public RP<int> LifeMinuteOfDay { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("当前生活日的千分比进度，范围 0–999。")]
+        public RP<int> LifeDayProgressPermille { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("从 1 开始的压缩气候年；它与生活日共享同一个模拟 Tick。")]
+        public RP<long> ClimateYear { get; private set; } = new(1L);
+        [field: SerializeField, Tooltip("当前季节的零基相位索引；模拟层暂不硬编码季节名称。")]
+        public RP<int> SeasonIndex { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("当前季节内从 1 开始的气候周。")]
+        public RP<int> ClimateWeekInSeason { get; private set; } = new(1);
+        [field: SerializeField, Tooltip("当前季节的千分比连续进度，范围 0–999。")]
+        public RP<int> SeasonProgressPermille { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationInteractionMode> InteractionMode { get; private set; } =
             new(FoundationInteractionMode.Observe);
         [field: SerializeField] public RP<FoundationPlacementPreviewState> PlacementPreview { get; private set; } =

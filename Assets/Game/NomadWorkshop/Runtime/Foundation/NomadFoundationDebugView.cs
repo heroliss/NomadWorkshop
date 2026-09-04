@@ -17,6 +17,13 @@ namespace Game.NomadWorkshop.Foundation
         private bool _ready;
         private bool _paused;
         private float _speed;
+        private long _simulationTick;
+        private long _lifeDay;
+        private int _lifeMinuteOfDay;
+        private int _lifeDayProgressPermille;
+        private long _climateYear;
+        private int _seasonIndex;
+        private int _climateWeekInSeason;
         private FoundationInteractionMode _interactionMode;
         private FoundationPlacementPreviewState _preview;
         private FoundationFacilityAccessState[] _facilityAccess =
@@ -65,6 +72,17 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.IsReady, value => _ready = value);
             Bag.Subscribe(readModel.IsPaused, value => _paused = value);
             Bag.Subscribe(readModel.SimulationSpeed, value => _speed = value);
+            Bag.Subscribe(readModel.SimulationTick, value => _simulationTick = value);
+            Bag.Subscribe(readModel.LifeDay, value => _lifeDay = value);
+            Bag.Subscribe(readModel.LifeMinuteOfDay, value => _lifeMinuteOfDay = value);
+            Bag.Subscribe(
+                readModel.LifeDayProgressPermille,
+                value => _lifeDayProgressPermille = value);
+            Bag.Subscribe(readModel.ClimateYear, value => _climateYear = value);
+            Bag.Subscribe(readModel.SeasonIndex, value => _seasonIndex = value);
+            Bag.Subscribe(
+                readModel.ClimateWeekInSeason,
+                value => _climateWeekInSeason = value);
             Bag.Subscribe(readModel.InteractionMode, value => _interactionMode = value);
             Bag.Subscribe(readModel.PlacementPreview, value => _preview = value);
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
@@ -138,6 +156,15 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Label("游牧工坊 · 最小垂直切片", _titleStyle);
             GUILayout.Label(
                 "连续建造 → 实体容器搬水 → 饮水；完整方案参与 Utility 决策",
+                _smallStyle);
+            GUILayout.Label(
+                $"第 {_lifeDay} 生活日 · {_lifeMinuteOfDay / 60:00}:" +
+                $"{_lifeMinuteOfDay % 60:00} · 气候年 {_climateYear}",
+                _smallStyle);
+            GUILayout.Label(
+                $"季节相位 {_seasonIndex + 1} 第 {_climateWeekInSeason} 周 · " +
+                $"日进度 {_lifeDayProgressPermille / 10f:0.0}% · " +
+                $"统一 Tick {_simulationTick / 1000d:0.000}s",
                 _smallStyle);
 
             GUILayout.Space(7f);

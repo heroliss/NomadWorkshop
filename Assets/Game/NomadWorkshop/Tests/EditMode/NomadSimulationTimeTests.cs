@@ -7,6 +7,38 @@ namespace Game.NomadWorkshop.Simulation.Tests
     public sealed class NomadSimulationTimeTests
     {
         [Test]
+        public void Clock_CarriesSubMillisecondRemainderAcrossFrames()
+        {
+            var partitioned = new NomadSimulationClock();
+            long committedMilliseconds = 0L;
+            for (var i = 0; i < 2500; i++)
+                committedMilliseconds += partitioned.Advance(0.0004f, 1f);
+
+            var singleStep = new NomadSimulationClock();
+            long singleDelta = singleStep.Advance(1f, 1f);
+
+            Assert.AreEqual(1000L, committedMilliseconds);
+            Assert.AreEqual(singleDelta, committedMilliseconds);
+            Assert.AreEqual(singleStep.SimulationTick, partitioned.SimulationTick);
+        }
+
+        [Test]
+        public void Clock_AppliesSpeedAndRestoresSavedTickWithoutFrameRemainder()
+        {
+            var clock = new NomadSimulationClock();
+
+            Assert.AreEqual(1000L, clock.Advance(0.5f, 2f));
+            Assert.AreEqual(0L, clock.Advance(0.0015f, 0.5f));
+            Assert.AreEqual(1000L, clock.SimulationTick);
+
+            clock.Restore(42_500L);
+
+            Assert.AreEqual(42_500L, clock.SimulationTick);
+            Assert.AreEqual(0L, clock.Advance(0.0005f, 1f));
+            Assert.AreEqual(42_500L, clock.SimulationTick);
+        }
+
+        [Test]
         public void DefaultPolicy_MapsOneLifeDayToOneClimateWeek()
         {
             NomadCalendarPolicy policy = NomadCalendarPolicy.Default;
@@ -73,6 +105,11 @@ namespace Game.NomadWorkshop.Simulation.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => new NomadCalendarPolicy(1, 0, 4));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NomadCalendarPolicy(1, 12, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => NomadCalendarPolicy.Default.Project(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NomadSimulationClock(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new NomadSimulationClock().Advance(-0.01f, 1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new NomadSimulationClock().Advance(0.01f, float.NaN));
         }
     }
 }

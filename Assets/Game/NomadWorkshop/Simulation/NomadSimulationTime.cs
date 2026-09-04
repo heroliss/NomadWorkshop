@@ -3,6 +3,67 @@ using System;
 namespace Game.NomadWorkshop.Simulation
 {
     /// <summary>
+    /// 将真实帧时长和模拟倍率累加为唯一的整数毫秒 Tick。小于 1 ms 的余量会跨帧保留，
+    /// 因而高帧率不会逐帧丢失时间；暂停由调用方停止推进，存档只需保存
+    /// <see cref="SimulationTick"/>，不保存与帧边界有关的小数余量。
+    /// </summary>
+    public sealed class NomadSimulationClock
+    {
+        private decimal _fractionalMilliseconds;
+
+        public NomadSimulationClock(long simulationTick = 0) => Restore(simulationTick);
+
+        /// <summary>从本局起点累计的统一模拟毫秒；这是日历、需求和作业的共同时间真值。</summary>
+        public long SimulationTick { get; private set; }
+
+        /// <summary>
+        /// 推进一次真实帧时长，返回本次实际提交给模拟层的整数毫秒。
+        /// 乘倍率后的不足 1 ms 部分留待后续帧，不会让每帧取整造成系统性变慢。
+        /// </summary>
+        public long Advance(float realDeltaSeconds, float simulationSpeed)
+        {
+            if (float.IsNaN(realDeltaSeconds) ||
+                float.IsInfinity(realDeltaSeconds) ||
+                realDeltaSeconds < 0f)
+                throw new ArgumentOutOfRangeException(
+                    nameof(realDeltaSeconds),
+                    "真实帧时长必须是非负有限值。");
+            if (float.IsNaN(simulationSpeed) ||
+                float.IsInfinity(simulationSpeed) ||
+                simulationSpeed < 0f)
+                throw new ArgumentOutOfRangeException(
+                    nameof(simulationSpeed),
+                    "模拟倍率必须是非负有限值。");
+
+            decimal scaledMilliseconds =
+                (decimal)realDeltaSeconds * (decimal)simulationSpeed * 1000m +
+                _fractionalMilliseconds;
+            decimal wholeMilliseconds = decimal.Floor(scaledMilliseconds);
+            if (wholeMilliseconds > long.MaxValue - SimulationTick)
+                throw new OverflowException("统一模拟毫秒超过 Int64 可表示范围。");
+
+            long deltaMilliseconds = (long)wholeMilliseconds;
+            SimulationTick = checked(SimulationTick + deltaMilliseconds);
+            _fractionalMilliseconds = scaledMilliseconds - wholeMilliseconds;
+            return deltaMilliseconds;
+        }
+
+        /// <summary>
+        /// 从存档 Tick 或确定性起点恢复时钟。帧内小数余量不是业务真值，加载后从零重新累计。
+        /// </summary>
+        public void Restore(long simulationTick)
+        {
+            if (simulationTick < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(simulationTick),
+                    "统一模拟毫秒不能为负数。");
+
+            SimulationTick = simulationTick;
+            _fractionalMilliseconds = 0m;
+        }
+    }
+
+    /// <summary>
     /// 《游牧工坊》生活日与压缩气候年的时间投影参数。参数只解释统一模拟毫秒，
     /// 不拥有暂停、加速或 Unity 帧循环；因此需求、旅途和季节不会各自维护会漂移的时钟。
     /// </summary>
