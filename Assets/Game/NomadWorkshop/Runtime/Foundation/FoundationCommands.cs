@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Game.Framework.Command;
 using R3;
 using UnityEngine;
@@ -127,18 +128,21 @@ namespace Game.NomadWorkshop.Foundation
         }
     }
 
+    [Description("读取 Foundation 的响应式只读状态束")]
     public readonly struct GetFoundationReadModelCommand : ICommand<FoundationReadModel>
     {
         public FoundationReadModel Execute(ICommandContext ctx) =>
             new(ctx.GetModel<NomadFoundationModel>());
     }
 
+    [Description("读取已提交设施快照")]
     public readonly struct GetFoundationFacilitiesCommand : ICommand<FoundationFacilityState[]>
     {
         public FoundationFacilityState[] Execute(ICommandContext ctx) =>
             ctx.GetModel<NomadFoundationModel>().GetFacilitySnapshot();
     }
 
+    [Description("读取设施功能点与可达性快照")]
     public readonly struct GetFoundationFacilityAccessCommand :
         ICommand<FoundationFacilityAccessState[]>
     {
@@ -146,6 +150,7 @@ namespace Game.NomadWorkshop.Foundation
             ctx.GetModel<NomadFoundationModel>().GetFacilityAccessSnapshot();
     }
 
+    [Description("读取每座设施的实例库存快照")]
     public readonly struct GetFoundationFacilityInventoriesCommand :
         ICommand<FoundationFacilityInventoryState[]>
     {
@@ -153,6 +158,7 @@ namespace Game.NomadWorkshop.Foundation
             ctx.GetModel<NomadFoundationModel>().GetFacilityInventorySnapshot();
     }
 
+    [Description("读取设施磨损、保养、积灰与故障快照")]
     public readonly struct GetFoundationFacilityConditionsCommand :
         ICommand<FoundationFacilityConditionState[]>
     {
@@ -160,24 +166,28 @@ namespace Game.NomadWorkshop.Foundation
             ctx.GetModel<NomadFoundationModel>().GetFacilityConditionSnapshot();
     }
 
+    [Description("读取当前可建造设施选项")]
     public readonly struct GetFoundationBuildOptionsCommand : ICommand<FoundationBuildOption[]>
     {
         public FoundationBuildOption[] Execute(ICommandContext ctx) =>
             ctx.GetSystem<NomadFoundationSystem>().GetBuildOptionsSnapshot();
     }
 
+    [Description("进入 Foundation 建造模式")]
     public readonly struct EnterFoundationBuildModeCommand : ICommand
     {
         public void Execute(ICommandContext ctx) =>
             ctx.GetSystem<NomadFoundationSystem>().EnterBuildMode();
     }
 
+    [Description("退出 Foundation 建造模式并取消未提交预览")]
     public readonly struct ExitFoundationBuildModeCommand : ICommand
     {
         public void Execute(ICommandContext ctx) =>
             ctx.GetSystem<NomadFoundationSystem>().ExitBuildMode();
     }
 
+    [Description("开始放置指定设施的建造预览")]
     public readonly struct BeginFacilityPlacementCommand : ICommand
     {
         private readonly string _definitionId;
@@ -243,12 +253,14 @@ namespace Game.NomadWorkshop.Foundation
             ctx.GetSystem<NomadFoundationSystem>().SetGridVisible(_visible);
     }
 
+    [Description("确认当前设施放置事务")]
     public readonly struct ConfirmFacilityPlacementCommand : ICommand
     {
         public void Execute(ICommandContext ctx) =>
             ctx.GetSystem<NomadFoundationSystem>().ConfirmPlacement();
     }
 
+    [Description("取消当前设施放置事务")]
     public readonly struct CancelFacilityPlacementCommand : ICommand
     {
         public void Execute(ICommandContext ctx) =>
