@@ -22,6 +22,9 @@ namespace Game.NomadWorkshop.Simulation
         public static UtilityDecisionPolicy CreateSelectionPolicy() => new()
         {
             RelativeShortlistThreshold = 0.5f,
+            // 候选中的偏好保持为 [0, 1] 的人物属性；这里只决定它在 Foundation
+            // 日常决策里的最大加分，避免“很喜欢”压过真实需求和整项行动成本。
+            PersonalAffinityUtilityScale = 0.35f,
         };
 
         public static ResidentActionPlanProposal CreateWander(
@@ -57,7 +60,7 @@ namespace Game.NomadWorkshop.Simulation
                 },
                 BaseUtility = 0.055f,
                 ComfortBenefit = 0.035f,
-                PersonalAffinity = 0.065f,
+                PersonalAffinity = 0.18f,
                 RestQuality = 0.28f,
                 Effort = 0.07f,
                 WorkIntensity = 0.04f,
@@ -84,10 +87,10 @@ namespace Game.NomadWorkshop.Simulation
                 },
                 BaseUtility = 0.05f,
                 ComfortBenefit = 0.03f,
-                // Foundation 只有两种基础休闲时，用偏好差配合正常 Softmax 温度形成约 2:1 的
+                // Foundation 只有两种基础休闲时，用归一化偏好差配合正常 Softmax 温度形成约 2:1 的
                 // 发呆/散步选择比。以后加入作画、聊天、观景等候选后，它们会自然分走概率，
                 // 不需要另写“空闲时掷固定百分比”的第二套决策规则。
-                PersonalAffinity = 0.17f,
+                PersonalAffinity = 0.48f,
                 RestQuality = 0.42f,
                 NeedEffects = ResidentWellbeing.CreateExpectedEffects(
                     ResidentWellbeingActivity.Daydream,

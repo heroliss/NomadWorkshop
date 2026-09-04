@@ -49,6 +49,24 @@ namespace Game.NomadWorkshop.Simulation
         }
 
         /// <summary>
+        /// 为测试、离线跑数和语义快进提交精确的整数模拟毫秒。它与真实帧入口共享
+        /// <see cref="SimulationTick"/>，但不清除已累计的亚毫秒墙钟余量；因此暂停后运行
+        /// Harness 再恢复实时帧，不会悄悄吞掉先前不足 1 ms 的时间。
+        /// </summary>
+        public long AdvanceMilliseconds(long deltaMilliseconds)
+        {
+            if (deltaMilliseconds < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(deltaMilliseconds),
+                    "精确模拟步长必须是非负毫秒。 ");
+            if (deltaMilliseconds > long.MaxValue - SimulationTick)
+                throw new OverflowException("统一模拟毫秒超过 Int64 可表示范围。 ");
+
+            SimulationTick = checked(SimulationTick + deltaMilliseconds);
+            return deltaMilliseconds;
+        }
+
+        /// <summary>
         /// 从存档 Tick 或确定性起点恢复时钟。帧内小数余量不是业务真值，加载后从零重新累计。
         /// </summary>
         public void Restore(long simulationTick)

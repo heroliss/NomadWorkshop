@@ -125,5 +125,126 @@ namespace Game.NomadWorkshop.Tests
                 Is.InRange(1.7f, 2.3f),
                 $"当前 Foundation 基线应接近 2:1，而不是固定轮换；实际 {daydreamCount}:{wanderCount}。 ");
         }
+
+        [Test]
+        public void HobbyPreference_IsBoundedAndNeedSensitiveWithoutErasingBasicLeisure()
+        {
+            var evaluator = new ResidentActionPlanEvaluator();
+            ResidentActionCandidate wander = evaluator.Evaluate(
+                ResidentLeisurePlanFactory.CreateWander(2.8f, 2.8f, 3.5f, "test"),
+                new ResidentDecisionCondition(0f)).Candidate;
+            ResidentActionCandidate daydream = evaluator.Evaluate(
+                ResidentLeisurePlanFactory.CreateDaydream(3.5f),
+                new ResidentDecisionCondition(0f)).Candidate;
+            ResidentActionCandidate hobby = evaluator.Evaluate(
+                ResidentLeisurePlanFactory.CreateHobbyAtFacility(
+                    "facility-0007",
+                    "观景画架",
+                    2f,
+                    2.8f,
+                    8f,
+                    personalAffinity: 0.34f),
+                new ResidentDecisionCondition(0f)).Candidate;
+            var engine = new UtilityDecisionEngine();
+            UtilityDecisionPolicy policy = ResidentLeisurePlanFactory.CreateSelectionPolicy();
+            ResidentNeedState[] satisfiedEntertainment = LeisureNeeds(entertainmentDeficit: 0.05f);
+            ResidentNeedState[] lowEntertainment = LeisureNeeds(entertainmentDeficit: 0.75f);
+            var satisfiedCounts = new int[3];
+            var lowCounts = new int[3];
+
+            for (var sequence = 0; sequence < 1_200; sequence++)
+            {
+                CountSelection(
+                    engine.Decide(
+                        new ResidentDecisionContext(
+                            20260905,
+                            0x4E4F4D4144UL,
+                            sequence,
+                            satisfiedEntertainment,
+                            new[] { daydream, wander, hobby }),
+                        policy),
+                    satisfiedCounts);
+                CountSelection(
+                    engine.Decide(
+                        new ResidentDecisionContext(
+                            20260905,
+                            0x4E4F4D4144UL,
+                            sequence,
+                            lowEntertainment,
+                            new[] { daydream, wander, hobby }),
+                        policy),
+                    lowCounts);
+            }
+
+            Assert.That(satisfiedCounts[0], Is.GreaterThan(satisfiedCounts[1]),
+                "娱乐充足时仍保留约定的发呆高于散步倾向。 ");
+            Assert.That(satisfiedCounts[1], Is.GreaterThan(0),
+                "加入画架后，散步不能在短名单形成阶段永久消失。 ");
+            Assert.That(satisfiedCounts[2], Is.GreaterThan(0),
+                "个人爱好即使不是当前强需求，也应保留合理机会。 ");
+            Assert.That(satisfiedCounts[2], Is.LessThan(satisfiedCounts[0] + satisfiedCounts[1]),
+                "娱乐已满足时，单一爱好不应垄断所有基础休整。 ");
+            Assert.That(lowCounts[2], Is.GreaterThan(satisfiedCounts[2]),
+                "娱乐缺口升高必须通过真实需求收益提高爱好出现率。 ");
+
+            ResidentDecisionResult traceSample = engine.Decide(
+                new ResidentDecisionContext(
+                    20260905,
+                    0x4E4F4D4144UL,
+                    0,
+                    satisfiedEntertainment,
+                    new[] { daydream, wander, hobby }),
+                policy);
+            CandidateDecisionTrace hobbyTrace = FindTrace(traceSample, hobby.Id);
+            Assert.That(
+                hobbyTrace.Score.PersonalBenefit,
+                Is.EqualTo(0.34f * policy.PersonalAffinityUtilityScale).Within(0.0001f),
+                "0–1 人物偏好应先映射到有边界的 Utility 加分，而不是直接压过整项方案。 ");
+        }
+
+        private static ResidentNeedState[] LeisureNeeds(float entertainmentDeficit) => new[]
+        {
+            new ResidentNeedState(
+                ResidentNeed.Entertainment,
+                entertainmentDeficit,
+                ResidentWellbeing.EntertainmentDecayPerSecond,
+                importance: 0.68f,
+                canPromoteToUrgent: false),
+            new ResidentNeedState(
+                ResidentNeed.Fatigue,
+                0.28f,
+                ResidentWellbeing.BaseFatigueGrowthPerSecond,
+                importance: 0.82f),
+            new ResidentNeedState(
+                ResidentNeed.Stress,
+                0.22f,
+                0f,
+                importance: 0.74f),
+        };
+
+        private static void CountSelection(ResidentDecisionResult result, int[] counts)
+        {
+            Assert.That(result.Selected, Is.Not.Null);
+            if (result.Selected.Id == ResidentLeisurePlanFactory.DaydreamCandidateId)
+                counts[0]++;
+            else if (result.Selected.Id == ResidentLeisurePlanFactory.WanderCandidateId)
+                counts[1]++;
+            else if (result.Selected.IntentId == ResidentLeisurePlanFactory.HobbyIntentId)
+                counts[2]++;
+            else
+                Assert.Fail($"未知休闲候选：{result.Selected.Id}");
+        }
+
+        private static CandidateDecisionTrace FindTrace(
+            ResidentDecisionResult result,
+            string candidateId)
+        {
+            foreach (CandidateDecisionTrace trace in result.Traces)
+            {
+                if (trace.Candidate.Id == candidateId) return trace;
+            }
+            Assert.Fail($"没有找到决策轨迹：{candidateId}");
+            return null;
+        }
     }
 }

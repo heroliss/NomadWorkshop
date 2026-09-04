@@ -231,7 +231,9 @@ namespace Game.NomadWorkshop.Simulation
             }
 
             float workBenefit = candidate.WorkUrgency + candidate.PlayerPriority + candidate.DependencyValue;
-            float personalBenefit = candidate.SkillFit + candidate.PersonalAffinity;
+            float personalBenefit = candidate.SkillFit +
+                                    candidate.PersonalAffinity *
+                                    policy.PersonalAffinityUtilityScale;
             float persistenceBenefit = candidate.WaitingAge + candidate.ContinuityBonus;
             float executionCost = candidate.TravelCost + candidate.DurationCost + candidate.ResourceCost
                                   + candidate.RiskCost + candidate.SwitchCost;
@@ -396,6 +398,11 @@ namespace Game.NomadWorkshop.Simulation
         {
             if (policy.NeedPressureExponent <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(policy), "需求压力指数必须大于零。");
+            if (!float.IsFinite(policy.PersonalAffinityUtilityScale) ||
+                policy.PersonalAffinityUtilityScale < 0f)
+                throw new ArgumentOutOfRangeException(
+                    nameof(policy),
+                    "个人偏好效用比例必须是非负有限值。");
             if (policy.UrgentNeedDeficit <= 0f || policy.UrgentNeedDeficit >= 1f)
                 throw new ArgumentOutOfRangeException(nameof(policy), "紧迫需求阈值必须在 (0, 1) 内。");
             if (policy.UrgentPressureBoost < 0f)

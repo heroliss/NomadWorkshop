@@ -265,6 +265,19 @@ namespace Game.NomadWorkshop.Foundation
             long deltaMilliseconds = _simulationClock.Advance(
                 Time.unscaledDeltaTime,
                 clampedSpeed);
+            AdvanceSimulation(deltaMilliseconds);
+        }
+
+        /// <summary>
+        /// 推进一次已经提交到统一时钟的模拟步。实时 Update 与长时 Harness 共用这条路径，
+        /// 避免跑数工具复制一份随后悄悄漂移的生理、设施状态或行动状态机。
+        /// </summary>
+        private void AdvanceSimulation(long deltaMilliseconds)
+        {
+            if (deltaMilliseconds < 0L)
+                throw new ArgumentOutOfRangeException(
+                    nameof(deltaMilliseconds),
+                    "Foundation 模拟步长不能为负数。 ");
             if (deltaMilliseconds == 0L)
             {
                 WriteSimulationProjection();
@@ -741,6 +754,20 @@ namespace Game.NomadWorkshop.Foundation
             initialFatigue = Mathf.Clamp01(fatigue);
             initialStress = Mathf.Clamp01(stress);
             residentPaintingAffinity = Mathf.Clamp01(paintingAffinity);
+        }
+
+        /// <summary>
+        /// 长时模拟回归可恢复接近正式玩法的休闲时长，避免普通快速 PlayMode 配置把
+        /// 0.05 秒发呆和 0.5 秒爱好的完成次数误读成实际时间占比。
+        /// </summary>
+        public void ConfigureLeisureTimingsForTests(
+            float configuredLeisureSeconds,
+            float configuredGroundRestSeconds,
+            float configuredHobbySeconds)
+        {
+            leisureSeconds = Mathf.Max(0.1f, configuredLeisureSeconds);
+            groundRestSeconds = Mathf.Max(0.1f, configuredGroundRestSeconds);
+            hobbySeconds = Mathf.Max(0.1f, configuredHobbySeconds);
         }
 #endif
 

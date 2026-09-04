@@ -189,6 +189,11 @@ namespace Game.NomadWorkshop.Simulation
     public sealed class UtilityDecisionPolicy
     {
         public float NeedPressureExponent { get; set; } = 2.4f;
+        /// <summary>
+        /// 把候选中 [0, 1] 的个人偏好映射为 Utility 加分。偏好描述“喜欢程度”，不应直接与
+        /// 已经归一化、加权后的需求收益混成同一量纲；不同玩法可按自身候选密度选择比例。
+        /// </summary>
+        public float PersonalAffinityUtilityScale { get; set; } = 1f;
         /// <summary>未配置专属曲线且允许风险晋升的需求，在达到该缺口后至少进入 Urgent 层。</summary>
         public float UrgentNeedDeficit { get; set; } = 0.82f;
         /// <summary>默认需求曲线越过紧迫点后的附加非线性压力。</summary>

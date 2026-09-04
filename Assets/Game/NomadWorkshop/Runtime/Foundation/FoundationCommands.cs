@@ -196,6 +196,43 @@ namespace Game.NomadWorkshop.Foundation
             ctx.GetSystem<NomadFoundationSystem>().TryStartCupMoveHarness();
     }
 
+    [Description("暂停态按固定毫秒步长运行 Foundation 长时模拟并返回结构化证据")]
+    public readonly struct RunFoundationSoakHarnessCommand :
+        ICommand<FoundationSoakRunResult>
+    {
+        private readonly long _durationMilliseconds;
+        private readonly int _stepMilliseconds;
+        private readonly long _observableStallLimitMilliseconds;
+
+        public RunFoundationSoakHarnessCommand(
+            long durationMilliseconds,
+            int stepMilliseconds = 100,
+            long observableStallLimitMilliseconds = 30_000L)
+        {
+            _durationMilliseconds = durationMilliseconds;
+            _stepMilliseconds = stepMilliseconds;
+            _observableStallLimitMilliseconds = observableStallLimitMilliseconds;
+        }
+
+        public FoundationSoakRunResult Execute(ICommandContext ctx) =>
+            ctx.GetSystem<NomadFoundationSystem>().RunSoakHarness(
+                _durationMilliseconds,
+                _stepMilliseconds,
+                _observableStallLimitMilliseconds);
+    }
+
+    [Description("开发 Harness 切换世界 Seed 并丢弃当前进度后复位")]
+    public readonly struct ResetFoundationForSoakHarnessCommand : ICommand<bool>
+    {
+        private readonly int _worldSeed;
+
+        public ResetFoundationForSoakHarnessCommand(int worldSeed) =>
+            _worldSeed = worldSeed;
+
+        public bool Execute(ICommandContext ctx) =>
+            ctx.GetSystem<NomadFoundationSystem>().TryResetForSoakHarness(_worldSeed);
+    }
+
     [Description("读取当前可建造设施选项")]
     public readonly struct GetFoundationBuildOptionsCommand : ICommand<FoundationBuildOption[]>
     {

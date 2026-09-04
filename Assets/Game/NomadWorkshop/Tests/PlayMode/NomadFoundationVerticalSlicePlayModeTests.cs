@@ -625,6 +625,165 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Is.LessThanOrEqualTo(0.001f));
         }
 
+        [Test]
+        public void SoakHarness_RejectsLiveUpdateAndLeavesClockUntouched()
+        {
+            long tickBefore = _model.SimulationTick.Value;
+
+            FoundationSoakRunResult result = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(10_000L, 100));
+
+            Assert.That(result.Accepted, Is.False);
+            Assert.That(result.StopReason, Is.EqualTo(FoundationSoakStopReason.RequiresPause));
+            Assert.That(result.StepCount, Is.Zero);
+            Assert.That(_model.SimulationTick.Value, Is.EqualTo(tickBefore));
+        }
+
+        [UnityTest]
+        public IEnumerator SoakHarness_SameSeedAndSetupReplayExactTrajectory()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            yield return ResetAndBuildSoakScenario(271_828);
+
+            FoundationSoakRunResult first = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(60_000L, 100));
+
+            yield return ResetAndBuildSoakScenario(271_828);
+            FoundationSoakRunResult replay = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(60_000L, 100));
+
+            Assert.That(first.StopReason, Is.EqualTo(FoundationSoakStopReason.DurationReached));
+            Assert.That(replay.StopReason, Is.EqualTo(first.StopReason));
+            Assert.That(replay.StartSimulationTick, Is.EqualTo(first.StartSimulationTick));
+            Assert.That(replay.EndSimulationTick, Is.EqualTo(first.EndSimulationTick));
+            Assert.That(replay.StepCount, Is.EqualTo(first.StepCount));
+            Assert.That(replay.TrajectoryChecksum, Is.EqualTo(first.TrajectoryChecksum));
+            Assert.That(
+                System.BitConverter.SingleToInt32Bits(replay.MinimumHealth),
+                Is.EqualTo(System.BitConverter.SingleToInt32Bits(first.MinimumHealth)));
+            Assert.That(replay.CompletedDrinkDelta, Is.EqualTo(first.CompletedDrinkDelta));
+            Assert.That(
+                replay.CompletedToiletUseDelta,
+                Is.EqualTo(first.CompletedToiletUseDelta));
+            Assert.That(replay.CompletedDaydreamDelta, Is.EqualTo(first.CompletedDaydreamDelta));
+            Assert.That(replay.CompletedWanderDelta, Is.EqualTo(first.CompletedWanderDelta));
+            Assert.That(replay.CompletedHobbyDelta, Is.EqualTo(first.CompletedHobbyDelta));
+            Assert.That(first.MaximumAbsoluteWaterDeviationMilliliters, Is.Zero);
+            Debug.Log($"[NomadWorkshop.Soak] deterministic: {first}");
+        }
+
+        [UnityTest]
+        public IEnumerator SoakHarness_SameSafeCheckpointReplaysExactContinuation()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            yield return ResetAndBuildSoakScenario(16_180_339);
+            FoundationSoakRunResult warmup = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(60_000L, 100));
+            Assert.That(warmup.CompletedRequestedDuration, Is.True);
+
+            NomadWorkshopSaveData checkpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            Assert.That(checkpoint.SimulationTick, Is.EqualTo(60_000L));
+            Assert.That(checkpoint.Residents[0].ActiveAction, Is.Null,
+                "Foundation 存档应回到可重建业务边界，不序列化半个路径或动画。 ");
+
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+            FoundationSoakRunResult firstContinuation = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(90_000L, 100));
+
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+            FoundationSoakRunResult replayContinuation = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(90_000L, 100));
+
+            Assert.That(firstContinuation.StopReason,
+                Is.EqualTo(FoundationSoakStopReason.DurationReached));
+            Assert.That(replayContinuation.StopReason, Is.EqualTo(firstContinuation.StopReason));
+            Assert.That(firstContinuation.StartSimulationTick, Is.EqualTo(60_000L));
+            Assert.That(firstContinuation.EndSimulationTick, Is.EqualTo(150_000L));
+            Assert.That(replayContinuation.StartSimulationTick,
+                Is.EqualTo(firstContinuation.StartSimulationTick));
+            Assert.That(replayContinuation.EndSimulationTick,
+                Is.EqualTo(firstContinuation.EndSimulationTick));
+            Assert.That(replayContinuation.TrajectoryChecksum,
+                Is.EqualTo(firstContinuation.TrajectoryChecksum),
+                "同一安全检查点必须重放同一条逐步轨迹，而不只是最终水量碰巧相同。 ");
+            Assert.That(replayContinuation.CompletedDrinkDelta,
+                Is.EqualTo(firstContinuation.CompletedDrinkDelta));
+            Assert.That(replayContinuation.CompletedToiletUseDelta,
+                Is.EqualTo(firstContinuation.CompletedToiletUseDelta));
+            Assert.That(replayContinuation.CompletedDaydreamDelta,
+                Is.EqualTo(firstContinuation.CompletedDaydreamDelta));
+            Assert.That(replayContinuation.CompletedWanderDelta,
+                Is.EqualTo(firstContinuation.CompletedWanderDelta));
+            Assert.That(replayContinuation.CompletedHobbyDelta,
+                Is.EqualTo(firstContinuation.CompletedHobbyDelta));
+            Assert.That(firstContinuation.MaximumAbsoluteWaterDeviationMilliliters, Is.Zero);
+            Assert.That(replayContinuation.MaximumAbsoluteWaterDeviationMilliliters, Is.Zero);
+            Debug.Log($"[NomadWorkshop.Soak] checkpoint continuation: {firstContinuation}");
+        }
+
+        [UnityTest]
+        public IEnumerator SoakHarness_MultipleSeedsAndStepSizesExposeBoundedDistribution()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            int[] seeds = { 1729, 17_311, 94_217, 314_159 };
+            int[] steps = { 50, 100, 50, 100 };
+            var totalCompletedActions = 0;
+            var totalDaydreams = 0;
+            var totalWanders = 0;
+            var totalHobbies = 0;
+
+            for (var index = 0; index < seeds.Length; index++)
+            {
+                yield return ResetAndBuildSoakScenario(seeds[index]);
+                FoundationSoakRunResult result = _context.ExecuteCommand(
+                    new RunFoundationSoakHarnessCommand(
+                        150_000L,
+                        steps[index],
+                        observableStallLimitMilliseconds: 30_000L));
+
+                Debug.Log($"[NomadWorkshop.Soak] distribution[{index}]: {result}");
+                Assert.That(
+                    result.StopReason,
+                    Is.EqualTo(FoundationSoakStopReason.DurationReached),
+                    $"当前四分之一个生活日基线不应死亡或停滞：{result}");
+                Assert.That(result.ElapsedSimulationMilliseconds, Is.EqualTo(150_000L));
+                Assert.That(result.MaximumAbsoluteWaterDeviationMilliliters, Is.Zero);
+                Assert.That(result.InitialWaterTotalMilliliters, Is.EqualTo(60_000L));
+                Assert.That(result.FinalWaterTotalMilliliters, Is.EqualTo(60_000L));
+                Assert.That(result.LongestObservableStallMilliseconds, Is.LessThan(30_000L));
+                Assert.That(result.MinimumHealth, Is.GreaterThan(0f));
+                Assert.That(result.CompletedDaydreamDelta, Is.GreaterThan(0),
+                    $"Seed {seeds[index]} 的基础发呆不应被单一爱好挤出：{result}");
+                Assert.That(result.CompletedWanderDelta, Is.GreaterThan(0),
+                    $"Seed {seeds[index]} 的散步不应在短名单阶段永久消失：{result}");
+                Assert.That(result.CompletedHobbyDelta, Is.GreaterThan(0),
+                    $"Seed {seeds[index]} 应能实际使用已建造的观景画架：{result}");
+                totalDaydreams += result.CompletedDaydreamDelta;
+                totalWanders += result.CompletedWanderDelta;
+                totalHobbies += result.CompletedHobbyDelta;
+                totalCompletedActions +=
+                    result.CompletedDrinkDelta +
+                    result.CompletedToiletUseDelta +
+                    result.CompletedDaydreamDelta +
+                    result.CompletedWanderDelta +
+                    result.CompletedGroundRestDelta +
+                    result.CompletedHobbyDelta;
+            }
+
+            Assert.That(
+                totalCompletedActions,
+                Is.GreaterThan(0),
+                "长跑必须至少执行一项可观察行动，不能只让统一时钟空转。 ");
+            Assert.That(totalDaydreams, Is.GreaterThan(totalWanders),
+                "跨 Seed 的 Foundation 基线仍应保留发呆高于散步的柔性倾向。 ");
+            Assert.That(totalHobbies, Is.LessThan(totalDaydreams + totalWanders),
+                "娱乐尚未形成强缺口时，单一画架爱好不应垄断全部休闲时间。 ");
+        }
+
         [UnityTest]
         public IEnumerator BuildDrinkingStation_ResidentHaulsRealWaterAndDrinks()
         {
@@ -2047,6 +2206,25 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 $"测试设施 {definitionId} 应允许确认，实际失败为 {preview.Failure}。 ");
             _context.ExecuteCommand(new ConfirmFacilityPlacementCommand());
             yield return WaitForBuildTransaction();
+        }
+
+        private IEnumerator ResetAndBuildSoakScenario(int worldSeed)
+        {
+            // 普通 PlayMode 用极短动作加快边界测试；长跑则恢复接近正式配置的路速和
+            // 休闲时长，否则“完成次数”会被测试步长与 0.05 秒动作放大，不能解释行为占比。
+            _system.ConfigureTimingsForTests(16f, 2.8f);
+            _system.ConfigureLeisureTimingsForTests(3.5f, 20f, 8f);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Assert.That(
+                _context.ExecuteCommand(new ResetFoundationForSoakHarnessCommand(worldSeed)),
+                Is.True,
+                $"Seed {worldSeed} 应能在暂停且无建造事务时重建实验起点。 ");
+            yield return null;
+            yield return BuildFacility("drinking-station", 0, 0);
+            yield return BuildFacility("observation-easel", 1500, 0);
+            yield return BuildFacility("toilet", 3000, 0);
+            Assert.That(_model.IsPaused.Value, Is.True);
+            Assert.That(_model.SimulationTick.Value, Is.Zero);
         }
 
         private static void AssertResidentDockedToAnySlot(

@@ -39,6 +39,21 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void Clock_ExactHarnessStepPreservesExistingFractionalRemainder()
+        {
+            var clock = new NomadSimulationClock();
+
+            Assert.AreEqual(0L, clock.Advance(0.0005f, 1f));
+            Assert.AreEqual(250L, clock.AdvanceMilliseconds(250L));
+            Assert.AreEqual(250L, clock.SimulationTick);
+            Assert.AreEqual(
+                1L,
+                clock.Advance(0.0005f, 1f),
+                "精确快进不应清除实时入口此前保留的半毫秒余量。 ");
+            Assert.AreEqual(251L, clock.SimulationTick);
+        }
+
+        [Test]
         public void DefaultPolicy_MapsOneLifeDayToOneClimateWeek()
         {
             NomadCalendarPolicy policy = NomadCalendarPolicy.Default;
@@ -110,6 +125,8 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 new NomadSimulationClock().Advance(-0.01f, 1f));
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 new NomadSimulationClock().Advance(0.01f, float.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new NomadSimulationClock().AdvanceMilliseconds(-1));
         }
     }
 }

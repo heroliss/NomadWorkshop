@@ -75,6 +75,8 @@ namespace Game.NomadWorkshop.Foundation
         private int _completedGroundRests;
         private int _completedHobbies;
         private int _completedWorldItemMoves;
+        private bool _hasSoakResult;
+        private FoundationSoakRunResult _lastSoakResult;
         private float _actionProgress;
         private string _currentTask = string.Empty;
         private string _lastBlocker = string.Empty;
@@ -943,9 +945,40 @@ namespace Game.NomadWorkshop.Foundation
             if (GUILayout.Button("0.5×")) this.ExecuteCommand(new SetFoundationSpeedCommand(0.5f));
             if (GUILayout.Button("1×")) this.ExecuteCommand(new SetFoundationSpeedCommand(1f));
             if (GUILayout.Button("4×")) this.ExecuteCommand(new SetFoundationSpeedCommand(4f));
-            if (GUILayout.Button("复位")) this.ExecuteCommand(new ResetFoundationSliceCommand());
+            if (GUILayout.Button("复位"))
+            {
+                this.ExecuteCommand(new ResetFoundationSliceCommand());
+                _hasSoakResult = false;
+            }
             GUILayout.EndHorizontal();
             GUILayout.Label($"Ready={_ready} · Speed={_speed:0.##}×", _smallStyle);
+            bool previousEnabled = GUI.enabled;
+            GUI.enabled = previousEnabled &&
+                          _paused &&
+                          _buildTransactionPhase == FoundationBuildTransactionPhase.Idle;
+            if (GUILayout.Button(new GUIContent(
+                    "快进 6 个生活小时并审计",
+                    "仅在暂停态运行：按 100 ms 固定步长推进 150,000 模拟毫秒，" +
+                    "检查水量守恒、居民极值、故障时刻与可观察停滞；这不是玩家输入或平衡结论。")))
+            {
+                _lastSoakResult = this.ExecuteCommand(
+                    new RunFoundationSoakHarnessCommand(150_000L));
+                _hasSoakResult = true;
+            }
+            GUI.enabled = previousEnabled;
+            if (_hasSoakResult)
+            {
+                GUILayout.Label(_lastSoakResult.ToString(), _smallStyle);
+                GUILayout.Label(
+                    $"极值：健康最低 {_lastSoakResult.MinimumHealth:P0} · " +
+                    $"口渴最高 {_lastSoakResult.MaximumThirst:P0} · " +
+                    $"娱乐最低 {_lastSoakResult.MinimumEntertainment:P0} · " +
+                    $"疲劳最高 {_lastSoakResult.MaximumFatigue:P0} · " +
+                    $"压力最高 {_lastSoakResult.MaximumStress:P0}",
+                    _smallStyle);
+                if (!string.IsNullOrEmpty(_lastSoakResult.FinalBlocker))
+                    GUILayout.Label($"结束诊断：{_lastSoakResult.FinalBlocker}", _smallStyle);
+            }
             GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
