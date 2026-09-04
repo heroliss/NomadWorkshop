@@ -34,7 +34,7 @@ Source Vertex 与 Runtime Vertex 不是同一个指标。硬边、法线、UV �
 
 ## 当前视觉边界
 
-项目默认 Universal RP Renderer 仍是 `Renderer2DData`。本 Import Preview 已人工确认模型直立、比例合理、轮廓和三种基础颜色可见，但它不负责验证 Metallic、Roughness、法线、3D 阴影和灯光，所以 rendering verdict 继续保持 `inconclusive`。独立的 [`Rendering/Urp3D`](../../Rendering/Urp3D/README.md) 已通过相机显式选择次级 Universal Renderer 补上首轮 PBR 显示证据，没有替换全局默认值；两个场景的结论不能混用。
+项目默认 Universal RP Renderer 现为 `UniversalRendererData`，既有 2D 场景则显式固定 `Renderer2DData`。因此本 Import Preview 已具备 PBR、阴影和法线响应的 3D 渲染前提，审计结论从旧的 `inconclusive` 收紧为 `manual_review_required`：自动化仍只能证明 Renderer 与资产契约，构图、材质可信度和最终画面必须查看代表性 Game View。独立的 [`Rendering/Urp3D`](../../Rendering/Urp3D/README.md) 继续保存更完整的灯光、后处理与视觉基线证据。
 
 ## 删除边界
 

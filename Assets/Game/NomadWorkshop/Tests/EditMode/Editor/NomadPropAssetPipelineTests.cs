@@ -50,12 +50,12 @@ namespace Game.NomadWorkshop.Editor.Tests
         }
 
         [Test]
-        public void CurrentRendererKeepsThreeDimensionalLookAsAnExplicitOpenQuestion()
+        public void CurrentRendererRequiresManualReviewAfterThreeDimensionalBaseline()
         {
             NomadPropAssetAudit audit = NomadPropAssetPipeline.Audit();
 
-            Assert.That(audit.RenderingVerdict, Does.StartWith("inconclusive"));
-            Assert.That(audit.RenderingVerdict, Does.Contain("Renderer2DData"));
+            Assert.That(audit.RenderingVerdict, Does.StartWith("manual_review_required"));
+            Assert.That(audit.RenderingVerdict, Does.Contain("UniversalRendererData"));
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<SceneAsset>(
                 NomadPropAssetPipeline.PreviewScenePath));
         }
