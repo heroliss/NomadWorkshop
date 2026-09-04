@@ -90,7 +90,7 @@ NomadWorkshop/
 
 存档同样遵守这条边界：`Simulation/Persistence` 只描述可迁移的业务快照与恢复决策，`Runtime/Persistence` 才通过异步 Command 借用框架 `IStorageUtility`。有长期价值的场景及明确退出条件见 [`docs/nomad-workshop-foundation-vertical-slice.md`](../../../docs/nomad-workshop-foundation-vertical-slice.md)；导航、物质链和资产 Preview 是开发 Harness，不进入正式 Player Build，也不写玩家默认存档槽。
 
-正式 Foundation 已完成从逐格摆放 / 四方向 A* 到连续 `DeckPose`、可选吸附、InteractionGroup / Slot、可修复可达状态和可回滚 NavMesh 更新的迁移。旧格子算法只保留为无场景纯 C# 回归；多人局部避让仍由隔离 Harness 验证，尚未冒充正式多居民实现。详见 [`docs/nomad-workshop-navigation-interaction-design.md`](../../../docs/nomad-workshop-navigation-interaction-design.md)。
+正式 Foundation 已完成从逐格摆放 / 四方向 A* 到连续 `DeckPose`、可选吸附、InteractionGroup / Slot、可修复可达状态和可回滚 NavMesh 更新的迁移。旧格子算法只保留为无场景纯 C# 回归；多人局部避让仍由隔离 Harness 验证，尚未冒充正式多居民实现。详见 [`docs/nomad-workshop-navigation-interaction-design.md`](../../../docs/nomad-workshop-navigation-interaction-design.md)。水罐、杯盘和地面建材的可计算放置区，以及蓝图→搬料→多人施工的分期契约见 [`docs/nomad-workshop-world-placement-and-construction.md`](../../../docs/nomad-workshop-world-placement-and-construction.md)。
 
 ## 运行与观察
 
