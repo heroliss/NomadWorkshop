@@ -11,6 +11,15 @@ namespace Game.NomadWorkshop.Simulation
         public const string WanderCandidateId = "leisure:wander-open-deck";
         public const string DaydreamCandidateId = "leisure:daydream-in-place";
 
+        /// <summary>
+        /// 低风险休闲允许比工作 / 生存决策更宽的合理候选池；Softmax 仍会按成本连续降低概率。
+        /// 这项政策不能用于紧急任务，否则可能让本应排除的高风险行为重新进入抽样。
+        /// </summary>
+        public static UtilityDecisionPolicy CreateSelectionPolicy() => new()
+        {
+            RelativeShortlistThreshold = 0.5f,
+        };
+
         public static ResidentActionPlanProposal CreateWander(
             float pathDistanceMeters,
             float moveSpeedMetersPerSecond,

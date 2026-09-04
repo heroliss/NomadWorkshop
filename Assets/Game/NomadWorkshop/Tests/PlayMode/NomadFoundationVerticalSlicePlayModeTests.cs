@@ -655,16 +655,25 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _context.ExecuteCommand(new ConfirmFacilityPlacementCommand());
             yield return WaitForBuildTransaction();
 
-            const int frameLimit = 360;
+            const int targetLeisureCount = 12;
+            const int frameLimit = 720;
             for (var i = 0;
-                 i < frameLimit && _model.CompletedLeisureCount.Value == 0;
+                 i < frameLimit && _model.CompletedLeisureCount.Value < targetLeisureCount;
                  i++)
                 yield return null;
 
             Assert.That(
                 _model.CompletedLeisureCount.Value,
+                Is.GreaterThanOrEqualTo(targetLeisureCount),
+                "必要饮水与低库存补货完成后，居民应能持续产生自主休闲。 ");
+            Assert.That(
+                _model.CompletedDaydreamCount.Value,
                 Is.GreaterThan(0),
-                "必要饮水与低库存补货完成后，居民应能自主散步或原地休息。");
+                "低娱乐缺口稳态仍应保留发呆候选。 ");
+            Assert.That(
+                _model.CompletedWanderCount.Value,
+                Is.GreaterThan(0),
+                "散步不能因路径成本与相对短名单的双重筛选而永久消失。 ");
             FoundationActionPlanProjection plan = _model.LatestActionPlan.Value;
             Assert.That(
                 plan.CandidateId,
@@ -806,7 +815,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             yield return null;
             _context.ExecuteCommand(new ConfirmFacilityPlacementCommand());
             yield return WaitForBuildTransaction();
-            yield return null;
+            const int decisionFrameLimit = 60;
+            for (var i = 0;
+                 i < decisionFrameLimit &&
+                 _model.ResidentPhase.Value != FoundationResidentPhase.Blocked;
+                 i++)
+                yield return null;
 
             FoundationActionPlanProjection plan = _model.LatestActionPlan.Value;
             Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Blocked));

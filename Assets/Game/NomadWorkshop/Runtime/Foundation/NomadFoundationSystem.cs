@@ -17,7 +17,8 @@ namespace Game.NomadWorkshop.Foundation
     {
         private const ulong ResidentOwnerId = 0xF01UL;
         private const float DrinkNeedThreshold = 0.55f;
-        private const float ToiletNeedThreshold = 0.58f;
+        private const string BladderOpportunityRandomStreamId =
+            "resident-need-opportunity:bladder";
         private const float MaximumTravelSampleOffset = 0.36f;
         private const int FreeRotationStepDeciDegrees = 50;
         private const int PreviewReachabilityCellMillimeters = 100;
@@ -34,6 +35,13 @@ namespace Game.NomadWorkshop.Foundation
         private const int MaximumPreviewInteractionSlots = 64;
         private const float ResidentExactNavMeshTolerance = 0.02f;
         private static readonly NomadCalendarPolicy CalendarPolicy = NomadCalendarPolicy.Default;
+        // 50% 以下不为如厕单独生成意图，随后平滑非线性上升；90% 起必然进入紧急处理。
+        // 相同数学原语也可用于饥饿、疲劳、卫生等需求，只需使用各自可调参数和随机流。
+        private static readonly NeedPressureCurve BladderPressureCurve = new(
+            onsetDeficit: 0.5f,
+            urgentDeficit: 0.9f,
+            responseExponent: 2f,
+            maximumPressure: 3.5f);
 
         [Header("共享定义")]
         [SerializeField, Tooltip("车辆主甲板尺寸、业务坐标与默认吸附参数。")]
@@ -71,6 +79,8 @@ namespace Game.NomadWorkshop.Foundation
         private float initialSimulationSpeed = 1f;
         [SerializeField, Min(0.1f), Tooltip("路线暂时失效时的自动重试间隔；避免每帧重复查询 NavMesh。")]
         private float routeRetrySeconds = 0.5f;
+        [SerializeField, Min(0.1f), Tooltip("空闲或等待时重新评估下一项主要行动的模拟秒间隔；需求概率只在这些决策边界采样，不会逐帧掷骰。")]
+        private float residentDecisionRetrySeconds = 0.5f;
 
         [Header("空闲休闲灰盒节奏")]
         [SerializeField, Min(0.1f), Tooltip("发呆或散步到达后的停留时长；当前短循环用于更快观察行为分布。")]
@@ -117,6 +127,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _waterTaskSequence;
         private int _leisureSequence;
         private long _residentDecisionSequence;
+        private long _bladderOpportunitySequence;
         private int _residentClearanceMillimeters;
         private bool _previewResidentOriginResolved;
         private DeckPose _previewResolvedResidentOrigin;
@@ -140,6 +151,8 @@ namespace Game.NomadWorkshop.Foundation
         private readonly ResidentActionPlanEvaluator _actionPlanEvaluator = new();
         private readonly ResidentActionPlanPolicy _actionPlanPolicy = new();
         private readonly UtilityDecisionEngine _decisionEngine = new();
+        private readonly UtilityDecisionPolicy _leisureDecisionPolicy =
+            ResidentLeisurePlanFactory.CreateSelectionPolicy();
         private readonly NomadSimulationClock _simulationClock = new();
         private HaulTaskLease _activeHaul;
         private ResidentWaterActionLease _activeResidentAction;
@@ -157,6 +170,7 @@ namespace Game.NomadWorkshop.Foundation
         private bool _hasActiveDockingYaw;
         private int _nextPathCornerIndex;
         private float _routeRetryRemaining;
+        private float _residentDecisionRetryRemaining;
         private float _phaseDuration;
         private float _phaseRemaining;
         private float _residentRecreation;
@@ -217,7 +231,14 @@ namespace Game.NomadWorkshop.Foundation
                     break;
                 case FoundationResidentPhase.WaitingForFacility:
                 case FoundationResidentPhase.Idle:
-                    TryStartResidentRoutine();
+                    _residentDecisionRetryRemaining -= deltaTime;
+                    if (_residentDecisionRetryRemaining <= 0f)
+                    {
+                        _residentDecisionRetryRemaining = Mathf.Max(
+                            0.1f,
+                            residentDecisionRetrySeconds);
+                        TryStartResidentRoutine();
+                    }
                     break;
                 case FoundationResidentPhase.MovingToWaterCan:
                     if (AdvanceResidentAlongPath(deltaTime))
@@ -618,7 +639,9 @@ namespace Game.NomadWorkshop.Foundation
             _waterTaskSequence = 0;
             _leisureSequence = 0;
             _residentDecisionSequence = 0;
+            _bladderOpportunitySequence = 0;
             _routeRetryRemaining = 0f;
+            _residentDecisionRetryRemaining = 0f;
             _simulationClock.Restore(0L);
 
             var initialFacilities = new List<FoundationFacilityState>();
@@ -1544,8 +1567,8 @@ namespace Game.NomadWorkshop.Foundation
 
         private void TryStartResidentRoutine()
         {
-            // 排泄压力优先于继续摄入水。这样“身体库存满”会生成可解释的厕所需求，
-            // 而不是把 ResourceFlow 的 DestinationFull 当作永久 AI 终态。
+            // 如厕意图一旦由平滑压力曲线生成，就优先于继续摄入水；未到紧急点时仍可能
+            // 暂缓一次。这样“身体库存满”会稳定升级成厕所需求，而不是永久 DestinationFull。
             if (TryStartToiletRoutine()) return;
             TryStartWaterRoutine();
         }
@@ -1553,7 +1576,8 @@ namespace Game.NomadWorkshop.Foundation
         private bool TryStartToiletRoutine()
         {
             int waste = _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
-            if (waste <= 0 || _residentWaterCycle.ExcretionPressure < ToiletNeedThreshold)
+            float excretionPressure = _residentWaterCycle.ExcretionPressure;
+            if (waste <= 0 || !ShouldOfferBladderAction(excretionPressure))
                 return false;
 
             if (!TryFindPlacedFacility(
@@ -1561,7 +1585,7 @@ namespace Game.NomadWorkshop.Foundation
                     out FoundationFacilityState toilet,
                     out _))
             {
-                if (_residentWaterCycle.ExcretionPressure < 0.9f) return false;
+                if (!BladderPressureCurve.IsUrgent(excretionPressure)) return false;
 
                 _model.LastBlocker.Value =
                     "PhysiologyBackpressure · 膀胱接近满载，需要建造可达旱厕";
@@ -1596,6 +1620,20 @@ namespace Game.NomadWorkshop.Foundation
                 "排泄压力升高：前往可达旱厕",
                 toilet);
             return true;
+        }
+
+        private bool ShouldOfferBladderAction(float excretionPressure)
+        {
+            float probability = BladderPressureCurve.EvaluateOpportunityProbability(
+                excretionPressure);
+            if (probability <= 0f) return false;
+
+            double roll = DeterministicRandom.Sample01(
+                worldSeed: 1729,
+                ownerId: ResidentOwnerId,
+                streamId: BladderOpportunityRandomStreamId,
+                eventSequence: _bladderOpportunitySequence++);
+            return BladderPressureCurve.ShouldOfferAction(excretionPressure, roll);
         }
 
         private void TryStartWaterRoutine()
@@ -1816,7 +1854,9 @@ namespace Game.NomadWorkshop.Foundation
                         importance: 0.75f),
                 },
                 candidates: candidates);
-            ResidentDecisionResult result = _decisionEngine.Decide(decision);
+            ResidentDecisionResult result = _decisionEngine.Decide(
+                decision,
+                _leisureDecisionPolicy);
             ResidentActionPlanEvaluation selectedPlan = FindSelectedPlan(
                 evaluations,
                 result.Selected);

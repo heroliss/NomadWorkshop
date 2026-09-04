@@ -45,20 +45,23 @@ namespace Game.NomadWorkshop.Tests
         }
 
         [Test]
-        public void FoundationBaseline_DaydreamAndWanderRemainWeightedRandomNearTwoToOne()
+        public void FoundationSteadyState_DaydreamAndWanderRemainWeightedRandomNearTwoToOne()
         {
             var evaluator = new ResidentActionPlanEvaluator();
             ResidentActionCandidate wander = evaluator.Evaluate(
-                ResidentLeisurePlanFactory.CreateWander(1.5f, 2.5f, 1.2f, 0.3f, "test"),
+                ResidentLeisurePlanFactory.CreateWander(2.8f, 2.8f, 1.2f, 0.32f, "test"),
                 new ResidentDecisionCondition(0f)).Candidate;
             ResidentActionCandidate daydream = evaluator.Evaluate(
                 ResidentLeisurePlanFactory.CreateDaydream(1.2f, 0.22f),
                 new ResidentDecisionCondition(0f)).Candidate;
             var needs = new[]
             {
-                new ResidentNeedState(ResidentNeed.Recreation, 0.5f, 0.01f),
+                // 实际长期运行时每次休闲都会把缺口拉回接近 0。旧测试只用 50% 缺口，
+                // 没有发现散步会在这里被相对短名单阈值永久裁掉。
+                new ResidentNeedState(ResidentNeed.Recreation, 0.01f, 0.01f),
             };
             var engine = new UtilityDecisionEngine();
+            UtilityDecisionPolicy policy = ResidentLeisurePlanFactory.CreateSelectionPolicy();
             var daydreamCount = 0;
             var wanderCount = 0;
 
@@ -69,7 +72,8 @@ namespace Game.NomadWorkshop.Tests
                     0x4E4F4D4144UL,
                     sequence,
                     needs,
-                    new[] { daydream, wander }));
+                    new[] { daydream, wander }),
+                    policy);
                 if (result.Selected.Id == ResidentLeisurePlanFactory.DaydreamCandidateId)
                     daydreamCount++;
                 else if (result.Selected.Id == ResidentLeisurePlanFactory.WanderCandidateId)

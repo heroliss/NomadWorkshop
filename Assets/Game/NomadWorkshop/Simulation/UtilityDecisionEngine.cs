@@ -183,10 +183,13 @@ namespace Game.NomadWorkshop.Simulation
                 ResidentNeedState state = needs[i];
                 float predicted = Clamp01(state.Deficit + state.GrowthPerSecond * candidate.DurationSeconds);
                 float after = Clamp01(predicted - restore);
-                float beforePressure = EvaluatePressure(predicted, policy);
-                float afterPressure = EvaluatePressure(after, policy);
+                float beforePressure = EvaluatePressure(predicted, state, policy);
+                float afterPressure = EvaluatePressure(after, state, policy);
                 needBenefit += Math.Max(0f, beforePressure - afterPressure) * state.Importance;
-                if (predicted >= policy.CriticalDeficit) criticalNeed = true;
+                if (state.PressureCurve.IsConfigured
+                        ? state.PressureCurve.IsUrgent(predicted)
+                        : predicted >= policy.CriticalDeficit)
+                    criticalNeed = true;
             }
 
             float workBenefit = candidate.WorkUrgency + candidate.PlayerPriority + candidate.DependencyValue;
@@ -203,8 +206,14 @@ namespace Game.NomadWorkshop.Simulation
                 executionCost);
         }
 
-        private static float EvaluatePressure(float deficit, UtilityDecisionPolicy policy)
+        private static float EvaluatePressure(
+            float deficit,
+            in ResidentNeedState state,
+            UtilityDecisionPolicy policy)
         {
+            if (state.PressureCurve.IsConfigured)
+                return state.PressureCurve.EvaluatePressure(deficit);
+
             float value = Clamp01(deficit);
             double pressure = Math.Pow(value, policy.NeedPressureExponent);
             if (value > policy.CriticalDeficit)

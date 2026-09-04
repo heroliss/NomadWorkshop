@@ -11,7 +11,8 @@ namespace Game.NomadWorkshop.Simulation
         Fatigue = 2,
         Health = 3,
         Recreation = 4,
-        Count = 5,
+        Bladder = 5,
+        Count = 6,
     }
 
     /// <summary>候选在一次决策中的筛选和选择终态，用于测试与开发诊断。</summary>
@@ -31,18 +32,28 @@ namespace Game.NomadWorkshop.Simulation
     /// </summary>
     public readonly struct ResidentNeedState
     {
-        public ResidentNeedState(ResidentNeed need, float deficit, float growthPerSecond, float importance = 1f)
+        public ResidentNeedState(
+            ResidentNeed need,
+            float deficit,
+            float growthPerSecond,
+            float importance = 1f,
+            NeedPressureCurve pressureCurve = default)
         {
             Need = need;
             Deficit = deficit;
             GrowthPerSecond = growthPerSecond;
             Importance = importance;
+            PressureCurve = pressureCurve;
         }
 
         public ResidentNeed Need { get; }
         public float Deficit { get; }
         public float GrowthPerSecond { get; }
         public float Importance { get; }
+        /// <summary>
+        /// 可选的需求专属响应曲线；default 保持既有全局曲线，便于逐项迁移而不改变旧平衡。
+        /// </summary>
+        public NeedPressureCurve PressureCurve { get; }
     }
 
     /// <summary>候选行动完成时对一项需求产生的恢复量。</summary>
