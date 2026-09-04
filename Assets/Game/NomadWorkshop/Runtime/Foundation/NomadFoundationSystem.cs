@@ -18,7 +18,6 @@ namespace Game.NomadWorkshop.Foundation
         private const ulong ResidentOwnerId = 0xF01UL;
         private const float DrinkNeedThreshold = 0.55f;
         private const float ToiletNeedThreshold = 0.58f;
-        private const float ResidentVisualHeight = 0.55f;
         private const float MaximumTravelSampleOffset = 0.36f;
         private const int FreeRotationStepDeciDegrees = 50;
         private const int PreviewReachabilityCellMillimeters = 100;
@@ -43,8 +42,8 @@ namespace Game.NomadWorkshop.Foundation
             Array.Empty<NomadFacilityDefinition>();
 
         [Header("居民灰盒节奏")]
-        [SerializeField, Tooltip("居民的甲板局部出生位置；Y 只用于灰盒表现，寻路使用 X/Z。")]
-        private Vector3 residentStartLocalPosition = new(0f, ResidentVisualHeight, 2.4f);
+        [SerializeField, Tooltip("居民脚底根节点的甲板局部出生位置；运行时会把 Y 规范为甲板表面 0，胶囊半高只由 View 的子视觉负责。")]
+        private Vector3 residentStartLocalPosition = new(0f, 0f, 2.4f);
         [SerializeField, Min(0.1f), Tooltip("居民沿连续 NavMesh 路径移动的米/秒。")]
         private float residentMoveSpeed = 2.8f;
         [SerializeField, Min(0.01f), Tooltip("取得容器或完成一次装水动作的灰盒时长；搬运毫升数不直接线性放大动画时间。")]
@@ -632,7 +631,7 @@ namespace Game.NomadWorkshop.Foundation
                     request.Pose));
             }
             _model.ReplaceFacilities(initialFacilities);
-            _model.ResidentLocalPosition.Value = residentStartLocalPosition;
+            _model.ResidentLocalPosition.Value = ToNavigationPoint(residentStartLocalPosition);
             _model.ResidentLocalYawDegrees.Value = 180f;
 
             _navigation.BuildNow();
@@ -1152,8 +1151,7 @@ namespace Game.NomadWorkshop.Foundation
         private void ApplyResidentRelocation(Vector3 sampled)
         {
             ClearActivePath();
-            sampled.y = ResidentVisualHeight;
-            _model.ResidentLocalPosition.Value = sampled;
+            _model.ResidentLocalPosition.Value = ToNavigationPoint(sampled);
         }
 
         private static FoundationFacilityAccess ClassifyFacilityAccess(
@@ -1850,8 +1848,7 @@ namespace Game.NomadWorkshop.Foundation
                     path.PathLength < minimumDistance)
                     continue;
 
-                target = path.SampledEnd;
-                target.y = ResidentVisualHeight;
+                target = ToNavigationPoint(path.SampledEnd);
                 selectedPath = path;
                 label = $"({target.x:0.00}, {target.z:0.00})";
                 return true;
@@ -2562,11 +2559,9 @@ namespace Game.NomadWorkshop.Foundation
 
             for (var i = 0; i < cornerCount; i++)
             {
-                Vector3 corner = path.Corners[i];
-                corner.y = ResidentVisualHeight;
-                _activePathCorners[i] = corner;
+                _activePathCorners[i] = ToNavigationPoint(path.Corners[i]);
             }
-            exactGoal.y = ResidentVisualHeight;
+            exactGoal = ToNavigationPoint(exactGoal);
             if (appendExactGoal) _activePathCorners[cornerCount] = exactGoal;
             _hasActiveDockingYaw = hasDockingYaw;
             _activeDockingYawDegrees = Mathf.Repeat(dockingYawDegrees, 360f);

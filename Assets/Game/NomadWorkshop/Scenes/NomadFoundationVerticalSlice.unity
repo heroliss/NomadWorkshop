@@ -484,15 +484,17 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 4ba36e184e52f50408ee5d734c7b5133, type: 2}
   - {fileID: 11400000, guid: 66d8f48cbf8b4b343986b4fe3917b7f0, type: 2}
   - {fileID: 11400000, guid: 9248b7364098041488b2713b05509eb4, type: 2}
-  residentStartLocalPosition: {x: 0, y: 0.55, z: 2.4}
+  residentStartLocalPosition: {x: 0, y: 0, z: 2.4}
   residentMoveSpeed: 2.8
   pickupSeconds: 0.45
   deliverySeconds: 0.45
   drinkingSeconds: 1.2
   toiletSeconds: 1.4
-  metabolismSeconds: 8
+  drinkMetabolismSeconds: 8
   initialThirst: 0.78
   thirstIncreasePerSecond: 0.004
+  bodyWaterCapacityMilliliters: 900
+  bladderCapacityMilliliters: 500
   initialSimulationSpeed: 1
   routeRetrySeconds: 0.5
   leisureSeconds: 1.2
@@ -501,7 +503,7 @@ MonoBehaviour:
   maximumWanderDistance: 2.8
   waterCanCapabilities: 5
   waterCanCleanliness: 0.96
-  toiletHoldingCapacity: 4
+  toiletHoldingCapacityMilliliters: 12000
 --- !u!1 &643145507
 GameObject:
   m_ObjectHideFlags: 0
@@ -726,7 +728,9 @@ MonoBehaviour:
     value: 0
   <WaterCanLocation>k__BackingField:
     value: 0
-  <WaterCanWater>k__BackingField:
+  <WaterCanWaterMilliliters>k__BackingField:
+    value: 0
+  <WaterCanCapacityMilliliters>k__BackingField:
     value: 0
   <LatestActionPlan>k__BackingField:
     value:
@@ -752,15 +756,25 @@ MonoBehaviour:
     value: 0
   <ResidentRecreation>k__BackingField:
     value: 0
-  <VehicleWater>k__BackingField:
+  <VehicleWaterMilliliters>k__BackingField:
     value: 0
-  <DrinkingStationWater>k__BackingField:
+  <VehicleWaterCapacityMilliliters>k__BackingField:
     value: 0
-  <BodyWater>k__BackingField:
+  <DrinkingStationWaterMilliliters>k__BackingField:
     value: 0
-  <BladderWaste>k__BackingField:
+  <DrinkingStationCapacityMilliliters>k__BackingField:
     value: 0
-  <ToiletHoldingWaste>k__BackingField:
+  <BodyWaterMilliliters>k__BackingField:
+    value: 0
+  <BodyWaterCapacityMilliliters>k__BackingField:
+    value: 0
+  <BladderWasteMilliliters>k__BackingField:
+    value: 0
+  <BladderCapacityMilliliters>k__BackingField:
+    value: 0
+  <ToiletHoldingWasteMilliliters>k__BackingField:
+    value: 0
+  <ToiletHoldingCapacityMilliliters>k__BackingField:
     value: 0
   <ActionProgress>k__BackingField:
     value: 0

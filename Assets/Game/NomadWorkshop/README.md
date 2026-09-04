@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**mL 水循环 / 同量纲库存 + 时间 / 随机 / 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.24**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**居民脚底根节点 + mL 水循环 / 同量纲库存 + 时间 / 随机 / 故障纯内核 + 共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.25**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -16,6 +16,7 @@
 - 建造视图无需悬停就持续显示全部设施的所有停靠位；完全不可达的既有设施标红，部分功能失效标橙，每个失效 Group 另有独立红色功能警示；
 - 建成饮水站后，一名居民会在站内有水时就近饮用 300 mL、缺水且口渴时用 5 L 防漏水罐从车辆水箱紧急搬运最多 2 L、空闲时低优先级补到 4 L 且不误饮；体内水暂满只形成等待代谢 / 如厕的背压，旱厕会真实接收膀胱废物；
 - 正式 Foundation 已接入小型甲板 NavMesh：0.1 m 实时预检复用 Agent 净空并收紧 Slot 映射，几何通过后创建候选障碍并异步更新导航；设施动作前居民精确抵达毫米 Slot 和朝向，普通散步才允许宽松采样；
+- 居民逻辑位置与运行时 `Resident 01` 根节点统一代表脚底，Y 固定在甲板表面 0；胶囊中心的 0.55 m 半高只属于 View 子视觉，不再同时写入 System 根位置导致悬空；
 - 居民移动保存“任务 + 设施功能 + 首选设施”语义而非一次性坐标；施工切断旧目标后重选 Slot、改去同功能设施或限频重试，不再以“建造后无法重新规划”为永久 Block；
 - 居民新增 Recreation 需求；无必要水任务时，可达空地漫步与原地发呆作为两个完整候选参与确定性 Utility / Softmax 选择，当前基础比约为 1:2 且停留时间缩短；固定长椅、画板或观景点是下一个数据驱动扩展；
 - 已锁定官方 AI Navigation 2.0.14；隔离 `NavigationInteractionSpike` 中 `DeckNavigationUtility : MonoUtilityBase` 同步构建小型甲板 NavMesh，空旷路径长度比为 1.000，穿过 27° 旋转柜体的路径长度比为 1.058；
@@ -149,6 +150,7 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 共享吸附基格 + 镜头定向 EditMode 16/16（job `15a8261b90eb`），覆盖自由 / 0.2 / 0.3 / 0.4 / 0.6 m、共同 0.1 m 基础格、双指拖动 / 捏合分解与镜头限位；
 - 正式 Foundation PlayMode 15/15（job `42c9a8476b07`），覆盖同步 0.2 / 0.6 m 网格、自由模式自动隐藏、精确停靠、45° 邻接预览 / 落地一致、施工后改去第二座饮水站，以及 `DestinationFull → 如厕 → 恢复饮水`；
 - mL 水循环、量纲边界与 v2 存档字段定向 EditMode 26/26（job `025bdf77a02d`）；完整 Simulation EditMode 94/94（job `4664dcc8e86e`）；完整 Nomad PlayMode 23/23（job `7f4f6d0d2b57`）；
+- 居民落地修复：场景生成契约 EditMode 1/1（job `c7c674513621`），完整 Foundation PlayMode 16/16（job `5853d84acfca`）；Game View 已确认胶囊底部接触甲板，本地忽略证据为 `Screenshots/nomad-foundation-resident-grounded.png`；
 - 可重建场景管线 EditMode 1/1（job `c3046ae76822`）；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
 - Game View：已实际查看 45° 紧邻既有饮水站时 0/3 Slot 可达但仍可确认的红色幽灵；`Screenshots/nomad-foundation-45deg-preview-parity.png` 同时显示既有设施三个绿色 Slot 与候选三个红色 Slot，无需悬停。同步 0.2 m 网格与基础建造模式见 `Screenshots/nomad-foundation-exact-docking-build-mode.png`（两者均为本地忽略证据）。

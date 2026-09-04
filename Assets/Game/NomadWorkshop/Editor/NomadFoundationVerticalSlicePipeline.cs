@@ -312,7 +312,7 @@ namespace Game.NomadWorkshop.Editor
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
             SetObjectArray(serialized.FindProperty("facilityDefinitions"), definitions);
             serialized.FindProperty("residentStartLocalPosition").vector3Value =
-                new Vector3(0f, 0.55f, 2.4f);
+                new Vector3(0f, 0f, 2.4f);
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 

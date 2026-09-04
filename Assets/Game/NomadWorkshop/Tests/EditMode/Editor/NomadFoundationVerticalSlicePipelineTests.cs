@@ -66,6 +66,10 @@ namespace Game.NomadWorkshop.Editor.Tests
                     "逻辑与表现必须引用同一份甲板布局，避免边界与可选网格漂移。");
                 Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(4));
                 Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(4));
+                Assert.That(
+                    systemSerialized.FindProperty("residentStartLocalPosition").vector3Value.y,
+                    Is.EqualTo(0f).Within(0.0001f),
+                    "居民根节点代表脚底，生成场景不得再把胶囊半高写入逻辑位置。");
                 for (var i = 0; i < 4; i++)
                 {
                     Assert.AreSame(

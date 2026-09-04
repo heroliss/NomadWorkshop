@@ -92,6 +92,33 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator ResidentGraybox_RootRepresentsFeetAndTouchesDeckSurface()
+        {
+            yield return null;
+
+            Transform resident = _worldView.transform.Find("Vehicle Deck Root/Resident 01");
+            Assert.That(resident, Is.Not.Null);
+            Assert.That(
+                _model.ResidentLocalPosition.Value.y,
+                Is.EqualTo(0f).Within(0.0001f),
+                "模拟位置应代表居民脚底，而不是胶囊中心。");
+            Assert.That(
+                resident.localPosition.y,
+                Is.EqualTo(0f).Within(0.0001f),
+                "运行时生成的 Resident 根节点应落在甲板表面。");
+
+            Transform body = resident.Find("Body");
+            Assert.That(body, Is.Not.Null);
+            Renderer renderer = body.GetComponent<Renderer>();
+            Assert.That(renderer, Is.Not.Null);
+            float deckSurfaceWorldY = resident.parent.TransformPoint(Vector3.zero).y;
+            Assert.That(
+                renderer.bounds.min.y,
+                Is.EqualTo(deckSurfaceWorldY).Within(0.01f),
+                "胶囊自身可以用半高偏移中心，但底部必须接触甲板，不能把半高再加到根节点。");
+        }
+
+        [UnityTest]
         public IEnumerator BuildMode_OwnsPersistentDiagnosticsAndSynchronizedSnapGrid()
         {
             Transform sourceVisual = FindFacilityVisual("initial-vehicle-water-tank");
