@@ -494,10 +494,183 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                     repeated.RandomStreams[i].NextEventSequence,
                     Is.EqualTo(checkpoint.RandomStreams[i].NextEventSequence));
             }
+            for (var i = 0; i < checkpoint.Facilities.Count; i++)
+            {
+                NomadFacilitySaveData expectedCondition = checkpoint.Facilities[i];
+                NomadFacilitySaveData actualCondition = repeated.Facilities[i];
+                Assert.That(
+                    actualCondition.WearConditionUnits,
+                    Is.EqualTo(expectedCondition.WearConditionUnits));
+                Assert.That(
+                    actualCondition.MaintenanceDebtConditionUnits,
+                    Is.EqualTo(expectedCondition.MaintenanceDebtConditionUnits));
+                Assert.That(
+                    actualCondition.DustConditionUnits,
+                    Is.EqualTo(expectedCondition.DustConditionUnits));
+                Assert.That(
+                    actualCondition.FailureThresholdMicroHazard,
+                    Is.EqualTo(expectedCondition.FailureThresholdMicroHazard));
+                Assert.That(
+                    actualCondition.AccumulatedFailureMicroHazard,
+                    Is.EqualTo(expectedCondition.AccumulatedFailureMicroHazard));
+                Assert.That(
+                    actualCondition.FailureHazardSubMicroRemainder,
+                    Is.EqualTo(expectedCondition.FailureHazardSubMicroRemainder));
+                Assert.That(
+                    actualCondition.ConditionLastSettledSimulationTick,
+                    Is.EqualTo(expectedCondition.ConditionLastSettledSimulationTick));
+            }
 
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
             yield return null;
             Assert.That(_model.SimulationTick.Value, Is.GreaterThan(checkpointTick));
+        }
+
+        [UnityTest]
+        public IEnumerator FacilityConditionHarness_MaintainsFaultsRepairsAndRestoresExactState()
+        {
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            FoundationFacilityConditionState initial = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                "initial-vehicle-water-tank");
+            Assert.That(initial.IsOperational, Is.True);
+            Assert.That(initial.WearPermille, Is.Zero);
+
+            Assert.That(
+                _context.ExecuteCommand(new ApplyPrimaryWaterTankSandstormCommand()),
+                Is.True);
+            FoundationFacilityConditionState stressed = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                initial.InstanceId);
+            Assert.That(stressed.WearPermille, Is.EqualTo(initial.WearPermille + 10));
+            Assert.That(
+                stressed.MaintenanceDebtPermille,
+                Is.EqualTo(initial.MaintenanceDebtPermille + 80));
+            Assert.That(stressed.DustPermille, Is.EqualTo(initial.DustPermille + 250));
+
+            Assert.That(
+                _context.ExecuteCommand(new PerformPrimaryWaterTankMaintenanceCommand()),
+                Is.True);
+            FoundationFacilityConditionState maintained = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                initial.InstanceId);
+            Assert.That(maintained.WearPermille, Is.EqualTo(stressed.WearPermille));
+            Assert.That(maintained.MaintenanceDebtPermille, Is.Zero);
+            Assert.That(maintained.DustPermille, Is.Zero);
+            Assert.That(
+                maintained.AccumulatedFailureMicroHazard,
+                Is.EqualTo(stressed.AccumulatedFailureMicroHazard),
+                "保养不能倒扣已经经历的风险积分。");
+
+            Assert.That(
+                _context.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand()),
+                Is.True);
+            FoundationFacilityConditionState faulted = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                initial.InstanceId);
+            Assert.That(
+                faulted.ActiveFault,
+                Is.EqualTo(FacilityFaultKind.OutletValveJammed));
+            Assert.That(faulted.FailureRiskProgressPermille, Is.EqualTo(1000));
+
+            yield return null;
+            Renderer waterTankBody = FindFacilityVisual(initial.InstanceId)
+                .GetComponentInChildren<Renderer>();
+            var faultProperties = new MaterialPropertyBlock();
+            waterTankBody.GetPropertyBlock(faultProperties);
+            Assert.That(
+                faultProperties.isEmpty,
+                Is.False,
+                "具体故障在普通观察模式也应有可见状态，而不只藏在开发文字中。");
+
+            NomadWorkshopSaveData faultCheckpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadFacilitySaveData savedTank = faultCheckpoint.Facilities.Find(
+                facility => facility.InstanceId == initial.InstanceId);
+            Assert.That(savedTank, Is.Not.Null);
+            Assert.That(
+                savedTank.AccumulatedFailureMicroHazard,
+                Is.EqualTo(savedTank.FailureThresholdMicroHazard));
+            Assert.That(
+                savedTank.ConditionLastSettledSimulationTick,
+                Is.EqualTo(faultCheckpoint.SimulationTick));
+
+            Assert.That(
+                _context.ExecuteCommand(new RepairPrimaryWaterTankFaultCommand()),
+                Is.True);
+            FoundationFacilityConditionState repaired = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                initial.InstanceId);
+            Assert.That(repaired.IsOperational, Is.True);
+            Assert.That(repaired.WearPermille, Is.EqualTo(faulted.WearPermille));
+            Assert.That(repaired.AccumulatedFailureMicroHazard, Is.Zero);
+
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(faultCheckpoint));
+            FoundationFacilityConditionState restoredFault = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                initial.InstanceId);
+            Assert.That(restoredFault.ActiveFault, Is.EqualTo(faulted.ActiveFault));
+            Assert.That(
+                restoredFault.AccumulatedFailureMicroHazard,
+                Is.EqualTo(faulted.AccumulatedFailureMicroHazard));
+            Assert.That(restoredFault.WearPermille, Is.EqualTo(faulted.WearPermille));
+        }
+
+        [UnityTest]
+        public IEnumerator WaterTankFaultBeforePickup_ReleasesReservationsWithoutLosingWater()
+        {
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            yield return BuildFacility("drinking-station", 0, 0);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int pickupFrameLimit = 240;
+            for (var i = 0;
+                 i < pickupFrameLimit &&
+                 _model.ResidentPhase.Value != FoundationResidentPhase.PickingUpWater;
+                 i++)
+                yield return null;
+            Assert.That(
+                _model.ResidentPhase.Value,
+                Is.EqualTo(FoundationResidentPhase.PickingUpWater),
+                $"应在水真正离开车辆前观察到装水阶段；Task={_model.CurrentTask.Value}");
+            Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(60_000));
+            Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Assert.That(
+                _context.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand()),
+                Is.True);
+            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Idle));
+            Assert.That(_model.VehicleWaterMilliliters.Value, Is.EqualTo(60_000));
+            Assert.That(_model.WaterCanWaterMilliliters.Value, Is.Zero);
+            Assert.That(_model.DrinkingStationWaterMilliliters.Value, Is.Zero);
+            StringAssert.Contains("出水阀卡滞", _model.LastBlocker.Value);
+
+            Assert.That(
+                _context.ExecuteCommand(new RepairPrimaryWaterTankFaultCommand()),
+                Is.True);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            const int recoveryFrameLimit = 480;
+            for (var i = 0;
+                 i < recoveryFrameLimit && _model.CompletedDrinkCount.Value == 0;
+                 i++)
+                yield return null;
+
+            Assert.That(
+                _model.CompletedDrinkCount.Value,
+                Is.EqualTo(1),
+                $"修理后应复用同一实体水循环恢复；Task={_model.CurrentTask.Value}; " +
+                $"Blocker={_model.LastBlocker.Value}");
+            Assert.That(
+                _model.VehicleWaterMilliliters.Value +
+                _model.WaterCanWaterMilliliters.Value +
+                _model.DrinkingStationWaterMilliliters.Value +
+                _model.BodyWaterMilliliters.Value +
+                _model.BladderWasteMilliliters.Value +
+                _model.ToiletHoldingWasteMilliliters.Value,
+                Is.EqualTo(60_000),
+                "故障与修理不能吞掉已存在的水；体内代谢只会在守恒库存之间转移。");
         }
 
         [UnityTest]
@@ -1423,6 +1596,18 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 if (states[i].InstanceId == instanceId) return states[i];
             }
             Assert.Fail($"没有找到设施访问状态：{instanceId}");
+            return default;
+        }
+
+        private static FoundationFacilityConditionState FindCondition(
+            FoundationFacilityConditionState[] states,
+            string instanceId)
+        {
+            for (var i = 0; i < states.Length; i++)
+            {
+                if (states[i].InstanceId == instanceId) return states[i];
+            }
+            Assert.Fail($"没有找到设施状态：{instanceId}");
             return default;
         }
 

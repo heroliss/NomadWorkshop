@@ -131,8 +131,21 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public string InstanceId = string.Empty;
         public string DefinitionId = string.Empty;
         public QuantizedDeckPose Pose;
+        // 旧版耐久 / 污染字段继续写入可读投影，供 v3 早期存档和外部工具兼容；
+        // 精确继续事故轨迹必须使用下面的连续状态与风险积分字段。
         public int DurabilityPermille = 1000;
         public int DirtPermille;
+        public long WearConditionUnits;
+        public long MaintenanceDebtConditionUnits;
+        public long DustConditionUnits;
+        public long FailureThresholdMicroHazard;
+        public long AccumulatedFailureMicroHazard;
+        public long FailureHazardSubMicroRemainder;
+        public long FailureCycleSequence;
+        public FacilityFaultKind ActiveFault;
+        public int FaultSeverityPermille;
+        public long FaultTriggeredSimulationTick;
+        public long ConditionLastSettledSimulationTick;
     }
 
     public enum NomadBlueprintSaveStage
@@ -296,7 +309,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
 
             RequireCollections(data);
             var entityIds = new HashSet<string>(StringComparer.Ordinal);
-            ValidateFacilities(data.Facilities, entityIds);
+            ValidateFacilities(data.Facilities, entityIds, data.SimulationTick);
             ValidateBlueprints(data.Blueprints, entityIds);
 
             var inventoryIds = new HashSet<string>(StringComparer.Ordinal);
@@ -442,7 +455,8 @@ namespace Game.NomadWorkshop.Simulation.Persistence
 
         private static void ValidateFacilities(
             IReadOnlyList<NomadFacilitySaveData> facilities,
-            HashSet<string> entityIds)
+            HashSet<string> entityIds,
+            long simulationTick)
         {
             for (var i = 0; i < facilities.Count; i++)
             {
@@ -453,8 +467,76 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                 ValidatePose(facility.Pose, $"设施 {facility.InstanceId}");
                 ValidateRange(facility.DurabilityPermille, $"设施 {facility.InstanceId} 耐久");
                 ValidateRange(facility.DirtPermille, $"设施 {facility.InstanceId} 污染");
+                ValidateFacilityCondition(facility, simulationTick);
             }
         }
+
+        private static void ValidateFacilityCondition(
+            NomadFacilitySaveData facility,
+            long simulationTick)
+        {
+            if (!Enum.IsDefined(typeof(FacilityFaultKind), facility.ActiveFault))
+                throw new InvalidOperationException(
+                    $"设施 {facility.InstanceId} 的具体故障类型无效。");
+
+            if (facility.FailureThresholdMicroHazard == 0L)
+            {
+                // v3 早期存档没有这些字段，Unity JSON 会全部还原为零。只把完整零集视为旧格式，
+                // 防止损坏的新检查点被静默当作“全新设施”。
+                if (facility.WearConditionUnits != 0L ||
+                    facility.MaintenanceDebtConditionUnits != 0L ||
+                    facility.DustConditionUnits != 0L ||
+                    facility.AccumulatedFailureMicroHazard != 0L ||
+                    facility.FailureHazardSubMicroRemainder != 0L ||
+                    facility.FailureCycleSequence != 0L ||
+                    facility.ActiveFault != FacilityFaultKind.None ||
+                    facility.FaultSeverityPermille != 0 ||
+                    facility.FaultTriggeredSimulationTick != 0L ||
+                    facility.ConditionLastSettledSimulationTick != 0L)
+                    throw new InvalidOperationException(
+                        $"设施 {facility.InstanceId} 的状态检查点不完整：缺少故障阈值。");
+                return;
+            }
+
+            if (facility.ConditionLastSettledSimulationTick > simulationTick)
+                throw new InvalidOperationException(
+                    $"设施 {facility.InstanceId} 的状态 Tick 晚于根 SimulationTick。");
+            try
+            {
+                var checkpoint = new FacilityConditionCheckpoint(
+                    facility.InstanceId,
+                    facility.ConditionLastSettledSimulationTick,
+                    facility.WearConditionUnits,
+                    facility.MaintenanceDebtConditionUnits,
+                    facility.DustConditionUnits,
+                    facility.FailureThresholdMicroHazard,
+                    facility.AccumulatedFailureMicroHazard,
+                    facility.FailureHazardSubMicroRemainder,
+                    facility.FailureCycleSequence,
+                    facility.ActiveFault,
+                    facility.FaultSeverityPermille,
+                    facility.FaultTriggeredSimulationTick);
+                int wearPermille = ToConditionPermille(checkpoint.WearUnits);
+                int dustPermille = ToConditionPermille(checkpoint.DustUnits);
+                if (facility.DurabilityPermille != 1000 - wearPermille ||
+                    facility.DirtPermille != dustPermille)
+                    throw new ArgumentException(
+                        "兼容耐久 / 污染投影与精确设施状态不一致。");
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidOperationException(
+                    $"设施 {facility.InstanceId} 的状态检查点无效：{exception.Message}",
+                    exception);
+            }
+        }
+
+        private static int ToConditionPermille(long conditionUnits) =>
+            (int)Math.Clamp(
+                (conditionUnits + FacilityConditionCycle.ConditionUnitsPerPermille / 2L) /
+                FacilityConditionCycle.ConditionUnitsPerPermille,
+                0L,
+                1000L);
 
         private static void ValidateBlueprints(
             IReadOnlyList<NomadBlueprintSaveData> blueprints,

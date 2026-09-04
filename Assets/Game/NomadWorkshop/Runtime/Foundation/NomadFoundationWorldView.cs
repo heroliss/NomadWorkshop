@@ -57,6 +57,8 @@ namespace Game.NomadWorkshop.Foundation
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, FoundationFacilityAccessState> _facilityAccess =
             new(StringComparer.Ordinal);
+        private readonly Dictionary<string, FoundationFacilityConditionState> _facilityConditions =
+            new(StringComparer.Ordinal);
         private readonly List<Material> _runtimeMaterials = new();
         private readonly List<Renderer> _ghostRenderers = new();
         private readonly List<Renderer[]> _interactionSlotRenderers = new();
@@ -148,6 +150,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
                 UpdateFacilityAccess(
                     this.ExecuteCommand(new GetFoundationFacilityAccessCommand())));
+            Bag.Subscribe(readModel.FacilityConditionRevision, _ =>
+                UpdateFacilityConditions(
+                    this.ExecuteCommand(new GetFoundationFacilityConditionsCommand())));
             Bag.Subscribe(readModel.ResidentLocalPosition, position =>
             {
                 if (_residentRoot != null) _residentRoot.localPosition = position;
@@ -619,6 +624,18 @@ namespace Game.NomadWorkshop.Foundation
             ApplyFacilityAccessVisuals();
         }
 
+        private void UpdateFacilityConditions(
+            IReadOnlyList<FoundationFacilityConditionState> states)
+        {
+            _facilityConditions.Clear();
+            if (states != null)
+            {
+                for (var i = 0; i < states.Count; i++)
+                    _facilityConditions[states[i].InstanceId] = states[i];
+            }
+            ApplyFacilityAccessVisuals();
+        }
+
         private void ApplyFacilityAccessVisuals()
         {
             bool inBuildMode = _interactionMode == FoundationInteractionMode.Build;
@@ -631,12 +648,45 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationFacilityAccess displayAccess = hasAccess
                     ? access.DisplayAccess
                     : FoundationFacilityAccess.Unknown;
-                bool showStatusTint = inBuildMode &&
+                bool showAccessTint = inBuildMode &&
                                       displayAccess is FoundationFacilityAccess.Unreachable or
                                           FoundationFacilityAccess.PartiallyReachable;
-                Color tint = displayAccess == FoundationFacilityAccess.Unreachable
-                    ? new Color(1f, 0.08f, 0.05f, 1f)
-                    : new Color(1f, 0.42f, 0.08f, 1f);
+                bool hasCondition = _facilityConditions.TryGetValue(
+                    item.Key,
+                    out FoundationFacilityConditionState condition);
+                bool showFaultTint = hasCondition && !condition.IsOperational;
+                bool showDustTint = hasCondition && condition.DustPermille > 0;
+                bool showCriticalTint = hasCondition &&
+                                        condition.Warning == FacilityConditionWarning.Critical;
+                bool showStatusTint = showAccessTint || showFaultTint ||
+                                      showDustTint || showCriticalTint;
+                Color tint;
+                float tintStrength;
+                if (showAccessTint)
+                {
+                    tint = displayAccess == FoundationFacilityAccess.Unreachable
+                        ? new Color(1f, 0.08f, 0.05f, 1f)
+                        : new Color(1f, 0.42f, 0.08f, 1f);
+                    tintStrength = 0.82f;
+                }
+                else if (showFaultTint)
+                {
+                    tint = new Color(0.86f, 0.12f, 0.055f, 1f);
+                    tintStrength = 0.68f;
+                }
+                else if (showCriticalTint)
+                {
+                    tint = new Color(0.88f, 0.38f, 0.08f, 1f);
+                    tintStrength = 0.3f;
+                }
+                else
+                {
+                    tint = new Color(0.55f, 0.34f, 0.17f, 1f);
+                    tintStrength = Mathf.Lerp(
+                        0.06f,
+                        0.38f,
+                        condition.DustPermille / 1000f);
+                }
                 for (var rendererIndex = 0;
                      rendererIndex < visual.BodyRenderers.Length;
                      rendererIndex++)
@@ -651,10 +701,30 @@ namespace Game.NomadWorkshop.Foundation
 
                     _facilityStatusProperties.Clear();
                     Material material = renderer.sharedMaterial;
-                    if (material != null && material.HasProperty("_BaseColor"))
-                        _facilityStatusProperties.SetColor("_BaseColor", tint);
-                    if (material != null && material.HasProperty("_Color"))
-                        _facilityStatusProperties.SetColor("_Color", tint);
+                    if (material != null)
+                    {
+                        Color baseColor = material.HasProperty("_BaseColor")
+                            ? material.GetColor("_BaseColor")
+                            : material.HasProperty("_Color")
+                                ? material.GetColor("_Color")
+                                : Color.white;
+                        Color blended = Color.Lerp(baseColor, tint, tintStrength);
+                        if (material.HasProperty("_BaseColor"))
+                            _facilityStatusProperties.SetColor("_BaseColor", blended);
+                        if (material.HasProperty("_Color"))
+                            _facilityStatusProperties.SetColor("_Color", blended);
+                        if (hasCondition && condition.DustPermille > 0 &&
+                            material.HasProperty("_Smoothness"))
+                        {
+                            float dustRoughness = Mathf.Lerp(
+                                1f,
+                                0.28f,
+                                condition.DustPermille / 1000f);
+                            _facilityStatusProperties.SetFloat(
+                                "_Smoothness",
+                                material.GetFloat("_Smoothness") * dustRoughness);
+                        }
+                    }
                     renderer.SetPropertyBlock(_facilityStatusProperties);
                 }
 

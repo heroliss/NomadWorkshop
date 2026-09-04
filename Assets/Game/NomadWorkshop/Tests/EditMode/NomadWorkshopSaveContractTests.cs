@@ -183,6 +183,44 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void ValidateForSave_AcceptsCompleteFacilityRiskCheckpointAndRejectsPartialOne()
+        {
+            NomadWorkshopSaveData complete = CreateValidSave();
+            NomadFacilitySaveData facility = complete.Facilities[0];
+            facility.WearConditionUnits = 190L *
+                                          FacilityConditionCycle.ConditionUnitsPerPermille;
+            facility.MaintenanceDebtConditionUnits = 340L *
+                                                     FacilityConditionCycle.ConditionUnitsPerPermille;
+            facility.DustConditionUnits = 230L *
+                                          FacilityConditionCycle.ConditionUnitsPerPermille;
+            facility.FailureThresholdMicroHazard = 1_500_000L;
+            facility.AccumulatedFailureMicroHazard = 620_000L;
+            facility.FailureHazardSubMicroRemainder = 42L;
+            facility.FailureCycleSequence = 3L;
+            facility.ConditionLastSettledSimulationTick = complete.SimulationTick;
+
+            Assert.DoesNotThrow(() => NomadWorkshopSaveContract.ValidateForSave(complete));
+
+            NomadWorkshopSaveData partial = CreateValidSave();
+            partial.Facilities[0].WearConditionUnits = 1L;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(partial),
+                "阈值为零而精确状态非零时，不能静默退化成旧版耐久投影。");
+
+            NomadWorkshopSaveData incoherentFault = CreateValidSave();
+            incoherentFault.Facilities[0].FailureThresholdMicroHazard = 1_000L;
+            incoherentFault.Facilities[0].AccumulatedFailureMicroHazard = 999L;
+            incoherentFault.Facilities[0].ActiveFault =
+                FacilityFaultKind.OutletValveJammed;
+            incoherentFault.Facilities[0].FaultSeverityPermille = 600;
+            incoherentFault.Facilities[0].ConditionLastSettledSimulationTick =
+                incoherentFault.SimulationTick;
+            Assert.Throws<InvalidOperationException>(
+                () => NomadWorkshopSaveContract.ValidateForSave(incoherentFault),
+                "具体故障只能在累计风险达到本轮阈值时存在。");
+        }
+
+        [Test]
         public void RestoreOrder_IsStableAndTransientPathIsNeverPartOfContract()
         {
             NomadWorkshopSaveData save = CreateValidSave();

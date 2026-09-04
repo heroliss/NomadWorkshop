@@ -143,6 +143,128 @@ namespace Game.NomadWorkshop.Foundation
     }
 
     /// <summary>
+    /// 一座设施的连续状态与具体故障只读投影。磨损、维护欠账和积尘彼此独立，风险进度只是
+    /// 已累计暴露相对本轮预取样阈值的解释值；View 不得通过该投影直接修理或改写状态。
+    /// </summary>
+    [Serializable]
+    public struct FoundationFacilityConditionState :
+        IEquatable<FoundationFacilityConditionState>
+    {
+        [SerializeField] private string instanceId;
+        [SerializeField] private NomadFacilityFunction function;
+        [SerializeField] private int wearPermille;
+        [SerializeField] private int maintenanceDebtPermille;
+        [SerializeField] private int dustPermille;
+        [SerializeField] private int failureRiskProgressPermille;
+        [SerializeField] private long currentRiskRateMicroHazardPerSecond;
+        [SerializeField] private long failureThresholdMicroHazard;
+        [SerializeField] private long accumulatedFailureMicroHazard;
+        [SerializeField] private FacilityConditionWarning warning;
+        [SerializeField] private FacilityFaultKind activeFault;
+        [SerializeField] private int faultSeverityPermille;
+        [SerializeField] private long faultTriggeredSimulationTick;
+
+        public FoundationFacilityConditionState(
+            string instanceId,
+            NomadFacilityFunction function,
+            int wearPermille,
+            int maintenanceDebtPermille,
+            int dustPermille,
+            int failureRiskProgressPermille,
+            long currentRiskRateMicroHazardPerSecond,
+            long failureThresholdMicroHazard,
+            long accumulatedFailureMicroHazard,
+            FacilityConditionWarning warning,
+            FacilityFaultKind activeFault,
+            int faultSeverityPermille,
+            long faultTriggeredSimulationTick)
+        {
+            this.instanceId = instanceId ?? string.Empty;
+            this.function = function;
+            this.wearPermille = Math.Clamp(wearPermille, 0, 1000);
+            this.maintenanceDebtPermille = Math.Clamp(
+                maintenanceDebtPermille,
+                0,
+                1000);
+            this.dustPermille = Math.Clamp(dustPermille, 0, 1000);
+            this.failureRiskProgressPermille = Math.Clamp(
+                failureRiskProgressPermille,
+                0,
+                1000);
+            this.currentRiskRateMicroHazardPerSecond = Math.Max(
+                0L,
+                currentRiskRateMicroHazardPerSecond);
+            this.failureThresholdMicroHazard = Math.Max(
+                0L,
+                failureThresholdMicroHazard);
+            this.accumulatedFailureMicroHazard = Math.Max(
+                0L,
+                accumulatedFailureMicroHazard);
+            this.warning = warning;
+            this.activeFault = activeFault;
+            this.faultSeverityPermille = Math.Clamp(faultSeverityPermille, 0, 1000);
+            this.faultTriggeredSimulationTick = Math.Max(
+                0L,
+                faultTriggeredSimulationTick);
+        }
+
+        public string InstanceId => instanceId;
+        public NomadFacilityFunction Function => function;
+        public int WearPermille => wearPermille;
+        public int MaintenanceDebtPermille => maintenanceDebtPermille;
+        public int DustPermille => dustPermille;
+        public int FailureRiskProgressPermille => failureRiskProgressPermille;
+        public long CurrentRiskRateMicroHazardPerSecond =>
+            currentRiskRateMicroHazardPerSecond;
+        public long FailureThresholdMicroHazard => failureThresholdMicroHazard;
+        public long AccumulatedFailureMicroHazard => accumulatedFailureMicroHazard;
+        public FacilityConditionWarning Warning => warning;
+        public FacilityFaultKind ActiveFault => activeFault;
+        public int FaultSeverityPermille => faultSeverityPermille;
+        public long FaultTriggeredSimulationTick => faultTriggeredSimulationTick;
+        public bool IsOperational => activeFault == FacilityFaultKind.None;
+
+        public bool Equals(FoundationFacilityConditionState other) =>
+            string.Equals(instanceId, other.instanceId, StringComparison.Ordinal) &&
+            function == other.function &&
+            wearPermille == other.wearPermille &&
+            maintenanceDebtPermille == other.maintenanceDebtPermille &&
+            dustPermille == other.dustPermille &&
+            failureRiskProgressPermille == other.failureRiskProgressPermille &&
+            currentRiskRateMicroHazardPerSecond ==
+            other.currentRiskRateMicroHazardPerSecond &&
+            failureThresholdMicroHazard == other.failureThresholdMicroHazard &&
+            accumulatedFailureMicroHazard == other.accumulatedFailureMicroHazard &&
+            warning == other.warning &&
+            activeFault == other.activeFault &&
+            faultSeverityPermille == other.faultSeverityPermille &&
+            faultTriggeredSimulationTick == other.faultTriggeredSimulationTick;
+
+        public override bool Equals(object obj) =>
+            obj is FoundationFacilityConditionState other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            int conditionHash = HashCode.Combine(
+                instanceId,
+                function,
+                wearPermille,
+                maintenanceDebtPermille,
+                dustPermille,
+                failureRiskProgressPermille,
+                currentRiskRateMicroHazardPerSecond,
+                failureThresholdMicroHazard);
+            return HashCode.Combine(
+                conditionHash,
+                accumulatedFailureMicroHazard,
+                warning,
+                activeFault,
+                faultSeverityPermille,
+                faultTriggeredSimulationTick);
+        }
+    }
+
+    /// <summary>
     /// 最近一次完整行动方案的 Inspector 投影。它只保存可解释结果，不把纯 C# 估算器或可变候选泄露给 View。
     /// TotalUtility 是 Utility AI 在本次需求快照上的最终分数，而不是策划长期平衡承诺。
     /// </summary>

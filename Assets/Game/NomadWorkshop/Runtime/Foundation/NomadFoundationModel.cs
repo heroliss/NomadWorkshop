@@ -45,6 +45,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<int> FacilityAccessRevision { get; private set; } = new(0);
         [field: SerializeField, Tooltip("设施实例库存只读投影的版本；变化时 View 应重新取得快照。")]
         public RP<int> FacilityInventoryRevision { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("设施磨损、积尘、维护欠账和具体故障投影的版本；真值仍由 System 独占。")]
+        public RP<int> FacilityConditionRevision { get; private set; } = new(0);
 
         [Header("居民与物质链（运行时只读观察）")]
         [field: SerializeField] public RP<FoundationResidentPhase> ResidentPhase { get; private set; } =
@@ -98,6 +100,7 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField] private List<FoundationFacilityState> facilities = new();
         [SerializeField] private List<FoundationFacilityAccessState> facilityAccess = new();
         [SerializeField] private List<FoundationFacilityInventoryState> facilityInventories = new();
+        [SerializeField] private List<FoundationFacilityConditionState> facilityConditions = new();
 
         internal IReadOnlyList<FoundationFacilityState> Facilities => facilities;
 
@@ -192,6 +195,33 @@ namespace Game.NomadWorkshop.Foundation
 
         internal FoundationFacilityInventoryState[] GetFacilityInventorySnapshot() =>
             facilityInventories.ToArray();
+
+        internal void ReplaceFacilityConditions(
+            IReadOnlyList<FoundationFacilityConditionState> source)
+        {
+            int sourceCount = source?.Count ?? 0;
+            if (facilityConditions.Count == sourceCount)
+            {
+                var unchanged = true;
+                for (var i = 0; i < sourceCount; i++)
+                {
+                    if (facilityConditions[i].Equals(source[i])) continue;
+                    unchanged = false;
+                    break;
+                }
+                if (unchanged) return;
+            }
+
+            facilityConditions.Clear();
+            if (source != null)
+            {
+                for (var i = 0; i < source.Count; i++) facilityConditions.Add(source[i]);
+            }
+            FacilityConditionRevision.Value++;
+        }
+
+        internal FoundationFacilityConditionState[] GetFacilityConditionSnapshot() =>
+            facilityConditions.ToArray();
 
         private bool HasSameFacilityAccess(IReadOnlyList<FoundationFacilityAccessState> source)
         {

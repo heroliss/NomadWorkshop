@@ -58,6 +58,21 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.AreEqual(expected.SimulationTick, actual.SimulationTick);
                 Assert.AreEqual(1, actual.Facilities.Count);
                 Assert.AreEqual(expected.Facilities[0].Pose, actual.Facilities[0].Pose);
+                Assert.AreEqual(
+                    expected.Facilities[0].WearConditionUnits,
+                    actual.Facilities[0].WearConditionUnits);
+                Assert.AreEqual(
+                    expected.Facilities[0].MaintenanceDebtConditionUnits,
+                    actual.Facilities[0].MaintenanceDebtConditionUnits);
+                Assert.AreEqual(
+                    expected.Facilities[0].FailureThresholdMicroHazard,
+                    actual.Facilities[0].FailureThresholdMicroHazard);
+                Assert.AreEqual(
+                    expected.Facilities[0].AccumulatedFailureMicroHazard,
+                    actual.Facilities[0].AccumulatedFailureMicroHazard);
+                Assert.AreEqual(
+                    expected.Facilities[0].FailureHazardSubMicroRemainder,
+                    actual.Facilities[0].FailureHazardSubMicroRemainder);
                 Assert.AreEqual(expected.Inventories[0].ContaminationPermille,
                     actual.Inventories[0].ContaminationPermille);
                 Assert.AreEqual(ResourceMeasure.Item, actual.Inventories[0].Measure);
@@ -110,6 +125,17 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Pose = QuantizedDeckPose.FromMeters(1.25f, -0.75f, 27f),
                 DurabilityPermille = 810,
                 DirtPermille = 230,
+                WearConditionUnits = 190L *
+                                     FacilityConditionCycle.ConditionUnitsPerPermille,
+                MaintenanceDebtConditionUnits = 340L *
+                                                FacilityConditionCycle.ConditionUnitsPerPermille,
+                DustConditionUnits = 230L *
+                                     FacilityConditionCycle.ConditionUnitsPerPermille,
+                FailureThresholdMicroHazard = 1_500_000L,
+                AccumulatedFailureMicroHazard = 620_000L,
+                FailureHazardSubMicroRemainder = 77L,
+                FailureCycleSequence = 2L,
+                ConditionLastSettledSimulationTick = 123456L,
             });
             data.Inventories.Add(new NomadInventorySaveData
             {

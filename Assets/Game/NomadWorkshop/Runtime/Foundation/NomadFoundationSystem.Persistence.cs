@@ -23,9 +23,6 @@ namespace Game.NomadWorkshop.Foundation
         private const string ResidentActionSequenceStreamId =
             "foundation:resident-action-id";
 
-        private readonly Dictionary<string, FoundationFacilityCondition> _facilityConditions =
-            new(StringComparer.Ordinal);
-
         /// <summary>
         /// 捕获当前已提交的 Foundation 业务真值。路径、交互位租约、NavMeshData、材质和动画阶段不会落盘；
         /// 未提交行动在快照中回退到最近的守恒边界，加载后由 Utility AI 重新规划。
@@ -33,6 +30,9 @@ namespace Game.NomadWorkshop.Foundation
         public NomadWorkshopSaveData CaptureCheckpoint()
         {
             EnsureCheckpointRuntimeReady();
+            // 检查点必须把每座设施结算到根 Tick；否则读档会从一个较早状态继续，
+            // 在不同保存帧边界下改变故障触发时刻。
+            AdvanceFacilityConditionsTo(_simulationClock.SimulationTick);
 
             int liveVehicleWater = _vehicleWater.GetAmount(NomadResourceIds.Water);
             int liveWaterCanWater = _waterCan.GetAmount(NomadResourceIds.Water);
@@ -60,18 +60,37 @@ namespace Game.NomadWorkshop.Foundation
             for (var i = 0; i < facilities.Count; i++)
             {
                 FoundationFacilityState facility = facilities[i];
-                FoundationFacilityCondition condition = _facilityConditions.TryGetValue(
-                    facility.InstanceId,
-                    out FoundationFacilityCondition current)
-                    ? current
-                    : FoundationFacilityCondition.Default;
+                if (!_facilityConditions.TryGetValue(
+                        facility.InstanceId,
+                        out FacilityConditionCycle condition))
+                    throw new InvalidOperationException(
+                        $"设施 {facility.InstanceId} 缺少状态机，无法形成完整检查点。");
+                FacilityConditionCheckpoint conditionCheckpoint =
+                    condition.CaptureCheckpoint();
                 data.Facilities.Add(new NomadFacilitySaveData
                 {
                     InstanceId = facility.InstanceId,
                     DefinitionId = facility.DefinitionId,
                     Pose = QuantizedDeckPose.FromDeckPose(facility.Pose),
-                    DurabilityPermille = condition.DurabilityPermille,
-                    DirtPermille = condition.DirtPermille,
+                    DurabilityPermille = 1000 - condition.WearPermille,
+                    DirtPermille = condition.DustPermille,
+                    WearConditionUnits = conditionCheckpoint.WearUnits,
+                    MaintenanceDebtConditionUnits =
+                        conditionCheckpoint.MaintenanceDebtUnits,
+                    DustConditionUnits = conditionCheckpoint.DustUnits,
+                    FailureThresholdMicroHazard =
+                        conditionCheckpoint.FailureThresholdMicroHazard,
+                    AccumulatedFailureMicroHazard =
+                        conditionCheckpoint.AccumulatedFailureMicroHazard,
+                    FailureHazardSubMicroRemainder =
+                        conditionCheckpoint.HazardSubMicroRemainder,
+                    FailureCycleSequence = conditionCheckpoint.FailureCycleSequence,
+                    ActiveFault = conditionCheckpoint.ActiveFault,
+                    FaultSeverityPermille = conditionCheckpoint.FaultSeverityPermille,
+                    FaultTriggeredSimulationTick =
+                        conditionCheckpoint.FaultTriggeredSimulationTick,
+                    ConditionLastSettledSimulationTick =
+                        conditionCheckpoint.LastSettledSimulationTick,
                 });
             }
 
@@ -240,11 +259,12 @@ namespace Game.NomadWorkshop.Foundation
                         saved.InstanceId,
                         pose,
                         request.Footprint));
-                _facilityConditions.Add(
-                    saved.InstanceId,
-                    new FoundationFacilityCondition(
-                        saved.DurabilityPermille,
-                        saved.DirtPermille));
+                FacilityConditionCycle condition = RestoreFacilityCondition(
+                    data.WorldSeed,
+                    data.SimulationTick,
+                    saved,
+                    definition.Function);
+                _facilityConditions.Add(saved.InstanceId, condition);
                 restoredFacilities.Add(new FoundationFacilityState(
                     saved.InstanceId,
                     saved.DefinitionId,
@@ -874,17 +894,43 @@ namespace Game.NomadWorkshop.Foundation
                 throw new InvalidOperationException("Foundation 尚未完成初始化，不能捕获或恢复运行检查点。");
         }
 
-        private readonly struct FoundationFacilityCondition
+        private FacilityConditionCycle RestoreFacilityCondition(
+            int savedWorldSeed,
+            long rootSimulationTick,
+            NomadFacilitySaveData saved,
+            NomadFacilityFunction function)
         {
-            public FoundationFacilityCondition(int durabilityPermille, int dirtPermille)
+            if (saved.FailureThresholdMicroHazard == 0L)
             {
-                DurabilityPermille = durabilityPermille;
-                DirtPermille = dirtPermille;
+                // v3 早期存档只有耐久 / 污染投影。加载时从根 Tick 开始新风险周期，
+                // 不把过去没有记录的风险补算出来；已显示的磨损和积尘则保留下来。
+                FacilityConditionCycle legacy = FacilityConditionCycle.Create(
+                    savedWorldSeed,
+                    saved.InstanceId,
+                    rootSimulationTick);
+                legacy.ApplyConditionShock(
+                    wearPermille: 1000 - saved.DurabilityPermille,
+                    maintenanceDebtPermille: 0,
+                    dustPermille: saved.DirtPermille);
+                return legacy;
             }
 
-            public int DurabilityPermille { get; }
-            public int DirtPermille { get; }
-            public static FoundationFacilityCondition Default => new(1000, 0);
+            var checkpoint = new FacilityConditionCheckpoint(
+                saved.InstanceId,
+                saved.ConditionLastSettledSimulationTick,
+                saved.WearConditionUnits,
+                saved.MaintenanceDebtConditionUnits,
+                saved.DustConditionUnits,
+                saved.FailureThresholdMicroHazard,
+                saved.AccumulatedFailureMicroHazard,
+                saved.FailureHazardSubMicroRemainder,
+                saved.FailureCycleSequence,
+                saved.ActiveFault,
+                saved.FaultSeverityPermille,
+                saved.FaultTriggeredSimulationTick);
+            var restored = new FacilityConditionCycle(savedWorldSeed, checkpoint);
+            restored.AdvanceTo(rootSimulationTick, GetConditionExposure(function));
+            return restored;
         }
 
         private sealed class FoundationRestoreData

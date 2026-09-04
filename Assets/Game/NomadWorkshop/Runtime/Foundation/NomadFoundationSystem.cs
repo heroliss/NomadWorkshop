@@ -84,6 +84,22 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, Min(0.1f), Tooltip("空闲或等待时重新评估下一项主要行动的模拟秒间隔；需求概率只在这些决策边界采样，不会逐帧掷骰。")]
         private float residentDecisionRetrySeconds = 0.5f;
 
+        [Header("车辆水箱状态（整数确定性积分）")]
+        [SerializeField, Tooltip("每模拟毫秒增加的等效磨损细分单位；1,000,000 单位 = 1‰，默认约每生活日 10.2‰。")]
+        private long waterTankWearUnitsPerMillisecond = 17L;
+        [SerializeField, Tooltip("每模拟毫秒增加的维护欠账细分单位；默认约每生活日 150‰，完成保养会降低它。")]
+        private long waterTankMaintenanceDebtUnitsPerMillisecond = 250L;
+        [SerializeField, Tooltip("每模拟毫秒增加的积尘细分单位；默认约每生活日 100.2‰，沙尘冲击会额外增加。")]
+        private long waterTankDustUnitsPerMillisecond = 167L;
+        [SerializeField, Tooltip("设备状态为零时，每模拟秒仍会累计的基础微风险；风险达到本轮预取样阈值才产生具体故障。")]
+        private long waterTankBaseMicroHazardPerSecond = 50L;
+        [SerializeField, Tooltip("每 1‰ 等效磨损、每模拟秒贡献的微风险。它影响故障概率，不把磨损直接等同于损坏。")]
+        private long waterTankWearMicroHazardPerPermilleSecond = 1L;
+        [SerializeField, Tooltip("每 1‰ 维护欠账、每模拟秒贡献的微风险；首版让拖延保养成为主要可控风险来源。")]
+        private long waterTankMaintenanceMicroHazardPerPermilleSecond = 2L;
+        [SerializeField, Tooltip("每 1‰ 积尘、每模拟秒贡献的微风险；清洁会降低后续风险率，但不会倒扣过去暴露。")]
+        private long waterTankDustMicroHazardPerPermilleSecond = 1L;
+
         [Header("居民身心连续状态")]
         [SerializeField, Range(0f, 1f), Tooltip("新场景中居民的正向娱乐满足度；普通发呆和闲逛不会提高它。")]
         private float initialEntertainment = 0.68f;
@@ -230,6 +246,7 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
+            AdvanceFacilityConditionsTo(_simulationClock.SimulationTick);
             float deltaTime = deltaMilliseconds / 1000f;
             ResidentWaterCycleTick physiologyTick = _residentWaterCycle.Advance(
                 deltaTime,
@@ -722,7 +739,9 @@ namespace Game.NomadWorkshop.Foundation
                     request.Pose,
                     request.Footprint);
                 _navigationObstacles.Add(instanceId, obstacle);
-                _facilityConditions.Add(instanceId, FoundationFacilityCondition.Default);
+                _facilityConditions.Add(
+                    instanceId,
+                    CreateFacilityCondition(instanceId));
                 initialFacilities.Add(new FoundationFacilityState(
                     instanceId,
                     definition.Id,
@@ -1353,7 +1372,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.AddFacility(facility);
             _facilityConditions.Add(
                 _pendingPlacement.InstanceId,
-                FoundationFacilityCondition.Default);
+                CreateFacilityCondition(_pendingPlacement.InstanceId));
             AddFacilityInventory(facility);
         }
 
@@ -1828,10 +1847,12 @@ namespace Game.NomadWorkshop.Foundation
                     out FoundationFacilityState station,
                     out ResourceInventory stationInventory,
                     out _);
-            bool hasWaterSource = TryFindPlacedFacility(
+            bool hasAnyWaterSource = TryFindPlacedFacility(
                     NomadFacilityFunction.VehicleWaterTank,
-                    out FoundationFacilityState source,
+                    out _,
                     out _);
+            bool hasWaterSource = TryFindOperationalWaterSource(
+                out FoundationFacilityState source);
             bool sourceHasWater = _vehicleWater.GetAmount(NomadResourceIds.Water) > 0;
             bool drinkAfterDelivery = needsDrink && bodyCanDrink && !hasFeasibleRecovery;
             if (hasRestockStation && hasWaterSource && sourceHasWater)
@@ -1877,8 +1898,10 @@ namespace Game.NomadWorkshop.Foundation
                 ? "体内待代谢水已满，需要等待代谢或如厕"
                 : !hasRestockStation
                     ? "没有可补水的可达饮水站实例"
-                    : !hasWaterSource
+                    : !hasAnyWaterSource
                         ? "找不到车辆水箱设施"
+                        : !hasWaterSource
+                            ? "车辆水箱出水阀卡滞，需要先修理"
                         : !sourceHasWater
                             ? "车辆水箱已经没有可饮用水"
                             : "当前没有可装入水罐并送达饮水站的水量";
@@ -2614,6 +2637,24 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteWaterPickup()
         {
+            if (_activeHaul == null ||
+                _activeHaul.State != HaulTaskState.Reserved)
+            {
+                ReleaseActiveTasks();
+                ClearActivePath();
+                PublishCurrentFacilityAccessProjection();
+                SetResidentPhase(
+                    FoundationResidentPhase.Idle,
+                    "取水任务已经失效，正在重新评估");
+                _residentDecisionRetryRemaining = 0f;
+                return;
+            }
+            if (!IsWaterSourceOperational(_activeWaterSourceFacilityInstanceId))
+            {
+                CancelPendingWaterHaulForFault(_activeWaterSourceFacilityInstanceId);
+                return;
+            }
+
             _activeHaul.PickUp();
             if (!TryFindFacilityByInstanceId(
                     _activeWaterTargetFacilityInstanceId,
@@ -2946,6 +2987,7 @@ namespace Game.NomadWorkshop.Foundation
                     intent.PreferredFacilityInstanceId,
                     intent.FacilityFunction,
                     out FoundationFacilityState preferred) &&
+                IsFacilityCompatibleWithActiveMove(intent, preferred) &&
                 TrySelectBestInteractionSlot(
                     ToNavigationPoint(_model.ResidentLocalPosition.Value),
                     preferred,
@@ -3005,6 +3047,10 @@ namespace Game.NomadWorkshop.Foundation
             in FoundationResidentMoveIntent intent,
             in FoundationFacilityState candidate)
         {
+            if (intent.TravelPhase == FoundationResidentPhase.MovingToWaterSource &&
+                !IsWaterSourceOperational(candidate.InstanceId))
+                return false;
+
             if (_activeHaul == null ||
                 _activeHaul.State != HaulTaskState.Carrying ||
                 intent.TravelPhase != FoundationResidentPhase.MovingToDrinkingStation ||
@@ -3585,6 +3631,7 @@ namespace Game.NomadWorkshop.Foundation
             if (_model.ResidentCarryingWater.Value != carryingWater)
                 _model.ResidentCarryingWater.Value = carryingWater;
             WriteFacilityInventoryProjection();
+            WriteFacilityConditionProjection();
             SetInt(
                 _model.BodyWaterMilliliters,
                 _residentWaterCycle.BodyWater.GetAmount(NomadResourceIds.Water));

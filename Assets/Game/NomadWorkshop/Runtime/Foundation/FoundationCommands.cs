@@ -27,6 +27,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> FacilityRevision;
         public readonly ReadOnlyReactiveProperty<int> FacilityAccessRevision;
         public readonly ReadOnlyReactiveProperty<int> FacilityInventoryRevision;
+        public readonly ReadOnlyReactiveProperty<int> FacilityConditionRevision;
         public readonly ReadOnlyReactiveProperty<FoundationResidentPhase> ResidentPhase;
         public readonly ReadOnlyReactiveProperty<Vector3> ResidentLocalPosition;
         public readonly ReadOnlyReactiveProperty<float> ResidentLocalYawDegrees;
@@ -86,6 +87,7 @@ namespace Game.NomadWorkshop.Foundation
             FacilityRevision = model.FacilityRevision;
             FacilityAccessRevision = model.FacilityAccessRevision;
             FacilityInventoryRevision = model.FacilityInventoryRevision;
+            FacilityConditionRevision = model.FacilityConditionRevision;
             ResidentPhase = model.ResidentPhase;
             ResidentLocalPosition = model.ResidentLocalPosition;
             ResidentLocalYawDegrees = model.ResidentLocalYawDegrees;
@@ -149,6 +151,13 @@ namespace Game.NomadWorkshop.Foundation
     {
         public FoundationFacilityInventoryState[] Execute(ICommandContext ctx) =>
             ctx.GetModel<NomadFoundationModel>().GetFacilityInventorySnapshot();
+    }
+
+    public readonly struct GetFoundationFacilityConditionsCommand :
+        ICommand<FoundationFacilityConditionState[]>
+    {
+        public FoundationFacilityConditionState[] Execute(ICommandContext ctx) =>
+            ctx.GetModel<NomadFoundationModel>().GetFacilityConditionSnapshot();
     }
 
     public readonly struct GetFoundationBuildOptionsCommand : ICommand<FoundationBuildOption[]>

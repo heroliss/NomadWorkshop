@@ -41,6 +41,8 @@ namespace Game.NomadWorkshop.Foundation
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
         private FoundationFacilityInventoryState[] _facilityInventories =
             Array.Empty<FoundationFacilityInventoryState>();
+        private FoundationFacilityConditionState[] _facilityConditions =
+            Array.Empty<FoundationFacilityConditionState>();
         private int _waterCanWaterMilliliters;
         private int _waterCanCapacityMilliliters;
         private FoundationActionPlanProjection _latestActionPlan;
@@ -108,6 +110,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.FacilityInventoryRevision, _ =>
                 _facilityInventories = this.ExecuteCommand(
                     new GetFoundationFacilityInventoriesCommand()));
+            Bag.Subscribe(readModel.FacilityConditionRevision, _ =>
+                _facilityConditions = this.ExecuteCommand(
+                    new GetFoundationFacilityConditionsCommand()));
             Bag.Subscribe(readModel.BuildTransactionPhase, value => _buildTransactionPhase = value);
             Bag.Subscribe(readModel.PositionSnapMillimeters, value => _positionSnapMillimeters = value);
             Bag.Subscribe(readModel.RotationSnapDeciDegrees, value => _rotationSnapDeciDegrees = value);
@@ -554,7 +559,7 @@ namespace Game.NomadWorkshop.Foundation
                 buildFocused ? "游牧工坊 · 建造与通路" : "游牧工坊 · 开发控制台",
                 _titleStyle);
             GUILayout.Label(
-                "连续建造 → 实体容器搬水 → 饮水；完整方案参与 Utility 决策",
+                "连续建造 → 实体搬水 → 设施老化 / 故障 / 保养；完整方案参与 Utility 决策",
                 _smallStyle);
             GUILayout.Label(
                 $"第 {_lifeDay} 生活日 · {_lifeMinuteOfDay / 60:00}:" +
@@ -722,6 +727,60 @@ namespace Game.NomadWorkshop.Foundation
                 $"锚点 {DescribeAnchor(_waterCanAnchorFacilityInstanceId)} · " +
                 $"内含水 {FormatVolume(_waterCanWaterMilliliters, _waterCanCapacityMilliliters)}",
                 _smallStyle);
+
+            GUILayout.Space(7f);
+            GUILayout.Label("车辆水箱状态", _sectionStyle);
+            if (TryGetPrimaryWaterTankCondition(out FoundationFacilityConditionState condition))
+            {
+                DrawMeter("等效磨损", condition.WearPermille / 1000f);
+                DrawMeter("维护欠账", condition.MaintenanceDebtPermille / 1000f);
+                DrawMeter("积尘", condition.DustPermille / 1000f);
+                DrawMeter("本轮故障风险积分", condition.FailureRiskProgressPermille / 1000f);
+                GUI.color = condition.IsOperational
+                    ? new Color(0.58f, 0.94f, 0.72f)
+                    : new Color(1f, 0.42f, 0.28f);
+                GUILayout.Label(
+                    $"{Describe(condition.Warning)} · {Describe(condition.ActiveFault)} · " +
+                    $"瞬时风险率 {condition.CurrentRiskRateMicroHazardPerSecond:N0} 微风险/秒",
+                    _smallStyle);
+                GUI.color = Color.white;
+                GUILayout.Label(
+                    $"累计 {condition.AccumulatedFailureMicroHazard:N0} / " +
+                    $"阈值 {condition.FailureThresholdMicroHazard:N0} · " +
+                    $"故障严重度 {condition.FaultSeverityPermille / 10f:0.0}%",
+                    _smallStyle);
+
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(new GUIContent(
+                        "注入沙尘冲击",
+                        "增加 10‰ 磨损、80‰ 维护欠账和 250‰ 积尘；不直接伪造故障。")))
+                    this.ExecuteCommand(new ApplyPrimaryWaterTankSandstormCommand());
+                bool conditionButtonsEnabled = GUI.enabled;
+                GUI.enabled = conditionButtonsEnabled &&
+                              (condition.MaintenanceDebtPermille > 0 ||
+                               condition.DustPermille > 0);
+                if (GUILayout.Button(new GUIContent(
+                        "清洁保养",
+                        "降低积尘和维护欠账；不倒扣过去风险，也不恢复等效磨损。")))
+                    this.ExecuteCommand(new PerformPrimaryWaterTankMaintenanceCommand());
+                GUI.enabled = conditionButtonsEnabled && condition.IsOperational;
+                if (GUILayout.Button(new GUIContent(
+                        "推进至故障",
+                        "只供 Harness：把累计风险精确推进到本轮已保存阈值。")))
+                    this.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand());
+                GUI.enabled = conditionButtonsEnabled && !condition.IsOperational;
+                if (GUILayout.Button(new GUIContent(
+                        "修理出水阀",
+                        "清除具体故障并开启新的风险周期；磨损、欠保养和积尘仍保留。")))
+                    this.ExecuteCommand(new RepairPrimaryWaterTankFaultCommand());
+                GUI.enabled = conditionButtonsEnabled;
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                GUILayout.Label("当前没有可观察的车辆水箱状态。", _smallStyle);
+            }
+
             if (_latestActionPlan.Evaluated)
             {
                 GUILayout.Label(
@@ -790,6 +849,39 @@ namespace Game.NomadWorkshop.Foundation
             ResidentDecisionRiskTier.Severe => "严重",
             ResidentDecisionRiskTier.Critical => "危及生命 / 车辆",
             _ => "日常",
+        };
+
+        private bool TryGetPrimaryWaterTankCondition(
+            out FoundationFacilityConditionState condition)
+        {
+            for (var i = 0; i < _facilityConditions.Length; i++)
+            {
+                if (_facilityConditions[i].Function !=
+                    NomadFacilityFunction.VehicleWaterTank)
+                    continue;
+                condition = _facilityConditions[i];
+                return true;
+            }
+
+            condition = default;
+            return false;
+        }
+
+        private static string Describe(FacilityConditionWarning warning) => warning switch
+        {
+            FacilityConditionWarning.Normal => "状态正常",
+            FacilityConditionWarning.Watch => "需要关注",
+            FacilityConditionWarning.ServiceDue => "建议保养",
+            FacilityConditionWarning.Critical => "故障风险很高",
+            FacilityConditionWarning.Faulted => "已经故障",
+            _ => warning.ToString(),
+        };
+
+        private static string Describe(FacilityFaultKind fault) => fault switch
+        {
+            FacilityFaultKind.None => "出水功能可用",
+            FacilityFaultKind.OutletValveJammed => "出水阀卡滞",
+            _ => fault.ToString(),
         };
 
         private void EnsureStyles()
