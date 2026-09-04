@@ -12,16 +12,17 @@ using UnityEngine.SceneManagement;
 namespace Game.NomadWorkshop.Editor
 {
     /// <summary>
-    /// 为游牧工坊建立可删除的 URP 3D Renderer 显示实验。
-    /// 它只给隔离预览相机选择次级 Renderer，不改变项目既有 Renderer2D 默认值。
+    /// 管理游牧工坊共享的 URP 3D Renderer，并生成可删除的显示实验。
+    /// 项目继续保留 Renderer2D 为全局默认；3D 游戏场景与隔离预览相机必须显式选择共享 Renderer。
     /// </summary>
     public static class NomadRenderingSpikePipeline
     {
         public const string PipelineAssetPath = "Assets/Settings/UniversalRP.asset";
         public const string DefaultRendererPath = "Assets/Settings/Renderer2D.asset";
+        public const string RenderingRoot = "Assets/Game/NomadWorkshop/Rendering";
+        public const string RendererDataPath = RenderingRoot + "/NW_UniversalRenderer3D.asset";
         public const string SpikeRoot =
             "Assets/Game/NomadWorkshop/Spikes/Rendering/Urp3D";
-        public const string RendererDataPath = SpikeRoot + "/NW_UniversalRenderer3D.asset";
         public const string MaterialFolder = SpikeRoot + "/Materials";
         public const string GroundMaterialPath = MaterialFolder + "/M_NW_Urp3DGround.mat";
         public const string SkyboxMaterialPath = MaterialFolder + "/M_NW_Urp3DSkybox.mat";
@@ -41,6 +42,7 @@ namespace Game.NomadWorkshop.Editor
                 throw new InvalidOperationException("请先退出 Play Mode，再配置 3D Renderer Spike。");
 
             UniversalRenderPipelineAsset pipeline = ValidateConfigurationPreconditions();
+            EnsureFolder(RenderingRoot);
             EnsureFolder(MaterialFolder);
             EnsureFolder(PreviewFolder);
 
@@ -87,7 +89,7 @@ namespace Game.NomadWorkshop.Editor
 
         /// <summary>
         /// 返回已经验证为唯一、且不会替换默认 Renderer2D 的次级 3D Renderer 索引。
-        /// 其他游戏本地预览场景可复用这个入口，避免各自猜测共享列表中的整数位置。
+        /// 正式 3D 场景与隔离预览都复用这个入口，避免各自猜测共享列表中的整数位置。
         /// </summary>
         public static int GetSecondaryRendererIndexOrThrow()
         {

@@ -4,7 +4,7 @@ using UnityEditor;
 
 namespace Game.NomadWorkshop.Editor.Tests
 {
-    /// <summary>固定 Renderer2D 默认值与隔离 Universal Renderer 3D 预览的共存契约。</summary>
+    /// <summary>固定 Renderer2D 默认值与游戏共享 Universal Renderer 3D 的共存契约。</summary>
     public sealed class NomadRenderingSpikePipelineTests
     {
         [Test]

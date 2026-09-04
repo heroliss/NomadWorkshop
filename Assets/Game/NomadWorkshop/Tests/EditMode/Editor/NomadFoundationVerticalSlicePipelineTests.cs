@@ -46,6 +46,7 @@ namespace Game.NomadWorkshop.Editor.Tests
                 NomadFoundationDebugView debugView = FindOne<NomadFoundationDebugView>(scene);
                 DeckNavigationUtility navigation = FindOne<DeckNavigationUtility>(scene);
                 NavMeshSurface surface = FindOne<NavMeshSurface>(scene);
+                Camera worldCamera = FindOne<Camera>(scene);
 
                 Assert.IsNotNull(context);
                 Assert.IsNotNull(model);
@@ -54,6 +55,7 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Assert.IsNotNull(debugView);
                 Assert.IsNotNull(navigation);
                 Assert.IsNotNull(surface);
+                Assert.IsNotNull(worldCamera);
                 Assert.That(model.transform.IsChildOf(context.transform), Is.True);
                 Assert.That(system.transform.IsChildOf(context.transform), Is.True);
                 Assert.That(worldView.transform.IsChildOf(context.transform), Is.True);
@@ -115,6 +117,19 @@ namespace Game.NomadWorkshop.Editor.Tests
                     Is.SameAs(fillLight));
                 Assert.That(RenderSettings.ambientMode, Is.EqualTo(AmbientMode.Flat));
                 Assert.That(RenderSettings.sun, Is.SameAs(keyLight));
+
+                Component cameraData = worldCamera.GetComponent("UniversalAdditionalCameraData");
+                Assert.That(
+                    cameraData,
+                    Is.Not.Null,
+                    "3D Foundation 相机必须显式持有 URP 相机数据，不能默认回落 Renderer2D。 ");
+                SerializedProperty rendererIndex = new SerializedObject(cameraData)
+                    .FindProperty("m_RendererIndex");
+                Assert.That(rendererIndex, Is.Not.Null);
+                Assert.That(
+                    rendererIndex.intValue,
+                    Is.EqualTo(NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow()),
+                    "URP/Lit 与 3D Directional Light 只有在 Universal 3D Renderer 下才会按预期响应。 ");
             }
             finally
             {

@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 namespace Game.NomadWorkshop.Editor
@@ -72,7 +73,9 @@ namespace Game.NomadWorkshop.Editor
 
             GameObject presentation = CreateChild(rootObject.transform, "Presentation · Mono Views");
             GameObject deck = CreateChild(presentation.transform, "Vehicle Deck Root");
-            Camera camera = CreateCamera(presentation.transform);
+            Camera camera = CreateCamera(
+                presentation.transform,
+                NomadRenderingSpikePipeline.GetSecondaryRendererIndexOrThrow());
             Light keyLight = CreateLight(presentation.transform, "Key Light");
             Light fillLight = CreateLight(presentation.transform, "Fill Light");
             ConfigureLightRig(keyLight, fillLight);
@@ -376,11 +379,14 @@ namespace Game.NomadWorkshop.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static Camera CreateCamera(Transform parent)
+        private static Camera CreateCamera(Transform parent, int rendererIndex)
         {
             GameObject cameraObject = CreateChild(parent, "Main Camera");
             cameraObject.tag = "MainCamera";
             Camera camera = cameraObject.AddComponent<Camera>();
+            UniversalAdditionalCameraData cameraData =
+                camera.GetUniversalAdditionalCameraData();
+            cameraData.SetRenderer(rendererIndex);
             cameraObject.AddComponent<AudioListener>();
             return camera;
         }
