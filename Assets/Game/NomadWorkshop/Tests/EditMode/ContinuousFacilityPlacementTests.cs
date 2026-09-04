@@ -50,6 +50,46 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void PlayerSnapPresets_ShareBaseLatticeAndCycleThroughFreeMode()
+        {
+            int[] steps = { 200, 300, 400, 600 };
+            var raw = new DeckPose(1137, -361, 143);
+
+            for (var i = 0; i < steps.Length; i++)
+            {
+                int step = steps[i];
+                Assert.That(
+                    DeckPlacementSnapPresets.IsPlayerPositionStep(step),
+                    Is.True);
+                Assert.That(
+                    DeckPlacementSnapPresets.UsesSharedBaseLattice(step),
+                    Is.True);
+                DeckPose snapped = new DeckPlacementSnapSettings(step, 0).Apply(raw);
+                Assert.That(
+                    snapped.XMillimeters %
+                    DeckPlacementSnapPresets.SharedBaseLatticeMillimeters,
+                    Is.Zero);
+                Assert.That(
+                    snapped.ZMillimeters %
+                    DeckPlacementSnapPresets.SharedBaseLatticeMillimeters,
+                    Is.Zero);
+            }
+
+            Assert.That(
+                DeckPlacementSnapPresets.NextPlayerPositionStep(200),
+                Is.EqualTo(300));
+            Assert.That(
+                DeckPlacementSnapPresets.NextPlayerPositionStep(600),
+                Is.Zero);
+            Assert.That(
+                DeckPlacementSnapPresets.NextPlayerPositionStep(0),
+                Is.EqualTo(200));
+            Assert.That(
+                DeckPlacementSnapSettings.Disabled.Apply(raw),
+                Is.EqualTo(raw));
+        }
+
+        [Test]
         public void TryPlace_AcceptsArbitraryAngleInsideDeck()
         {
             var ledger = new ContinuousFacilityPlacementLedger(MainDeck);

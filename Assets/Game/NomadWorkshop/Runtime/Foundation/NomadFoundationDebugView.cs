@@ -191,7 +191,7 @@ namespace Game.NomadWorkshop.Foundation
                 if (GUILayout.Button("Esc / 取消"))
                     this.ExecuteCommand(new CancelFacilityPlacementCommand());
                 GUILayout.EndHorizontal();
-                GUILayout.Label("右键逆时针旋转；中键拖动镜头；滚轮缩放。", _smallStyle);
+                GUILayout.Label("右键逆时针旋转；中键拖动 / 滚轮，或双指拖动 / 捏合控制镜头。", _smallStyle);
                 if (_buildTransactionPhase != FoundationBuildTransactionPhase.Idle)
                     GUILayout.Label($"NavMesh 事务：{Describe(_buildTransactionPhase)}", _smallStyle);
             }
@@ -203,18 +203,24 @@ namespace Game.NomadWorkshop.Foundation
             }
             else
             {
-                GUILayout.Label("普通模式：按 B 或上方按钮进入建造。滚轮缩放，中键旋转镜头。", _smallStyle);
+                GUILayout.Label("普通模式：按 B 或上方按钮进入建造。滚轮 / 中键或双指手势控制镜头。", _smallStyle);
             }
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button($"位置吸附 {DescribePositionSnap(_positionSnapMillimeters)}"))
                 this.ExecuteCommand(new SetFoundationPositionSnapCommand(
-                    NextValue(_positionSnapMillimeters, 200, 300, 400, 500)));
+                    DeckPlacementSnapPresets.NextPlayerPositionStep(
+                        _positionSnapMillimeters)));
             if (GUILayout.Button($"旋转吸附 {DescribeRotationSnap(_rotationSnapDeciDegrees)}"))
                 this.ExecuteCommand(new SetFoundationRotationSnapCommand(
                     NextValue(_rotationSnapDeciDegrees, 0, 50, 150, 450, 900)));
-            if (GUILayout.Button(_showPlacementGrid ? "关网格" : "开网格"))
+            GUI.enabled = previousEnabled && _positionSnapMillimeters > 0;
+            string gridButtonLabel = _positionSnapMillimeters == 0
+                ? "自由模式无网格"
+                : _showPlacementGrid ? "关网格" : "开网格";
+            if (GUILayout.Button(gridButtonLabel))
                 this.ExecuteCommand(new SetFoundationGridVisibleCommand(!_showPlacementGrid));
+            GUI.enabled = previousEnabled;
             GUILayout.EndHorizontal();
 
             GUILayout.Space(7f);
@@ -388,7 +394,7 @@ namespace Game.NomadWorkshop.Foundation
         };
 
         private static string DescribePositionSnap(int millimeters) =>
-            millimeters == 0 ? "关" : $"{millimeters / 1000f:0.##}m";
+            millimeters == 0 ? "自由（无网格）" : $"{millimeters / 1000f:0.##}m";
 
         private static string DescribeRotationSnap(int deciDegrees) =>
             deciDegrees == 0 ? "关" : $"{deciDegrees / 10f:0.#}°";

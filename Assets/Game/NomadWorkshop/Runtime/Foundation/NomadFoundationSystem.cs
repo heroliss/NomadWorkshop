@@ -363,7 +363,9 @@ namespace Game.NomadWorkshop.Foundation
             if (millimeters < 0 || millimeters > 2000) return;
             _snapSettings = new DeckPlacementSnapSettings(
                 millimeters,
-                _snapSettings.RotationStepDeciDegrees);
+                _snapSettings.RotationStepDeciDegrees,
+                _snapSettings.OriginXMillimeters,
+                _snapSettings.OriginZMillimeters);
             if (_model != null) _model.PositionSnapMillimeters.Value = millimeters;
             ApplyChangedSnapToPreview();
         }
@@ -373,7 +375,9 @@ namespace Game.NomadWorkshop.Foundation
             if (deciDegrees < 0 || deciDegrees > 3600) return;
             _snapSettings = new DeckPlacementSnapSettings(
                 _snapSettings.PositionStepMillimeters,
-                deciDegrees);
+                deciDegrees,
+                _snapSettings.OriginXMillimeters,
+                _snapSettings.OriginZMillimeters);
             if (_model != null) _model.RotationSnapDeciDegrees.Value = deciDegrees;
             ApplyChangedSnapToPreview();
         }

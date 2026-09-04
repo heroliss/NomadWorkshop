@@ -116,8 +116,11 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Is.EqualTo(392),
                 "10.8m × 8.4m 甲板应由 0.2m 真实吸附线生成 55+43 个四边形。 ");
 
-            _context.ExecuteCommand(new SetFoundationPositionSnapCommand(500));
-            Assert.That(gridMesh.vertexCount, Is.EqualTo(152));
+            _context.ExecuteCommand(new SetFoundationPositionSnapCommand(600));
+            Assert.That(
+                gridMesh.vertexCount,
+                Is.EqualTo(136),
+                "10.8m × 8.4m 甲板的 0.6m 网格应有 19+15 条线。 ");
             _context.ExecuteCommand(new ExitFoundationBuildModeCommand());
             Assert.That(sourceSlots.gameObject.activeSelf, Is.False);
             Assert.That(grid.gameObject.activeSelf, Is.False);
@@ -463,7 +466,6 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _worldView.enabled = false;
             _context.ExecuteCommand(new SetFoundationPositionSnapCommand(0));
             _context.ExecuteCommand(new SetFoundationRotationSnapCommand(0));
-            _context.ExecuteCommand(new SetFoundationGridVisibleCommand(false));
             _context.ExecuteCommand(new BeginFacilityPlacementCommand("drinking-station"));
             _context.ExecuteCommand(new MoveFacilityPreviewCommand(375, -125));
             _context.ExecuteCommand(new RotateFacilityPreviewCommand(1));
@@ -474,7 +476,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(preview.RealtimeReachabilityEvaluated, Is.True);
             Assert.That(preview.InteractionSlotCount, Is.EqualTo(3));
             Assert.That(preview.ReachableInteractionSlotCount, Is.GreaterThanOrEqualTo(1));
-            Assert.That(_model.ShowPlacementGrid.Value, Is.False);
+            Assert.That(
+                _model.ShowPlacementGrid.Value,
+                Is.True,
+                "自由模式应只临时隐藏网格，不覆盖玩家对其他吸附档位的网格偏好。 ");
             Assert.That(
                 _worldView.transform.Find("Vehicle Deck Root/Optional Placement Grid")
                     .gameObject.activeSelf,

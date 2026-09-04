@@ -1,6 +1,6 @@
 # 《游牧工坊》技术 Spike
 
-> 状态：**上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.21**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
+> 状态：**共享吸附基格 / 跨设备镜头 + 上下文行动规划 + 实体水罐 / 旱厕 + 精确停靠 / 语义改道 + Framework 分层连续建造 / 可回滚 NavMesh + 自主休闲 + 导航 / 交互 Harness + 存档骨架 + 3D 资产 Harness v0.22**，更新于 2026-09-04。当前已经跑通“玩家连续摆放设施并预演新旧功能点 → 几何合法即可更新导航并提交 → 居民自动避让施工占地 → 完整水罐方案经 Utility 决策 → 装水 / 搬运 / 饮用 / 代谢 / 如厕 → 空闲时漫步或发呆 → 施工切路后自动换 Slot / 换同功能设施”的可恢复闭环；它还不是完整 Foundation Prototype、商业垂直切片或正式美术基线。产品真值见 [`docs/nomad-workshop-game-vision.md`](../../../docs/nomad-workshop-game-vision.md)。
 
 ## 当前证明了什么
 
@@ -9,7 +9,8 @@
 - 货物搬运按能力匹配：水要求防漏容器，普通箱子和徒手均不可行；食物可配置少量徒手搬运，手或容器的洁净度形成可解释污染暴露；大件或姿态敏感货物也能要求徒手 / 双手搬运而拒绝容器，所有可行搬运方式仍需放回完整路径比较；
 - 正式 Foundation 的补水已消费上述规则：唯一水罐有独立容量、位置和预留键，首次从车辆水箱旁取得，倒空后留在饮水站旁；候选同时估算真实 NavMesh 行程、取罐 / 装水 / 交付 / 饮用时长、体力和污染风险，再进入 Utility AI；
 - `NomadFoundationVerticalSlice` 已通过 `MonoGameContextBase + MonoModelBase + MonoSystemBase + MonoViewBase` 消费 SSFramework：View 只发 Command 和订阅读模型，实时行动只在 System 的 `Update` 推进，Model 在 Inspector 中暴露设施、需求、库存与阻塞状态；
-- 玩家可选择饮水站、野战厨房或旱厕，把鼠标命中投射为毫米 / 0.1° 量化的连续甲板姿态；正式 UI 的位置吸附收敛为 0.2 / 0.3 / 0.4 / 0.5 m，网格同步当前步长，默认旋转 45°；底层仍保留无吸附测试 / 编辑能力；
+- 玩家可选择饮水站、野战厨房或旱厕，把鼠标命中投射为毫米 / 0.1° 量化的连续甲板姿态；正式 UI 的位置吸附为自由、0.2 / 0.3 / 0.4 / 0.6 m，非零档位共用 0.1 m 基础格与甲板原点，网格同步当前步长，默认旋转 45°；
+- 桌面中键拖动 / 滚轮与移动端双指拖动 / 捏合共用镜头姿态、距离和俯仰边界，但保留设备独立灵敏度；双指手势结束前会抑制模拟鼠标事件，避免误确认建造；
 - 设施权威记录只保存稳定实例 id、定义 id 与 `DeckPose`，复合有向矩形 Footprint、候选交互位和 3D Transform 都从定义与姿态派生；首发定义使用 ScriptableObject，灰盒稳定后可只替换视觉子树；
 - 拖动候选时，复用数组的纯 C# 连通预演会重算候选与既有设施的每个 InteractionGroup / Slot；同组任一 Slot 可达即保留该功能，越界 / 占地重叠是硬错误，功能点不可达是仍可确认的软警告；
 - 建造视图无需悬停就持续显示全部设施的所有停靠位；完全不可达的既有设施标红，部分功能失效标橙，每个失效 Group 另有独立红色功能警示；
@@ -86,7 +87,7 @@ NomadWorkshop/
 当前优先运行 Framework 分层的最小垂直切片：
 
 1. 执行 `Assets/SSFramework/游牧工坊/Foundation/创建或打开最小垂直切片`，或直接打开 [`Scenes/NomadFoundationVerticalSlice.unity`](Scenes/NomadFoundationVerticalSlice.unity)；
-2. 进入 Play，以数字键 `1–3` 或左侧按钮选择设施，移动鼠标连续预览，`Q / E` 或右键按当前步长旋转，左键确认，`Esc` / 面板按钮取消；面板可循环吸附档位并开关可视网格，滚轮缩放、中键环绕；
+2. 进入 Play，以数字键 `1–3` 或左侧按钮选择设施，移动鼠标连续预览，`Q / E` 或右键按当前步长旋转，左键确认，`Esc` / 面板按钮取消；面板可循环自由、0.2 / 0.3 / 0.4 / 0.6 m 档位并开关可视网格，滚轮缩放、中键环绕；触屏可用双指质心拖动旋转、捏合缩放；
 3. 建造模式会始终显示所有设施 Slot 的绿 / 红可达标记；试着堵住既有设施，它会持续标红 / 橙但候选仍可确认。建成饮水站与旱厕后可观察搬水、饮用、代谢、如厕、空闲补货和自主休闲；施工封死当前饮水站时，任务应转向另一座可达饮水站或进入可重试等待；
 4. 分层、摆放真值、验证范围和下一步迁移顺序见 [`docs/nomad-workshop-foundation-vertical-slice.md`](../../../docs/nomad-workshop-foundation-vertical-slice.md)。
 
@@ -142,8 +143,9 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 ## 当前验证证据
 
 - 编译：CompilationPipeline 0 error / 0 warning；
-- Nomad Simulation + 镜头定向 EditMode 76/76（job `23f40cbc252b`），包含 2:1 发呆 / 散步加权随机与十倍滚轮缩放边界；
-- 正式 Foundation PlayMode 15/15（job `6c52fb27fb26`），覆盖精确停靠、45° 邻接幽灵 / 落地一致、施工后改去第二座饮水站，以及 `DestinationFull → 如厕 → 恢复饮水`；
+- 共享吸附基格 + 镜头定向 EditMode 16/16（job `15a8261b90eb`），覆盖自由 / 0.2 / 0.3 / 0.4 / 0.6 m、共同 0.1 m 基础格、双指拖动 / 捏合分解与镜头限位；
+- 正式 Foundation PlayMode 15/15（job `42c9a8476b07`），覆盖同步 0.2 / 0.6 m 网格、自由模式自动隐藏、精确停靠、45° 邻接预览 / 落地一致、施工后改去第二座饮水站，以及 `DestinationFull → 如厕 → 恢复饮水`；
+- 可重建场景管线 EditMode 1/1（job `c3046ae76822`）；
 - 最终 PlayMode 请求的类名过滤未被 Test Runner 正确收窄，实际完成了全项目 790/790（job `1b7dc395827c`，120.1 s）；它是有效的扩大回归，但过滤失效仍记为 Harness 问题；
 - Game View：已实际查看 45° 紧邻既有饮水站时 0/3 Slot 可达但仍可确认的红色幽灵；`Screenshots/nomad-foundation-45deg-preview-parity.png` 同时显示既有设施三个绿色 Slot 与候选三个红色 Slot，无需悬停。同步 0.2 m 网格与基础建造模式见 `Screenshots/nomad-foundation-exact-docking-build-mode.png`（两者均为本地忽略证据）。
 
@@ -162,4 +164,4 @@ Editor 菜单 `Assets/SSFramework/游牧工坊/Rendering Spike/配置并审计 3
 - 基于 Curvature / AO / Position 的 Mesh-specific 贴图、唯一 UV / 屏幕占比关联的正式 Texel Density 预算，以及目标平台贴图内存基线；
 - 项目默认 Renderer 仍是 `Renderer2D`；次级 3D Renderer 只证明隔离镜头可用，尚未决定正式游戏场景的 Renderer 组织、后处理、VFX、灯光风格和性能预算。
 
-下一步先用长椅、画板或观景点接入一个最小固定休闲点，验证它能复用同一套功能 Group、备选 Slot 和完整方案管线，并在扩展前抽离 Foundation System 中的决策协调。然后用一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择，随后再继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。
+下一步先把临时整数水单位迁移为 mL 定点量、建立设施实例库存，以及可保存的独立随机流 / 行动样本 / 分布 Harness；完成共同地基后，再用长椅或观景点抽离决策协调，并用一份餐食验证“脏手就地吃 / 先洗手 / 取餐具或去餐桌”的多候选选择和随机摄入量。随后才继续蓝图搬料施工、运行世界恢复和正式多居民 Agent。

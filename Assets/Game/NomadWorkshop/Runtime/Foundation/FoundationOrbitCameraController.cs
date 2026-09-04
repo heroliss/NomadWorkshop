@@ -66,11 +66,11 @@ namespace Game.NomadWorkshop.Foundation
             Apply();
         }
 
-        public void Zoom(float scrollDelta, float metersPerScrollUnit = 0.125f)
+        public void Zoom(float inputDelta, float metersPerInputUnit = 1f)
         {
-            if (!float.IsFinite(scrollDelta)) return;
+            if (!float.IsFinite(inputDelta)) return;
             Distance = Mathf.Clamp(
-                Distance - scrollDelta * Mathf.Max(0f, metersPerScrollUnit),
+                Distance - inputDelta * Mathf.Max(0f, metersPerInputUnit),
                 _minimumDistance,
                 _maximumDistance);
             Apply();

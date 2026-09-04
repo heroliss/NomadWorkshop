@@ -24,7 +24,7 @@ namespace Game.NomadWorkshop.Foundation
         private float cellSize = 1.2f;
 
         [Header("默认建造辅助")]
-        [SerializeField, Min(0), Tooltip("进入场景时的位置吸附步长（毫米）。正式 UI 当前提供 200/300/400/500 四档。")]
+        [SerializeField, Min(0), Tooltip("进入场景时的位置吸附步长（毫米）。正式 UI 提供自由、200/300/400/600；非零档位共用 100 mm 基础格与甲板原点。")]
         private int positionSnapMillimeters = 200;
         [SerializeField, Range(0, 3600), Tooltip("进入场景时的旋转吸附步长（0.1 度）；450 表示 45°。")]
         private int rotationSnapDeciDegrees = 450;

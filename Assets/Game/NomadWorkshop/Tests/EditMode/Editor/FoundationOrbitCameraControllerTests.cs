@@ -7,6 +7,43 @@ namespace Game.NomadWorkshop.Editor.Tests
     public sealed class FoundationOrbitCameraControllerTests
     {
         [Test]
+        public void TwoPointerGesture_SeparatesCentroidOrbitAndPinchDistance()
+        {
+            bool dragged = FoundationTwoPointerGestureUtility.TryCalculate(
+                new Vector2(80f, 100f),
+                new Vector2(10f, -4f),
+                new Vector2(220f, 100f),
+                new Vector2(10f, -4f),
+                out FoundationTwoPointerGesture dragGesture);
+            bool pinched = FoundationTwoPointerGestureUtility.TryCalculate(
+                new Vector2(70f, 100f),
+                new Vector2(-10f, 0f),
+                new Vector2(230f, 100f),
+                new Vector2(10f, 0f),
+                out FoundationTwoPointerGesture pinchGesture);
+
+            Assert.That(dragged, Is.True);
+            Assert.That(dragGesture.OrbitDeltaPixels, Is.EqualTo(new Vector2(10f, -4f)));
+            Assert.That(dragGesture.PinchDeltaPixels, Is.Zero.Within(0.001f));
+            Assert.That(pinched, Is.True);
+            Assert.That(pinchGesture.OrbitDeltaPixels, Is.EqualTo(Vector2.zero));
+            Assert.That(pinchGesture.PinchDeltaPixels, Is.EqualTo(20f).Within(0.001f));
+        }
+
+        [Test]
+        public void TwoPointerGesture_RejectsNonFiniteInput()
+        {
+            bool succeeded = FoundationTwoPointerGestureUtility.TryCalculate(
+                new Vector2(float.NaN, 0f),
+                Vector2.zero,
+                Vector2.one,
+                Vector2.zero,
+                out _);
+
+            Assert.That(succeeded, Is.False);
+        }
+
+        [Test]
         public void OrbitAndZoom_KeepCameraFocusedAndClampPlayableRange()
         {
             var spaceObject = new GameObject("Camera Focus Space");

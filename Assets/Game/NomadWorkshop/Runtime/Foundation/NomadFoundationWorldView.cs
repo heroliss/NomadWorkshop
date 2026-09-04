@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 namespace Game.NomadWorkshop.Foundation
 {
     /// <summary>
-    /// Foundation 的 3D 表现与桌面输入 View。它只订阅读模型、发送离散 Command；设施 Transform、幽灵和居民模型
+    /// Foundation 的 3D 表现与桌面 / 触屏输入 View。它只订阅读模型、发送离散 Command；设施 Transform、幽灵和居民模型
     /// 都由逻辑状态派生，替换成正式 Prefab 时无需改摆放或水循环规则。
     /// </summary>
     public sealed class NomadFoundationWorldView : MonoViewBase
@@ -36,9 +36,13 @@ namespace Game.NomadWorkshop.Foundation
 
         [Header("镜头操作")]
         [SerializeField, Min(0f), Tooltip("按住鼠标中键拖动时，每个屏幕像素对应的轨道旋转角度。")]
-        private float cameraOrbitDegreesPerPixel = 0.18f;
-        [SerializeField, Min(0f), Tooltip("滚轮每个输入单位改变的镜头距离；0.125 是旧版速度的 10 倍。")]
-        private float cameraZoomMetersPerScrollUnit = 0.125f;
+        private float cameraOrbitDegreesPerPixel = 0.2f;
+        [SerializeField, Min(0f), Tooltip("滚轮每个输入单位改变的镜头距离。滚轮单位由设备驱动决定，因此与触屏捏合分别调节；当前值保留人工试玩后的 1.0。")]
+        private float cameraZoomMetersPerScrollUnit = 1f;
+        [SerializeField, Min(0f), Tooltip("双指同向拖动时，每个屏幕像素对应的轨道旋转角度。手指动作尺度与鼠标不同，所以不强行共用灵敏度。")]
+        private float cameraTouchOrbitDegreesPerPixel = 0.12f;
+        [SerializeField, Min(0f), Tooltip("双指距离每变化一个屏幕像素时改变的镜头距离（米）。张开拉近、捏合拉远。")]
+        private float cameraPinchZoomMetersPerPixel = 0.04f;
 
         private readonly Dictionary<string, NomadFacilityDefinition> _definitions =
             new(StringComparer.Ordinal);
@@ -81,6 +85,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _lastPointerXMillimeters;
         private int _lastPointerZMillimeters;
         private bool _hasPointerPose;
+        private bool _touchCameraGestureActive;
 
 #if UNITY_EDITOR
         /// <summary>只供未激活 GameObject 上的隔离测试装配；正式场景由 Editor Pipeline 接线。</summary>
@@ -183,11 +188,14 @@ namespace Game.NomadWorkshop.Foundation
                 }
             }
 
+            // 双指手势优先于触屏模拟出的鼠标事件；直到两根手指全部抬起前都吞掉该序列，
+            // 避免捏合结束时的模拟左键意外确认建造。
+            if (HandleTouchCameraInput()) return;
+
             Mouse mouse = Mouse.current;
             if (mouse == null || worldCamera == null) return;
             Vector2 pointer = mouse.position.ReadValue();
-            bool overDebugPanel = pointer.x <= debugPanelWidth &&
-                                  pointer.y >= Screen.height - debugPanelHeight;
+            bool overDebugPanel = IsOverDebugPanel(pointer);
             if (!overDebugPanel)
             {
                 if (mouse.middleButton.isPressed)
@@ -221,6 +229,69 @@ namespace Game.NomadWorkshop.Foundation
             if (!overDebugPanel && mouse.rightButton.wasPressedThisFrame)
                 this.ExecuteCommand(new RotateFacilityPreviewCommand(-1));
         }
+
+        private bool HandleTouchCameraInput()
+        {
+            Touchscreen touchscreen = Touchscreen.current;
+            if (touchscreen == null || worldCamera == null) return false;
+
+            Vector2 firstPosition = default;
+            Vector2 firstDelta = default;
+            Vector2 secondPosition = default;
+            Vector2 secondDelta = default;
+            var activeTouchCount = 0;
+            for (var i = 0; i < touchscreen.touches.Count; i++)
+            {
+                var touch = touchscreen.touches[i];
+                if (!touch.press.isPressed) continue;
+
+                if (activeTouchCount == 0)
+                {
+                    firstPosition = touch.position.ReadValue();
+                    firstDelta = touch.delta.ReadValue();
+                }
+                else
+                {
+                    secondPosition = touch.position.ReadValue();
+                    secondDelta = touch.delta.ReadValue();
+                }
+
+                activeTouchCount++;
+                if (activeTouchCount == 2) break;
+            }
+
+            if (activeTouchCount >= 2)
+            {
+                _touchCameraGestureActive = true;
+                Vector2 centroid = (firstPosition + secondPosition) * 0.5f;
+                if (!IsOverDebugPanel(centroid) &&
+                    FoundationTwoPointerGestureUtility.TryCalculate(
+                        firstPosition,
+                        firstDelta,
+                        secondPosition,
+                        secondDelta,
+                        out FoundationTwoPointerGesture gesture))
+                {
+                    if (gesture.OrbitDeltaPixels.sqrMagnitude > 0.0001f)
+                        _cameraController?.Orbit(
+                            gesture.OrbitDeltaPixels,
+                            cameraTouchOrbitDegreesPerPixel);
+                    if (!Mathf.Approximately(gesture.PinchDeltaPixels, 0f))
+                        _cameraController?.Zoom(
+                            gesture.PinchDeltaPixels,
+                            cameraPinchZoomMetersPerPixel);
+                }
+                return true;
+            }
+
+            if (!_touchCameraGestureActive) return false;
+            if (activeTouchCount == 0) _touchCameraGestureActive = false;
+            return true;
+        }
+
+        private bool IsOverDebugPanel(Vector2 pointer) =>
+            pointer.x <= debugPanelWidth &&
+            pointer.y >= Screen.height - debugPanelHeight;
 
         private void ValidateReferences()
         {

@@ -168,4 +168,35 @@ namespace Game.NomadWorkshop.Simulation
             return DeckPose.NormalizeYaw(stepCount * step);
         }
     }
+
+    /// <summary>
+    /// 正式建造界面的平移吸附档位。所有非零档位都以甲板原点为共同原点，并落在 0.1 m
+    /// 基础格上；基础格只用于保证不同档位切换时没有原点漂移，不作为玩家可选的过细档位。
+    /// </summary>
+    public static class DeckPlacementSnapPresets
+    {
+        public const int SharedBaseLatticeMillimeters = 100;
+
+        /// <summary>
+        /// 返回下一个玩家档位：自由、0.2、0.3、0.4、0.6 m 循环。
+        /// 自由模式保留毫米级连续姿态，但不显示位置网格，也不做位置吸附。
+        /// </summary>
+        public static int NextPlayerPositionStep(int currentMillimeters) =>
+            currentMillimeters switch
+            {
+                0 => 200,
+                200 => 300,
+                300 => 400,
+                400 => 600,
+                600 => 0,
+                _ => 200,
+            };
+
+        public static bool IsPlayerPositionStep(int millimeters) =>
+            millimeters is 0 or 200 or 300 or 400 or 600;
+
+        public static bool UsesSharedBaseLattice(int millimeters) =>
+            millimeters > 0 &&
+            millimeters % SharedBaseLatticeMillimeters == 0;
+    }
 }
