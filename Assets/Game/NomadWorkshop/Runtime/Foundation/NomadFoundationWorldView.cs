@@ -6,6 +6,7 @@ using Game.NomadWorkshop.Simulation;
 using R3;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 
 namespace Game.NomadWorkshop.Foundation
 {
@@ -27,6 +28,8 @@ namespace Game.NomadWorkshop.Foundation
         private Camera worldCamera;
         [SerializeField, Tooltip("灰盒主方向光；替换正式灯光方案后可继续由表现层拥有。")]
         private Light keyLight;
+        [SerializeField, Tooltip("灰盒冷色补光；用于保留背光面和深色部件的轮廓，不参与玩法逻辑。")]
+        private Light fillLight;
 
         [Header("输入保护")]
         [SerializeField, Min(0f), Tooltip("左上开发面板占用的屏幕宽度；该区域不向 3D 世界透传点击和滚轮。")]
@@ -95,13 +98,15 @@ namespace Game.NomadWorkshop.Foundation
             NomadFacilityDefinition[] configuredDefinitions,
             Transform configuredDeckRoot,
             Camera configuredCamera,
-            Light configuredLight)
+            Light configuredLight,
+            Light configuredFillLight = null)
         {
             deckLayout = configuredLayout;
             facilityDefinitions = configuredDefinitions;
             deckRoot = configuredDeckRoot;
             worldCamera = configuredCamera;
             keyLight = configuredLight;
+            fillLight = configuredFillLight;
         }
 #endif
 
@@ -337,12 +342,31 @@ namespace Game.NomadWorkshop.Foundation
             worldCamera.nearClipPlane = 0.1f;
             worldCamera.farClipPlane = 120f;
 
+            // 纯色背景不会提供天空盒反射。灰盒阶段用稳定的环境漫反射与冷色补光保证材质可读，
+            // 不依赖某台机器尚未烘焙的 GI / Reflection Probe；正式美术场景可整体替换这组表现设置。
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.235f, 0.255f, 0.265f);
+            RenderSettings.ambientIntensity = 1f;
+            RenderSettings.skybox = null;
+            RenderSettings.reflectionIntensity = 0.55f;
+
             if (keyLight != null)
             {
                 keyLight.type = LightType.Directional;
                 keyLight.color = new Color(1f, 0.89f, 0.72f);
                 keyLight.intensity = 1.25f;
+                keyLight.shadows = LightShadows.Soft;
                 keyLight.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
+                RenderSettings.sun = keyLight;
+            }
+
+            if (fillLight != null)
+            {
+                fillLight.type = LightType.Directional;
+                fillLight.color = new Color(0.52f, 0.68f, 1f);
+                fillLight.intensity = 0.34f;
+                fillLight.shadows = LightShadows.None;
+                fillLight.transform.rotation = Quaternion.Euler(42f, 145f, 0f);
             }
 
             Material deckMaterial = CreateLitMaterial(

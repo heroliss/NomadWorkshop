@@ -37,5 +37,6 @@ namespace Game.NomadWorkshop.Foundation
         WaterRestock,
         Wander,
         Daydream,
+        Hobby,
     }
 }

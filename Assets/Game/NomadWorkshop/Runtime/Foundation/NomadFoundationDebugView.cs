@@ -71,6 +71,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _completedLeisure;
         private int _completedDaydreams;
         private int _completedWanders;
+        private int _completedHobbies;
         private float _actionProgress;
         private string _currentTask = string.Empty;
         private string _lastBlocker = string.Empty;
@@ -173,6 +174,7 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.CompletedLeisureCount, value => _completedLeisure = value);
             Bag.Subscribe(readModel.CompletedDaydreamCount, value => _completedDaydreams = value);
             Bag.Subscribe(readModel.CompletedWanderCount, value => _completedWanders = value);
+            Bag.Subscribe(readModel.CompletedHobbyCount, value => _completedHobbies = value);
             Bag.Subscribe(readModel.ActionProgress, value => _actionProgress = value);
             Bag.Subscribe(readModel.CurrentTask, value => _currentTask = value);
             Bag.Subscribe(readModel.LastBlocker, value => _lastBlocker = value);
@@ -369,7 +371,7 @@ namespace Game.NomadWorkshop.Foundation
                 _smallStyle);
             GUILayout.Label(
                 $"完成：饮水 {_completedDrinks} · 如厕 {_completedToiletUses} · " +
-                $"休整 {_completedLeisure}（发呆 {_completedDaydreams} / 闲逛 {_completedWanders}）",
+                $"休闲 {_completedLeisure}（发呆 {_completedDaydreams} / 闲逛 {_completedWanders} / 爱好 {_completedHobbies}）",
                 _smallStyle);
 
             if (!string.IsNullOrEmpty(_lastBlocker))
@@ -387,7 +389,7 @@ namespace Game.NomadWorkshop.Foundation
                 GUILayout.Space(5f);
                 Color previous = GUI.color;
                 GUI.color = new Color(0.88f, 0.62f, 1f);
-                GUILayout.Label("娱乐偏低：当前 Foundation 尚未放置真实娱乐设施。", _smallStyle);
+                GUILayout.Label("娱乐偏低：可建造观景画架，让居民通过真实爱好恢复。", _smallStyle);
                 GUI.color = previous;
             }
 
@@ -626,7 +628,7 @@ namespace Game.NomadWorkshop.Foundation
             else if (_interactionMode == FoundationInteractionMode.Build)
             {
                 GUILayout.Label(
-                    "建造诊断已开启：全部设施功能点与停靠位持续显示；数字键 1–3 选择设施。",
+                    "建造诊断已开启：全部设施功能点与停靠位持续显示；数字键选择对应设施。",
                     _smallStyle);
             }
             else
@@ -712,7 +714,7 @@ namespace Game.NomadWorkshop.Foundation
             }
             GUILayout.Label(
                 $"已完成饮水：{_completedDrinks}   如厕：{_completedToiletUses}   " +
-                $"自主休闲：{_completedLeisure}（发呆 {_completedDaydreams} / 散步 {_completedWanders}）");
+                $"自主休闲：{_completedLeisure}（发呆 {_completedDaydreams} / 散步 {_completedWanders} / 爱好 {_completedHobbies}）");
             if (!string.IsNullOrEmpty(_lastBlocker))
             {
                 bool hardBlocked = _residentPhase == FoundationResidentPhase.Blocked;
@@ -925,6 +927,8 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.UsingToilet => "如厕",
             FoundationResidentPhase.MovingToLeisure => "前往空地",
             FoundationResidentPhase.Relaxing => "自主休整",
+            FoundationResidentPhase.MovingToHobby => "前往爱好设施",
+            FoundationResidentPhase.EnjoyingHobby => "作画与观景",
             FoundationResidentPhase.Blocked => "阻塞",
             _ => phase.ToString(),
         };

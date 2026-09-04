@@ -53,6 +53,36 @@ namespace Game.NomadWorkshop.Tests
         }
 
         [Test]
+        public void HobbyAtFacility_UsesTravelPreferenceAndRealEntertainmentBenefit()
+        {
+            ResidentActionPlanProposal proposal =
+                ResidentLeisurePlanFactory.CreateHobbyAtFacility(
+                    "facility-0007",
+                    "观景画架",
+                    pathDistanceMeters: 3f,
+                    moveSpeedMetersPerSecond: 2f,
+                    hobbySeconds: 5f,
+                    personalAffinity: 0.72f);
+            ResidentActionPlanEvaluation result = new ResidentActionPlanEvaluator().Evaluate(
+                proposal,
+                new ResidentDecisionCondition(0f));
+
+            Assert.That(proposal.Id, Is.EqualTo("hobby:facility-0007"));
+            Assert.That(proposal.IntentId, Is.EqualTo(ResidentLeisurePlanFactory.HobbyIntentId));
+            Assert.That(result.Steps, Has.Count.EqualTo(2));
+            Assert.That(result.Steps[0].Kind, Is.EqualTo(ResidentActionStepKind.Travel));
+            Assert.That(result.Utility.TravelSeconds, Is.EqualTo(1.5f).Within(0.0001f));
+            Assert.That(result.Candidate.PersonalAffinity, Is.EqualTo(0.72f));
+            Assert.That(
+                result.Candidate.NeedEffects,
+                Has.Some.Matches<NeedEffect>(effect =>
+                    effect.Need == ResidentNeed.Entertainment && effect.Restore > 0f));
+            Assert.That(
+                result.Candidate.ReservationKeys,
+                Does.Contain("facility:facility-0007:hobby"));
+        }
+
+        [Test]
         public void FoundationSteadyState_DaydreamAndWanderRemainWeightedRandomNearTwoToOne()
         {
             var evaluator = new ResidentActionPlanEvaluator();

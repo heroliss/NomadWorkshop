@@ -60,6 +60,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> CompletedLeisureCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedDaydreamCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedWanderCount;
+        public readonly ReadOnlyReactiveProperty<int> CompletedHobbyCount;
         public readonly ReadOnlyReactiveProperty<string> CurrentTask;
         public readonly ReadOnlyReactiveProperty<string> LastBlocker;
 
@@ -118,6 +119,7 @@ namespace Game.NomadWorkshop.Foundation
             CompletedLeisureCount = model.CompletedLeisureCount;
             CompletedDaydreamCount = model.CompletedDaydreamCount;
             CompletedWanderCount = model.CompletedWanderCount;
+            CompletedHobbyCount = model.CompletedHobbyCount;
             CurrentTask = model.CurrentTask;
             LastBlocker = model.LastBlocker;
         }

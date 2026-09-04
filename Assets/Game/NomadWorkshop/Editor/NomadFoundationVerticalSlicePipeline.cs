@@ -7,6 +7,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 namespace Game.NomadWorkshop.Editor
@@ -26,6 +27,7 @@ namespace Game.NomadWorkshop.Editor
         public const string DrinkingStationPath = DefinitionRoot + "/NW_Facility_DrinkingStation.asset";
         public const string FieldKitchenPath = DefinitionRoot + "/NW_Facility_FieldKitchen.asset";
         public const string ToiletPath = DefinitionRoot + "/NW_Facility_Toilet.asset";
+        public const string ObservationEaselPath = DefinitionRoot + "/NW_Facility_ObservationEasel.asset";
 
         [MenuItem("Assets/SSFramework/游牧工坊/Foundation/创建或打开最小垂直切片")]
         public static void CreateOrOpen()
@@ -53,6 +55,7 @@ namespace Game.NomadWorkshop.Editor
                 RequireAsset<NomadFacilityDefinition>(DrinkingStationPath),
                 RequireAsset<NomadFacilityDefinition>(FieldKitchenPath),
                 RequireAsset<NomadFacilityDefinition>(ToiletPath),
+                RequireAsset<NomadFacilityDefinition>(ObservationEaselPath),
             };
 
             var rootObject = new GameObject("Nomad Workshop · Foundation Slice");
@@ -70,9 +73,19 @@ namespace Game.NomadWorkshop.Editor
             GameObject presentation = CreateChild(rootObject.transform, "Presentation · Mono Views");
             GameObject deck = CreateChild(presentation.transform, "Vehicle Deck Root");
             Camera camera = CreateCamera(presentation.transform);
-            Light light = CreateLight(presentation.transform);
+            Light keyLight = CreateLight(presentation.transform, "Key Light");
+            Light fillLight = CreateLight(presentation.transform, "Fill Light");
+            ConfigureLightRig(keyLight, fillLight);
             NomadFoundationWorldView worldView = presentation.AddComponent<NomadFoundationWorldView>();
-            WireWorldView(worldView, layout, definitions, deck.transform, camera, light);
+            WireWorldView(
+                worldView,
+                layout,
+                definitions,
+                deck.transform,
+                camera,
+                keyLight,
+                fillLight);
+            ConfigureEnvironmentLighting(keyLight);
 
             GameObject debug = CreateChild(rootObject.transform, "Debug · Command View");
             debug.AddComponent<NomadFoundationDebugView>();
@@ -214,6 +227,34 @@ namespace Game.NomadWorkshop.Editor
                 0f,
                 new Vector3(0.72f, 0.75f, 0.82f),
                 new Color(0.68f, 0.62f, 0.42f));
+            ConfigureDefinition(
+                ObservationEaselPath,
+                "observation-easel",
+                "观景画架",
+                NomadFacilityFunction.HobbyPoint,
+                buildable: true,
+                new[]
+                {
+                    new NomadFacilityFootprintPartDefinition(
+                        Vector2.zero,
+                        new Vector2(0.9f, 0.68f)),
+                },
+                RequiredGroup(
+                    "paint-and-observe",
+                    new NomadFacilityInteractionSlotDefinition(
+                        "left",
+                        new Vector2(-0.24f, -0.82f)),
+                    new NomadFacilityInteractionSlotDefinition(
+                        "center",
+                        new Vector2(0f, -0.86f)),
+                    new NomadFacilityInteractionSlotDefinition(
+                        "right",
+                        new Vector2(0.24f, -0.82f))),
+                placeAtStart: false,
+                Vector2.zero,
+                0f,
+                new Vector3(0.86f, 1.38f, 0.62f),
+                new Color(0.58f, 0.28f, 0.13f));
 
             EditorUtility.SetDirty(layout);
             AssetDatabase.SaveAssets();
@@ -322,14 +363,16 @@ namespace Game.NomadWorkshop.Editor
             NomadFacilityDefinition[] definitions,
             Transform deck,
             Camera camera,
-            Light light)
+            Light keyLight,
+            Light fillLight)
         {
             var serialized = new SerializedObject(view);
             serialized.FindProperty("deckLayout").objectReferenceValue = layout;
             SetObjectArray(serialized.FindProperty("facilityDefinitions"), definitions);
             serialized.FindProperty("deckRoot").objectReferenceValue = deck;
             serialized.FindProperty("worldCamera").objectReferenceValue = camera;
-            serialized.FindProperty("keyLight").objectReferenceValue = light;
+            serialized.FindProperty("keyLight").objectReferenceValue = keyLight;
+            serialized.FindProperty("fillLight").objectReferenceValue = fillLight;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -342,10 +385,36 @@ namespace Game.NomadWorkshop.Editor
             return camera;
         }
 
-        private static Light CreateLight(Transform parent)
+        private static Light CreateLight(Transform parent, string name)
         {
-            GameObject lightObject = CreateChild(parent, "Key Light");
+            GameObject lightObject = CreateChild(parent, name);
             return lightObject.AddComponent<Light>();
+        }
+
+        private static void ConfigureEnvironmentLighting(Light keyLight)
+        {
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.235f, 0.255f, 0.265f);
+            RenderSettings.ambientIntensity = 1f;
+            RenderSettings.skybox = null;
+            RenderSettings.reflectionIntensity = 0.55f;
+            RenderSettings.sun = keyLight;
+            RenderSettings.fog = false;
+        }
+
+        private static void ConfigureLightRig(Light keyLight, Light fillLight)
+        {
+            keyLight.type = LightType.Directional;
+            keyLight.color = new Color(1f, 0.89f, 0.72f);
+            keyLight.intensity = 1.25f;
+            keyLight.shadows = LightShadows.Soft;
+            keyLight.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
+
+            fillLight.type = LightType.Directional;
+            fillLight.color = new Color(0.52f, 0.68f, 1f);
+            fillLight.intensity = 0.34f;
+            fillLight.shadows = LightShadows.None;
+            fillLight.transform.rotation = Quaternion.Euler(42f, 145f, 0f);
         }
 
         private static GameObject CreateChild(Transform parent, string name)

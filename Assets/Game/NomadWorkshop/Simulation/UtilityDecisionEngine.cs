@@ -219,9 +219,10 @@ namespace Game.NomadWorkshop.Simulation
                 float beforePressure = EvaluatePressure(predicted, state, policy);
                 float afterPressure = EvaluatePressure(after, state, policy);
                 needBenefit += Math.Max(0f, beforePressure - afterPressure) * state.Importance;
-                bool isUrgent = state.PressureCurve.IsConfigured
-                    ? state.PressureCurve.IsUrgent(predicted)
-                    : predicted >= policy.UrgentNeedDeficit;
+                bool isUrgent = state.CanPromoteToUrgent &&
+                    (state.PressureCurve.IsConfigured
+                        ? state.PressureCurve.IsUrgent(predicted)
+                        : predicted >= policy.UrgentNeedDeficit);
                 if (isUrgent)
                 {
                     urgentNeed = true;

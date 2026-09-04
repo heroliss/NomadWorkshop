@@ -5,6 +5,7 @@ using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 namespace Game.NomadWorkshop.Editor.Tests
@@ -26,6 +27,15 @@ namespace Game.NomadWorkshop.Editor.Tests
                 scene = EditorSceneManager.OpenScene(
                     NomadFoundationVerticalSlicePipeline.ScenePath,
                     OpenSceneMode.Additive);
+            }
+            Scene previousActiveScene = SceneManager.GetActiveScene();
+            bool changedActiveScene = previousActiveScene != scene;
+            if (changedActiveScene)
+            {
+                Assert.That(
+                    SceneManager.SetActiveScene(scene),
+                    Is.True,
+                    "RenderSettings 属于活动场景；测试必须先切换上下文再读取。 ");
             }
             try
             {
@@ -64,13 +74,13 @@ namespace Game.NomadWorkshop.Editor.Tests
                     systemSerialized.FindProperty("deckLayout").objectReferenceValue,
                     viewSerialized.FindProperty("deckLayout").objectReferenceValue,
                     "逻辑与表现必须引用同一份甲板布局，避免边界与可选网格漂移。");
-                Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(4));
-                Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(4));
+                Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
+                Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
                 Assert.That(
                     systemSerialized.FindProperty("residentStartLocalPosition").vector3Value.y,
                     Is.EqualTo(0f).Within(0.0001f),
                     "居民根节点代表脚底，生成场景不得再把胶囊半高写入逻辑位置。");
-                for (var i = 0; i < 4; i++)
+                for (var i = 0; i < 5; i++)
                 {
                     Assert.AreSame(
                         systemSerialized.FindProperty("facilityDefinitions")
@@ -86,9 +96,32 @@ namespace Game.NomadWorkshop.Editor.Tests
                     Assert.That(definition.CreateFootprint().Parts.Count, Is.GreaterThan(0));
                     Assert.That(definition.InteractionGroups.Count, Is.GreaterThan(0));
                 }
+
+                var observationEasel = AssetDatabase.LoadAssetAtPath<NomadFacilityDefinition>(
+                    NomadFoundationVerticalSlicePipeline.ObservationEaselPath);
+                Assert.That(observationEasel, Is.Not.Null);
+                Assert.That(observationEasel.Function, Is.EqualTo(NomadFacilityFunction.HobbyPoint));
+                Assert.That(observationEasel.Buildable, Is.True);
+
+                Light keyLight = worldView.transform.Find("Key Light")?.GetComponent<Light>();
+                Light fillLight = worldView.transform.Find("Fill Light")?.GetComponent<Light>();
+                Assert.That(keyLight, Is.Not.Null);
+                Assert.That(fillLight, Is.Not.Null, "深色灰盒需要独立补光，不能只靠纯色背景提供反射。 ");
+                Assert.That(keyLight.type, Is.EqualTo(LightType.Directional));
+                Assert.That(fillLight.type, Is.EqualTo(LightType.Directional));
+                Assert.That(fillLight.shadows, Is.EqualTo(LightShadows.None));
+                Assert.That(
+                    viewSerialized.FindProperty("fillLight").objectReferenceValue,
+                    Is.SameAs(fillLight));
+                Assert.That(RenderSettings.ambientMode, Is.EqualTo(AmbientMode.Flat));
+                Assert.That(RenderSettings.sun, Is.SameAs(keyLight));
             }
             finally
             {
+                if (changedActiveScene &&
+                    previousActiveScene.IsValid() &&
+                    previousActiveScene.isLoaded)
+                    SceneManager.SetActiveScene(previousActiveScene);
                 if (openedForTest) EditorSceneManager.CloseScene(scene, true);
             }
         }

@@ -51,8 +51,9 @@ namespace Game.NomadWorkshop.Simulation
     }
 
     /// <summary>
-    /// 某项需求在当前决策时刻的状态。Deficit 为 0 表示满足、1 表示达到危险上限；
-    /// GrowthPerSecond 描述不采取恢复行动时的自然恶化速度。
+    /// 某项需求在当前决策时刻的状态。Deficit 为 0 表示满足、1 表示完全缺失；
+    /// GrowthPerSecond 描述不采取恢复行动时的自然恶化速度。量表达到上限是否构成
+    /// 紧急后果，由 <see cref="CanPromoteToUrgent"/> 显式区分。
     /// </summary>
     public readonly struct ResidentNeedState
     {
@@ -61,13 +62,15 @@ namespace Game.NomadWorkshop.Simulation
             float deficit,
             float growthPerSecond,
             float importance = 1f,
-            NeedPressureCurve pressureCurve = default)
+            NeedPressureCurve pressureCurve = default,
+            bool canPromoteToUrgent = true)
         {
             Need = need;
             Deficit = deficit;
             GrowthPerSecond = growthPerSecond;
             Importance = importance;
             PressureCurve = pressureCurve;
+            CanPromoteToUrgent = canPromoteToUrgent;
         }
 
         public ResidentNeed Need { get; }
@@ -78,6 +81,13 @@ namespace Game.NomadWorkshop.Simulation
         /// 可选的需求专属响应曲线；default 保持既有全局曲线，便于逐项迁移而不改变旧平衡。
         /// </summary>
         public NeedPressureCurve PressureCurve { get; }
+
+        /// <summary>
+        /// 达到紧迫点时，能否把恢复该需求的候选至少提升到 Urgent 风险层。
+        /// 娱乐等生活质量需求可以产生很高的日常 Utility，但不应压过即将失禁、
+        /// 严重口渴等有明确后果的紧急生理需求。
+        /// </summary>
+        public bool CanPromoteToUrgent { get; }
     }
 
     /// <summary>候选行动完成时对一项需求产生的恢复量。</summary>
@@ -128,8 +138,9 @@ namespace Game.NomadWorkshop.Simulation
         public float RiskCost { get; set; }
         public float SwitchCost { get; set; }
         /// <summary>
-        /// 本方案能够缓解的最高风险层。需求达到自己的紧急点时，选择器会至少自动提升为
-        /// <see cref="ResidentDecisionRiskTier.Urgent"/>；火灾等环境风险由候选生成器显式赋值。
+        /// 本方案能够缓解的最高风险层。允许风险晋升的需求达到自己的紧急点时，
+        /// 选择器会至少自动提升为 <see cref="ResidentDecisionRiskTier.Urgent"/>；
+        /// 火灾等环境风险由候选生成器显式赋值。
         /// </summary>
         public ResidentDecisionRiskTier RiskTier { get; set; }
 
@@ -178,7 +189,7 @@ namespace Game.NomadWorkshop.Simulation
     public sealed class UtilityDecisionPolicy
     {
         public float NeedPressureExponent { get; set; } = 2.4f;
-        /// <summary>未配置专属曲线的需求在达到该缺口后，可行恢复候选至少进入 Urgent 层。</summary>
+        /// <summary>未配置专属曲线且允许风险晋升的需求，在达到该缺口后至少进入 Urgent 层。</summary>
         public float UrgentNeedDeficit { get; set; } = 0.82f;
         /// <summary>默认需求曲线越过紧迫点后的附加非线性压力。</summary>
         public float UrgentPressureBoost { get; set; } = 2.5f;

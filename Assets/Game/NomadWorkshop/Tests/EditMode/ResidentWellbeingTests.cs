@@ -82,6 +82,10 @@ namespace Game.NomadWorkshop.Tests
 
             Assert.That(needs[0].Need, Is.EqualTo(ResidentNeed.Entertainment));
             Assert.That(needs[0].Deficit, Is.EqualTo(0.28f).Within(0.0001f));
+            Assert.That(
+                needs[0].CanPromoteToUrgent,
+                Is.False,
+                "娱乐可以强烈影响日常选择，但不能与即将失禁等生理紧急事项抢风险层。 ");
             Assert.That(needs[1].Need, Is.EqualTo(ResidentNeed.Fatigue));
             Assert.That(needs[1].Deficit, Is.EqualTo(0.31f).Within(0.0001f));
             Assert.That(needs[2].Need, Is.EqualTo(ResidentNeed.Stress));

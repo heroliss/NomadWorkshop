@@ -700,6 +700,124 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator BuiltHobbyPoint_ResidentDocksAndRestoresEntertainment()
+        {
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 8f,
+                configuredInitialThirst: 0.08f,
+                configuredThirstIncreasePerSecond: 0f);
+            _system.ConfigureWellbeingForTests(
+                entertainment: 0.12f,
+                mood: 0.62f,
+                fatigue: 0.24f,
+                stress: 0.2f,
+                paintingAffinity: 0.95f);
+            _system.ResetScenario();
+            yield return null;
+            yield return BuildFacility("observation-easel", 1200, 0);
+
+            FoundationFacilityState[] facilities = _context.ExecuteCommand(
+                new GetFoundationFacilitiesCommand());
+            FoundationFacilityState easel = facilities[facilities.Length - 1];
+            Assert.That(easel.DefinitionId, Is.EqualTo("observation-easel"));
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            var observedHobby = false;
+            float entertainmentAtActivityStart = 0f;
+            const int approachFrameLimit = 360;
+            for (var i = 0; i < approachFrameLimit; i++)
+            {
+                yield return null;
+                if (_model.ResidentPhase.Value != FoundationResidentPhase.EnjoyingHobby)
+                    continue;
+                observedHobby = true;
+                entertainmentAtActivityStart = _model.ResidentEntertainment.Value;
+                FoundationReadModel readModel = _context.ExecuteCommand(
+                    new GetFoundationReadModelCommand());
+                AssertResidentDockedToAnySlot(
+                    easel,
+                    _definitions[_definitions.Length - 1],
+                    readModel);
+                Assert.That(
+                    _model.LatestActionPlan.Value.CandidateId,
+                    Is.EqualTo("hobby:facility-0001"));
+                break;
+            }
+            Assert.That(observedHobby, Is.True, "低娱乐且偏好作画时，应实际前往已建造画架。 ");
+
+            const int completionFrameLimit = 180;
+            for (var i = 0;
+                 i < completionFrameLimit && _model.CompletedHobbyCount.Value == 0;
+                 i++)
+                yield return null;
+
+            Assert.That(_model.CompletedHobbyCount.Value, Is.GreaterThanOrEqualTo(1));
+            Assert.That(_model.CompletedLeisureCount.Value, Is.GreaterThanOrEqualTo(1));
+            Assert.That(
+                _model.ResidentEntertainment.Value,
+                Is.GreaterThan(entertainmentAtActivityStart),
+                "只有到达设施后的真实爱好阶段才应恢复正向娱乐满足。 ");
+            Assert.That(_model.LastBlocker.Value, Is.Empty);
+        }
+
+        [UnityTest]
+        public IEnumerator PlacementBlocksActiveHobby_CancelsSoftIntentAndKeepsNeedsResponsive()
+        {
+            _worldView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigureTimingsForTests(0.25f, 2f);
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 8f,
+                configuredInitialThirst: 0.08f,
+                configuredThirstIncreasePerSecond: 0f);
+            _system.ConfigureWellbeingForTests(
+                entertainment: 0.12f,
+                mood: 0.62f,
+                fatigue: 0.24f,
+                stress: 0.2f,
+                paintingAffinity: 0.95f);
+            _system.ResetScenario();
+            yield return null;
+            yield return BuildFacility("observation-easel", 1200, 0);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int approachFrameLimit = 720;
+            var observedTravel = false;
+            for (var i = 0; i < approachFrameLimit; i++)
+            {
+                yield return null;
+                if (_model.ResidentPhase.Value != FoundationResidentPhase.MovingToHobby)
+                    continue;
+                observedTravel = true;
+                break;
+            }
+            Assert.That(observedTravel, Is.True, "应先观察到居民正前往画架，才能验证施工中断。 ");
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            yield return BuildFacility("slot-blocker", 1200, -800);
+            Assert.That(
+                _model.ResidentPhase.Value,
+                Is.Not.EqualTo(FoundationResidentPhase.WaitingForRoute),
+                "无物资所有权的爱好不应在目标永久失效后占住路线重试状态。 ");
+            Assert.That(_model.LastBlocker.Value, Is.Empty);
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            const int fallbackFrameLimit = 720;
+            for (var i = 0;
+                 i < fallbackFrameLimit && _model.CompletedLeisureCount.Value == 0;
+                 i++)
+                yield return null;
+
+            Assert.That(_model.CompletedHobbyCount.Value, Is.Zero);
+            Assert.That(
+                _model.CompletedDaydreamCount.Value + _model.CompletedWanderCount.Value,
+                Is.GreaterThan(0),
+                "爱好失效后仍应回到统一决策并执行可行休整，而不是冻结新需求评估。 ");
+        }
+
+        [UnityTest]
         public IEnumerator PlacementBlockingActiveStation_RetargetsAnotherStationAndCompletesDrink()
         {
             _worldView.enabled = false;
@@ -1009,7 +1127,30 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 0f,
                 new Vector3(1.3f, 0.7f, 0.4f),
                 Color.magenta);
-            return new[] { source, station, accessWall, toilet, slotBlocker };
+
+            var observationEasel = ScriptableObject.CreateInstance<NomadFacilityDefinition>();
+            observationEasel.ConfigureForTests(
+                "observation-easel",
+                "观景画架",
+                NomadFacilityFunction.HobbyPoint,
+                true,
+                new[]
+                {
+                    new NomadFacilityFootprintPartDefinition(
+                        Vector2.zero,
+                        new Vector2(0.9f, 0.68f)),
+                },
+                RequiredGroup(
+                    "paint-and-observe",
+                    new NomadFacilityInteractionSlotDefinition("left", new Vector2(-0.24f, -0.82f)),
+                    new NomadFacilityInteractionSlotDefinition("center", new Vector2(0f, -0.86f)),
+                    new NomadFacilityInteractionSlotDefinition("right", new Vector2(0.24f, -0.82f))),
+                false,
+                Vector2.zero,
+                0f,
+                new Vector3(0.86f, 1.38f, 0.62f),
+                new Color(0.58f, 0.28f, 0.13f));
+            return new[] { source, station, accessWall, toilet, slotBlocker, observationEasel };
         }
 
         private IEnumerator BuildFacility(

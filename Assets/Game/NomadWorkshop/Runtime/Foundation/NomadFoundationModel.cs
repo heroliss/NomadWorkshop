@@ -90,6 +90,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<int> CompletedLeisureCount { get; private set; } = new(0);
         [field: SerializeField] public RP<int> CompletedDaydreamCount { get; private set; } = new(0);
         [field: SerializeField] public RP<int> CompletedWanderCount { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("已完成的真实爱好次数；与只恢复疲劳/压力的基础休整分开观察。")]
+        public RP<int> CompletedHobbyCount { get; private set; } = new(0);
         [field: SerializeField] public RP<string> CurrentTask { get; private set; } = new("等待初始化");
         [field: SerializeField] public RP<string> LastBlocker { get; private set; } = new(string.Empty);
 

@@ -95,6 +95,10 @@ namespace Game.NomadWorkshop.Foundation
         [Header("空闲休整灰盒节奏")]
         [SerializeField, Min(0.1f), Tooltip("发呆或散步到达后的停留时长；当前短循环用于更快观察行为分布。")]
         private float leisureSeconds = 1.2f;
+        [SerializeField, Min(0.1f), Tooltip("居民在观景画架完成一次作画爱好的时长；只有实际使用设施的阶段才恢复娱乐满足度。")]
+        private float hobbySeconds = 5f;
+        [SerializeField, Range(0f, 1f), Tooltip("居民 01 对作画与观景的个人偏好。首版放在 System 便于 Inspector 调试，后续迁入居民档案数据。")]
+        private float residentPaintingAffinity = 0.34f;
         [SerializeField, Min(0.2f), Tooltip("随机散步目标与当前位置的最小路径距离。")]
         private float minimumWanderDistance = 0.9f;
         [SerializeField, Min(0.5f), Tooltip("随机散步目标与当前位置的最大请求半径。")]
@@ -334,6 +338,19 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentPhase.Relaxing:
                     if (TickTimer(deltaTime)) CompleteLeisure();
                     break;
+                case FoundationResidentPhase.MovingToHobby:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(
+                            FoundationResidentPhase.EnjoyingHobby,
+                            hobbySeconds,
+                            "在观景画架作画并观察车外景色");
+                    }
+                    break;
+                case FoundationResidentPhase.EnjoyingHobby:
+                    if (TickTimer(deltaTime)) CompleteHobby();
+                    break;
             }
 
             WriteSimulationProjection();
@@ -549,6 +566,7 @@ namespace Game.NomadWorkshop.Foundation
             deliverySeconds = 0.01f;
             drinkingSeconds = 0.01f;
             leisureSeconds = 0.05f;
+            hobbySeconds = 0.5f;
         }
 
 #if UNITY_EDITOR
@@ -600,6 +618,21 @@ namespace Game.NomadWorkshop.Foundation
                 configuredBladderCapacityMilliliters);
             toiletSeconds = 0.01f;
             routeRetrySeconds = 0.01f;
+        }
+
+        /// <summary>隔离测试可设置身心起点与作画偏好；修改后调用 ResetScenario 统一重建。</summary>
+        public void ConfigureWellbeingForTests(
+            float entertainment,
+            float mood,
+            float fatigue,
+            float stress,
+            float paintingAffinity = 0.9f)
+        {
+            initialEntertainment = Mathf.Clamp01(entertainment);
+            initialMood = Mathf.Clamp01(mood);
+            initialFatigue = Mathf.Clamp01(fatigue);
+            initialStress = Mathf.Clamp01(stress);
+            residentPaintingAffinity = Mathf.Clamp01(paintingAffinity);
         }
 #endif
 
@@ -765,6 +798,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedLeisureCount.Value = 0;
             _model.CompletedDaydreamCount.Value = 0;
             _model.CompletedWanderCount.Value = 0;
+            _model.CompletedHobbyCount.Value = 0;
             _model.LastBlocker.Value = string.Empty;
             _model.ActionProgress.Value = 0f;
             _activeLeisureKind = FoundationLeisureKind.None;
@@ -1588,10 +1622,11 @@ namespace Game.NomadWorkshop.Foundation
 
         private void TryStartResidentRoutine()
         {
-            var options = new List<FoundationResidentDecisionOption>(7);
+            var options = new List<FoundationResidentDecisionOption>(8);
             var pendingDiagnostic = new PendingDecisionDiagnostic();
             AddToiletDecisionOption(options, ref pendingDiagnostic);
             AddWaterDecisionOptions(options, ref pendingDiagnostic);
+            AddHobbyDecisionOption(options);
             AddLeisureDecisionOptions(options);
 
             var candidates = new ResidentActionCandidate[options.Count];
@@ -1950,6 +1985,37 @@ namespace Game.NomadWorkshop.Foundation
                     _actionPlanPolicy)));
         }
 
+        private void AddHobbyDecisionOption(
+            ICollection<FoundationResidentDecisionOption> options)
+        {
+            if (!TrySelectReachableFacility(
+                    NomadFacilityFunction.HobbyPoint,
+                    out FoundationFacilityState facility,
+                    out float pathLength) ||
+                !_definitions.TryGetValue(
+                    facility.DefinitionId,
+                    out NomadFacilityDefinition definition))
+                return;
+
+            ResidentActionPlanProposal proposal =
+                ResidentLeisurePlanFactory.CreateHobbyAtFacility(
+                    facility.InstanceId,
+                    definition.DisplayName,
+                    pathLength,
+                    Mathf.Max(0.1f, residentMoveSpeed),
+                    hobbySeconds,
+                    residentPaintingAffinity);
+            options.Add(new FoundationResidentDecisionOption(
+                FoundationResidentDecisionKind.Hobby,
+                _actionPlanEvaluator.Evaluate(
+                    proposal,
+                    new ResidentDecisionCondition(motionSickness: 0f),
+                    _actionPlanPolicy))
+            {
+                TargetFacility = facility,
+            });
+        }
+
         private FoundationResidentDecisionOption CreateBlockedNeedOption(
             FoundationResidentDecisionKind kind,
             string id,
@@ -2038,6 +2104,9 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentDecisionKind.Wander:
                 case FoundationResidentDecisionKind.Daydream:
                     BeginLeisure(option);
+                    return;
+                case FoundationResidentDecisionKind.Hobby:
+                    BeginHobby(option);
                     return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(option.Kind), option.Kind, null);
@@ -2174,6 +2243,26 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentPhase.Relaxing,
                 leisureSeconds,
                 "统一 Utility 选择休闲：在原地发呆并观察四周");
+        }
+
+        private void BeginHobby(FoundationResidentDecisionOption option)
+        {
+            _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
+                worldSeed: 1729,
+                residentId: ResidentOwnerId,
+                leisureSequence: _leisureSequence++);
+            _activeLeisureKind = FoundationLeisureKind.Hobby;
+            _model.LastBlocker.Value = string.Empty;
+            if (TryBeginMove(
+                    FoundationResidentPhase.MovingToHobby,
+                    $"统一 Utility 选择爱好：前往 {option.TargetFacility.InstanceId} 的观景画架",
+                    option.TargetFacility))
+                return;
+
+            // TryBeginMove 会保留语义移动意图并进入等待重试；只有初始化前置条件异常时才需要清理。
+            if (_hasActiveMoveIntent) return;
+            _activeLeisureOutcomeScale = 1f;
+            _activeLeisureKind = FoundationLeisureKind.None;
         }
 
         private bool TrySelectWanderTarget(
@@ -2657,12 +2746,27 @@ namespace Game.NomadWorkshop.Foundation
                 "完成一次自主休整：疲劳与压力得到缓解，娱乐满足度未被虚构补充");
         }
 
+        private void CompleteHobby()
+        {
+            ReleaseActiveInteractionSpace(publishProjection: true);
+            _activeLeisureOutcomeScale = 1f;
+            _activeLeisureKind = FoundationLeisureKind.None;
+            _model.CompletedLeisureCount.Value++;
+            _model.CompletedHobbyCount.Value++;
+            SetResidentPhase(
+                FoundationResidentPhase.Idle,
+                "完成一次作画与观景：娱乐满足、心情和压力已按连续身心模型结算");
+        }
+
         /// <summary>
         /// 把 Unity 行动状态机折叠成纯模拟可理解的负荷类型。休闲的随机效果系数在行动开始时固定，
         /// 此处只负责连续结算，不因帧数或 View 是否打开而重新抽样。
         /// </summary>
         private ResidentWellbeingActivity ResolveWellbeingActivity()
         {
+            if (_residentPhase == FoundationResidentPhase.EnjoyingHobby)
+                return ResidentWellbeingActivity.Hobby;
+
             if (_residentPhase == FoundationResidentPhase.MovingToLeisure ||
                 _residentPhase == FoundationResidentPhase.Relaxing)
             {
@@ -2679,7 +2783,8 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentPhase.MovingToWaterCan or
                     FoundationResidentPhase.MovingToWaterSource or
                     FoundationResidentPhase.MovingToDrinkingStation or
-                    FoundationResidentPhase.MovingToToilet =>
+                    FoundationResidentPhase.MovingToToilet or
+                    FoundationResidentPhase.MovingToHobby =>
                     ResidentWellbeingActivity.Travel,
                 FoundationResidentPhase.PickingUpWaterCan or
                     FoundationResidentPhase.PickingUpWater or
@@ -2743,6 +2848,20 @@ namespace Game.NomadWorkshop.Foundation
             {
                 ReleaseActiveInteractionSpace(publishProjection: false);
                 ClearActivePath();
+                if (_activeMoveIntent.TravelPhase == FoundationResidentPhase.MovingToHobby)
+                {
+                    // 爱好没有物资或中间结果需要保护；目标失效时回到统一决策，比长期占住
+                    // WaitingForRoute 更安全，否则后续口渴 / 如厕等新需求无法得到评估。
+                    ClearActiveMoveIntent();
+                    _activeLeisureOutcomeScale = 1f;
+                    _activeLeisureKind = FoundationLeisureKind.None;
+                    _model.LastBlocker.Value = string.Empty;
+                    PublishCurrentFacilityAccessProjection();
+                    SetResidentPhase(
+                        FoundationResidentPhase.Idle,
+                        "观景画架当前不可达，已放弃软性爱好并准备重新决策");
+                    return false;
+                }
                 _routeRetryRemaining = Mathf.Max(0.1f, routeRetrySeconds);
                 SetResidentPhase(
                     FoundationResidentPhase.WaitingForRoute,
@@ -3208,7 +3327,8 @@ namespace Game.NomadWorkshop.Foundation
                 phase != FoundationResidentPhase.DeliveringWater &&
                 phase != FoundationResidentPhase.Drinking &&
                 phase != FoundationResidentPhase.UsingToilet &&
-                phase != FoundationResidentPhase.Relaxing)
+                phase != FoundationResidentPhase.Relaxing &&
+                phase != FoundationResidentPhase.EnjoyingHobby)
                 _model.ActionProgress.Value = 0f;
         }
 

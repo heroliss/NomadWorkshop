@@ -58,6 +58,8 @@ namespace Game.NomadWorkshop.Foundation
         WaitingForRoute = 12,
         MovingToToilet = 13,
         UsingToilet = 14,
+        MovingToHobby = 15,
+        EnjoyingHobby = 16,
     }
 
     /// <summary>当前基础休闲的可观察类型；以后新增爱好时不会把所有休闲继续压成一个计数。</summary>
@@ -66,6 +68,7 @@ namespace Game.NomadWorkshop.Foundation
         None,
         Daydream,
         Wander,
+        Hobby,
     }
 
     /// <summary>唯一防漏水罐当前所在位置；水罐内容物由独立库存守恒，不能凭空挂在居民身上。</summary>

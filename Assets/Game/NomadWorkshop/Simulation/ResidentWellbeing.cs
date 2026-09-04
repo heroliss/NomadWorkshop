@@ -158,7 +158,8 @@ namespace Game.NomadWorkshop.Simulation
                 ResidentNeed.Entertainment,
                 1f - Entertainment,
                 EntertainmentDecayPerSecond,
-                importance: 0.68f),
+                importance: 0.68f,
+                canPromoteToUrgent: false),
             new ResidentNeedState(
                 ResidentNeed.Fatigue,
                 Fatigue,

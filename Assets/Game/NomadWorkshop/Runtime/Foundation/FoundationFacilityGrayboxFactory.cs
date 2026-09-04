@@ -40,6 +40,9 @@ namespace Game.NomadWorkshop.Foundation
                 case NomadFacilityFunction.Toilet:
                     BuildDryToilet(root, definition.PrototypeSize, palette);
                     break;
+                case NomadFacilityFunction.HobbyPoint:
+                    BuildObservationEasel(root, definition.PrototypeSize, palette);
+                    break;
                 default:
                     Primitive(
                         PrimitiveType.Cube,
@@ -323,6 +326,73 @@ namespace Game.NomadWorkshop.Foundation
                 palette.Warning);
         }
 
+        private void BuildObservationEasel(Transform root, Vector3 size, Palette palette)
+        {
+            float frameHeight = Mathf.Max(1.1f, size.y * 0.88f);
+            for (var side = -1; side <= 1; side += 2)
+            {
+                Primitive(
+                    PrimitiveType.Cube,
+                    $"Splayed Front Leg {(side < 0 ? "L" : "R")}",
+                    root,
+                    new Vector3(side * size.x * 0.29f, frameHeight * 0.42f, 0.04f),
+                    new Vector3(0.075f, frameHeight * 0.86f, 0.075f),
+                    palette.Paint,
+                    new Vector3(0f, 0f, side * -7f));
+            }
+            Primitive(
+                PrimitiveType.Cube,
+                "Rear Folding Brace",
+                root,
+                new Vector3(0f, frameHeight * 0.36f, size.z * 0.25f),
+                new Vector3(0.07f, frameHeight * 0.72f, 0.07f),
+                palette.DarkMetal,
+                new Vector3(-17f, 0f, 0f));
+
+            float canvasY = frameHeight * 0.73f;
+            Primitive(
+                PrimitiveType.Cube,
+                "Replaceable Canvas Board",
+                root,
+                new Vector3(0f, canvasY, -size.z * 0.08f),
+                new Vector3(size.x * 0.76f, frameHeight * 0.43f, 0.055f),
+                palette.Canvas);
+            Primitive(
+                PrimitiveType.Cube,
+                "Painted Horizon",
+                root,
+                new Vector3(0.06f, canvasY + 0.02f, -size.z * 0.132f),
+                new Vector3(size.x * 0.52f, 0.055f, 0.018f),
+                palette.Pigment,
+                new Vector3(0f, 0f, -7f));
+            Primitive(
+                PrimitiveType.Cube,
+                "Painted Sun",
+                root,
+                new Vector3(-size.x * 0.2f, canvasY + frameHeight * 0.1f, -size.z * 0.135f),
+                new Vector3(0.1f, 0.1f, 0.018f),
+                palette.Warning,
+                new Vector3(0f, 0f, 12f));
+
+            Primitive(
+                PrimitiveType.Cube,
+                "Tool Tray",
+                root,
+                new Vector3(0f, canvasY - frameHeight * 0.26f, -size.z * 0.2f),
+                new Vector3(size.x * 0.92f, 0.065f, size.z * 0.32f),
+                palette.Steel);
+            for (var jar = -1; jar <= 1; jar += 2)
+            {
+                Primitive(
+                    PrimitiveType.Cylinder,
+                    $"Pigment Jar {(jar < 0 ? "A" : "B")}",
+                    root,
+                    new Vector3(jar * size.x * 0.3f, canvasY - frameHeight * 0.205f, -size.z * 0.2f),
+                    new Vector3(0.055f, 0.06f, 0.055f),
+                    jar < 0 ? palette.Warning : palette.Pigment);
+            }
+        }
+
         private Palette GetPalette(NomadFacilityDefinition definition)
         {
             if (_palettes.TryGetValue(definition.Id, out Palette existing)) return existing;
@@ -336,12 +406,12 @@ namespace Game.NomadWorkshop.Foundation
                     0.48f),
                 CreateLit(
                     $"M_{definition.Id}_DarkMetal",
-                    new Color(0.055f, 0.075f, 0.08f),
-                    0.62f,
-                    0.22f),
+                    new Color(0.16f, 0.19f, 0.20f),
+                    0.22f,
+                    0.26f),
                 CreateLit(
                     $"M_{definition.Id}_Rubber",
-                    new Color(0.045f, 0.05f, 0.048f),
+                    new Color(0.095f, 0.105f, 0.10f),
                     0f,
                     0.08f),
                 CreateLit(
@@ -359,7 +429,17 @@ namespace Game.NomadWorkshop.Foundation
                     $"M_{definition.Id}_Water",
                     new Color(0.08f, 0.48f, 0.72f),
                     0.05f,
-                    0.78f));
+                    0.78f),
+                CreateLit(
+                    $"M_{definition.Id}_Canvas",
+                    new Color(0.82f, 0.76f, 0.62f),
+                    0f,
+                    0.16f),
+                CreateLit(
+                    $"M_{definition.Id}_Pigment",
+                    new Color(0.08f, 0.34f, 0.42f),
+                    0.05f,
+                    0.24f));
             _palettes.Add(definition.Id, palette);
             return palette;
         }
@@ -420,7 +500,9 @@ namespace Game.NomadWorkshop.Foundation
                 Material rubber,
                 Material warning,
                 Material indicator,
-                Material water)
+                Material water,
+                Material canvas,
+                Material pigment)
             {
                 Paint = paint;
                 Steel = steel;
@@ -429,6 +511,8 @@ namespace Game.NomadWorkshop.Foundation
                 Warning = warning;
                 Indicator = indicator;
                 Water = water;
+                Canvas = canvas;
+                Pigment = pigment;
             }
 
             public Material Paint { get; }
@@ -438,6 +522,8 @@ namespace Game.NomadWorkshop.Foundation
             public Material Warning { get; }
             public Material Indicator { get; }
             public Material Water { get; }
+            public Material Canvas { get; }
+            public Material Pigment { get; }
         }
     }
 }

@@ -11,6 +11,7 @@ namespace Game.NomadWorkshop.Simulation
     {
         public const string WanderCandidateId = "leisure:wander-open-deck";
         public const string DaydreamCandidateId = "leisure:daydream-in-place";
+        public const string HobbyIntentId = "leisure:creative-observation";
 
         /// <summary>
         /// 日常选择允许比单一工作决策更宽的合理候选池；Softmax 仍会按成本连续降低概率。
@@ -93,9 +94,68 @@ namespace Game.NomadWorkshop.Simulation
             };
         }
 
+        /// <summary>
+        /// 为一个真实设施上的创作爱好生成完整方案。候选保留设施实例 id 并共享同一意图；
+        /// 调用方若提供多个目标，Utility 会先按路程与收益归并。当前 Foundation Adapter
+        /// 会先选择最近可达实例；InteractionGroup 的瞬时占用仍由 Unity Adapter 在执行时取得。
+        /// </summary>
+        public static ResidentActionPlanProposal CreateHobbyAtFacility(
+            string facilityInstanceId,
+            string facilityDisplayName,
+            float pathDistanceMeters,
+            float moveSpeedMetersPerSecond,
+            float hobbySeconds,
+            float personalAffinity)
+        {
+            if (string.IsNullOrWhiteSpace(facilityInstanceId))
+                throw new ArgumentException("爱好设施实例 id 不能为空。", nameof(facilityInstanceId));
+            if (string.IsNullOrWhiteSpace(facilityDisplayName))
+                throw new ArgumentException("爱好设施显示名不能为空。", nameof(facilityDisplayName));
+            if (!float.IsFinite(pathDistanceMeters) || pathDistanceMeters < 0f)
+                throw new ArgumentOutOfRangeException(nameof(pathDistanceMeters));
+            ValidatePositiveFinite(moveSpeedMetersPerSecond, nameof(moveSpeedMetersPerSecond));
+            ValidatePositiveFinite(hobbySeconds, nameof(hobbySeconds));
+            ValidateNormalized(personalAffinity, nameof(personalAffinity));
+
+            float travelSeconds = pathDistanceMeters / moveSpeedMetersPerSecond;
+            return new ResidentActionPlanProposal(
+                $"hobby:{facilityInstanceId}",
+                HobbyIntentId,
+                $"在{facilityDisplayName}作画并观察远方")
+            {
+                Steps = new[]
+                {
+                    new ResidentActionStepEstimate(
+                        ResidentActionStepKind.Travel,
+                        travelSeconds,
+                        pathDistanceMeters,
+                        $"前往{facilityDisplayName}"),
+                    new ResidentActionStepEstimate(
+                        ResidentActionStepKind.UseFacility,
+                        hobbySeconds,
+                        label: "作画并观察车外景色"),
+                },
+                BaseUtility = 0.045f,
+                ComfortBenefit = 0.055f,
+                PersonalAffinity = personalAffinity,
+                RestQuality = 0.5f,
+                Effort = 0.035f,
+                NeedEffects = ResidentWellbeing.CreateExpectedEffects(
+                    ResidentWellbeingActivity.Hobby,
+                    hobbySeconds),
+                ReservationKeys = new[] { $"facility:{facilityInstanceId}:hobby" },
+            };
+        }
+
         private static void ValidatePositiveFinite(float value, string parameterName)
         {
             if (!float.IsFinite(value) || value <= 0f)
+                throw new ArgumentOutOfRangeException(parameterName);
+        }
+
+        private static void ValidateNormalized(float value, string parameterName)
+        {
+            if (!float.IsFinite(value) || value < 0f || value > 1f)
                 throw new ArgumentOutOfRangeException(parameterName);
         }
 

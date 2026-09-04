@@ -32,6 +32,38 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void EmptyEntertainment_RemainsRoutineBesideUrgentBladder()
+        {
+            ResidentActionCandidate hobby = Candidate("hobby", "hobby", "迫切想作画", 8f);
+            hobby.NeedEffects = new[] { new NeedEffect(ResidentNeed.Entertainment, 1f) };
+            ResidentActionCandidate toilet = Candidate("toilet", "toilet", "立即如厕", 0.01f);
+            toilet.NeedEffects = new[] { new NeedEffect(ResidentNeed.Bladder, 1f) };
+            ResidentNeedState entertainment =
+                new ResidentWellbeing(0f, 0.5f, 0.2f, 0.2f)
+                    .CreateDecisionNeedSnapshot()[0];
+
+            ResidentDecisionResult result = _engine.Decide(Context(
+                19,
+                3,
+                new[]
+                {
+                    entertainment,
+                    new ResidentNeedState(
+                        ResidentNeed.Bladder,
+                        0.95f,
+                        0f,
+                        pressureCurve: new NeedPressureCurve(0.5f, 0.9f, 2f, 3.5f)),
+                },
+                hobby,
+                toilet));
+
+            Assert.AreSame(toilet, result.Selected);
+            Assert.AreEqual(ResidentDecisionRiskTier.Routine, Trace(result, "hobby").RiskTier);
+            Assert.AreEqual(CandidateDecisionState.OutsideRiskPool, Trace(result, "hobby").State);
+            Assert.AreEqual(ResidentDecisionRiskTier.Urgent, Trace(result, "toilet").RiskTier);
+        }
+
+        [Test]
         public void MultiNeedMeal_OnlyScoresPressureThatActuallyExists()
         {
             ResidentActionCandidate meal = Candidate("meal", "eat", "吃一顿饭", 0f);
