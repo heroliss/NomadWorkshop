@@ -31,6 +31,8 @@ namespace Game.NomadWorkshop.Editor
         public const string ObservationEaselPath = DefinitionRoot + "/NW_Facility_ObservationEasel.asset";
         public const string WaterCanItemPath = DefinitionRoot + "/NW_Item_WaterCan.asset";
         public const string DrinkingCupItemPath = DefinitionRoot + "/NW_Item_DrinkingCup.asset";
+        public const string WaterValveKitItemPath =
+            DefinitionRoot + "/NW_Item_WaterValveRepairKit.asset";
 
         [MenuItem("Assets/SSFramework/游牧工坊/Foundation/创建或打开最小垂直切片")]
         public static void CreateOrOpen()
@@ -64,6 +66,7 @@ namespace Game.NomadWorkshop.Editor
             {
                 RequireAsset<NomadWorldItemDefinition>(WaterCanItemPath),
                 RequireAsset<NomadWorldItemDefinition>(DrinkingCupItemPath),
+                RequireAsset<NomadWorldItemDefinition>(WaterValveKitItemPath),
             };
             Material skyboxMaterial = RequireAsset<Material>(
                 NomadRenderingSpikePipeline.FoundationSkyboxMaterialPath);
@@ -149,17 +152,7 @@ namespace Game.NomadWorkshop.Editor
                         Vector2.zero,
                         new Vector2(1.8f, 1f)),
                 },
-                RequiredGroup(
-                    "water-pickup",
-                    new NomadFacilityInteractionSlotDefinition(
-                        "left",
-                        new Vector2(-0.48f, -0.9f)),
-                    new NomadFacilityInteractionSlotDefinition(
-                        "center",
-                        new Vector2(0f, -0.94f)),
-                    new NomadFacilityInteractionSlotDefinition(
-                        "right",
-                        new Vector2(0.48f, -0.9f))),
+                WaterTankInteractionGroups(),
                 placeAtStart: true,
                 new Vector2(-3.4f, 2.25f),
                 0f,
@@ -302,6 +295,18 @@ namespace Game.NomadWorkshop.Editor
                 new[] { 0f },
                 NomadWorldItemPrototypeStyle.Cup,
                 new Color(0.83f, 0.48f, 0.16f));
+            ConfigureWorldItemDefinition(
+                WaterValveKitItemPath,
+                "water-valve-repair-kit",
+                "水箱出水阀维修包",
+                "spare-part",
+                new Vector2(0.28f, 0.18f),
+                0.12f,
+                0.015f,
+                allowAnyYaw: false,
+                new[] { 0f, 90f },
+                NomadWorldItemPrototypeStyle.Box,
+                new Color(0.86f, 0.29f, 0.06f));
 
             EditorUtility.SetDirty(layout);
             AssetDatabase.SaveAssets();
@@ -352,6 +357,15 @@ namespace Game.NomadWorkshop.Editor
                         0f,
                         0.02f,
                         "water-can"),
+                    new NomadPlacementRegionDefinition(
+                        "maintenance-tray",
+                        new Vector2(0f, 0f),
+                        new Vector2(0.52f, 0.34f),
+                        0f,
+                        1.42f,
+                        0.02f,
+                        "spare-part",
+                        "tool-small"),
                 },
                 NomadFacilityFunction.DrinkingStation =>
                 new[]
@@ -418,6 +432,52 @@ namespace Game.NomadWorkshop.Editor
             new[]
             {
                 new NomadFacilityInteractionGroupDefinition(groupId, true, slots),
+            };
+
+        private static NomadFacilityInteractionGroupDefinition[] WaterTankInteractionGroups() =>
+            new[]
+            {
+                new NomadFacilityInteractionGroupDefinition(
+                    "water-pickup",
+                    true,
+                    new[]
+                    {
+                        new NomadFacilityInteractionSlotDefinition(
+                            "left",
+                            new Vector2(-0.48f, -0.9f)),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "center",
+                            new Vector2(0f, -0.94f)),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "right",
+                            new Vector2(0.48f, -0.9f)),
+                    }),
+                new NomadFacilityInteractionGroupDefinition(
+                    "maintenance-supply",
+                    true,
+                    new[]
+                    {
+                        new NomadFacilityInteractionSlotDefinition(
+                            "front-left",
+                            new Vector2(-0.6f, -0.9f)),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "front-right",
+                            new Vector2(0.6f, -0.9f)),
+                    }),
+                new NomadFacilityInteractionGroupDefinition(
+                    "service-valve",
+                    true,
+                    new[]
+                    {
+                        new NomadFacilityInteractionSlotDefinition(
+                            "rear-left",
+                            new Vector2(-0.45f, 0.9f),
+                            180f),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "rear-right",
+                            new Vector2(0.45f, 0.9f),
+                            180f),
+                    }),
             };
 
         private static DeckNavigationUtility CreateNavigationInfrastructure(

@@ -58,7 +58,7 @@ DOTS 是数据/Job/Burst 范式，与引用式 OOP 不同。框架的定位是**
 
 当前工作假设是 **Steam / Windows 首发、风格化俯视角实时 3D、付费单机、小人口移动殖民模拟**。《游牧工坊》采用自动居民、目标点行驶、种子宏观地图、车体固定的旅途舞台和单层 2.5D 规则；居民通过可追踪的 Utility AI 在高质量候选中有界随机，人物共用 Humanoid 骨架、通用动作和设施交互锚点。第一版只验证三名居民修复并经营移动工坊、完成一次旅途和车外作业的地基，不制作一比一大陆、车辆转向、局部驾驶寻路，也不把多地貌、关系、势力、战斗和正式内容提前塞入。平台顺序与证据 Gate 见[首款商业 3D 游戏：产品与平台策略](commercial-3d-game-strategy.md)，当前玩法与 Foundation Prototype 范围见[《游牧工坊》产品愿景与第一版地基](nomad-workshop-game-vision.md)。
 
-首个[居民 Utility AI + 实时 3D 技术 Spike](../Assets/Game/NomadWorkshop/README.md)已推进到 v0.2：除纯 C# 决策、原子预留和确定性候选追踪外，一名有效 Humanoid Avatar、五个抽取 Human Motion、稳定 Animator 语义、URP Lit 材质重映射、设施交互锚点与程序假人回退也形成了可重复证据链。它尚未进入 Gate 1，也没有证明正式废土服装、3D Renderer、手部 IK、多人调度、Framework 接线或游戏体验成立；这些缺口继续按风险逐项验证。
+首个[《游牧工坊》最小垂直切片地基](../Assets/Game/NomadWorkshop/README.md)已推进到 v0.39：正式场景以 SSFramework 的 Mono Context / Model / System / View + Command 分层接入，跑通连续建造与 NavMesh、mL 水循环、正向身心状态、Utility AI、世界物品原子拿放、统一 Tick、确定性沙尘、车辆水箱故障、实体备件维修、检查点恢复和有界长时审计；共享 URP 3D Renderer、HDR / PBR 灰盒、Humanoid 与可替换程序表现也已有自动和视觉证据。它仍未进入 Gate 1：当前只有一名正式居民、一个简单天气和故障、一次性初始备件，没有旅途 / 车外作业、蓝图施工、玩家存档界面、正式内容与美术，也尚未证明体验好玩或可发行。
 
 实战发现按证据分流：
 

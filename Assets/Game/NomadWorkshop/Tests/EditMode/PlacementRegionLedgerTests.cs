@@ -444,6 +444,166 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 "取消后目标空间应立即释放。 ");
         }
 
+        [Test]
+        public void UseLease_PickUpThenConsumeCommitsItemDisappearance()
+        {
+            var ledger = new PlacementRegionLedger();
+            PlacementRegionDefinition source = CupSurface("counter-a", 0);
+            PlacementFootprint cup = CupFootprint();
+            ledger.RegisterRegion(source);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    new PlacementRegionPose(15, -20, 370),
+                    out _,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+
+            Assert.That(
+                ledger.TryReserveUse(
+                    "cup-01",
+                    out PlacementRegionUseLease use,
+                    out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(use.State, Is.EqualTo(PlacementRegionUseState.Reserved));
+            Assert.That(ledger.ReservationCount, Is.EqualTo(1));
+            Assert.That(use.TryPickUp(out failure), Is.True, failure.ToString());
+            Assert.That(use.State, Is.EqualTo(PlacementRegionUseState.Carrying));
+            Assert.That(ledger.TryGetPlacement("cup-01", out _), Is.False);
+
+            Assert.That(use.TryConsume(out failure), Is.True, failure.ToString());
+            Assert.That(use.State, Is.EqualTo(PlacementRegionUseState.Consumed));
+            Assert.That(use.IsActive, Is.False);
+            Assert.That(ledger.ReservationCount, Is.Zero);
+            Assert.That(ledger.PlacedItemCount, Is.Zero);
+            Assert.That(ledger.CreateCheckpointSnapshot(), Is.Empty);
+        }
+
+        [Test]
+        public void UseLease_CancelAfterPickupRestoresExactSource()
+        {
+            var ledger = new PlacementRegionLedger();
+            PlacementRegionDefinition source = CupSurface("counter-a", 0);
+            PlacementFootprint cup = CupFootprint();
+            var sourcePose = new PlacementRegionPose(-25, 30, 2170);
+            ledger.RegisterRegion(source);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    sourcePose,
+                    out PlacementRegionItem original,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                ledger.TryReserveUse("cup-01", out PlacementRegionUseLease use, out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(use.TryPickUp(out failure), Is.True, failure.ToString());
+
+            use.Dispose();
+
+            Assert.That(use.State, Is.EqualTo(PlacementRegionUseState.Cancelled));
+            Assert.That(ledger.ReservationCount, Is.Zero);
+            Assert.That(
+                ledger.TryGetPlacement("cup-01", out PlacementRegionItem restored),
+                Is.True);
+            Assert.That(restored.Region.RegionId, Is.EqualTo(source.RegionId));
+            Assert.That(restored.LocalPose, Is.EqualTo(sourcePose));
+            Assert.That(restored.WorldPose, Is.EqualTo(original.WorldPose));
+        }
+
+        [Test]
+        public void UseLease_CheckpointWhileCarryingReturnsConservedSource()
+        {
+            var ledger = new PlacementRegionLedger();
+            PlacementRegionDefinition source = CupSurface("counter-a", 0);
+            PlacementFootprint cup = CupFootprint();
+            var sourcePose = new PlacementRegionPose(35, -15, 1230);
+            ledger.RegisterRegion(source);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    sourcePose,
+                    out _,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                ledger.TryReserveUse("cup-01", out PlacementRegionUseLease use, out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(use.TryPickUp(out failure), Is.True, failure.ToString());
+
+            IReadOnlyList<PlacementRegionItem> checkpoint = ledger.CreateCheckpointSnapshot();
+
+            Assert.That(checkpoint, Has.Count.EqualTo(1));
+            Assert.That(checkpoint[0].ItemId, Is.EqualTo("cup-01"));
+            Assert.That(checkpoint[0].Region.RegionId, Is.EqualTo(source.RegionId));
+            Assert.That(checkpoint[0].LocalPose, Is.EqualTo(sourcePose));
+            Assert.That(ledger.CreateStableSnapshot(), Is.Empty,
+                "运行态稳定投影不能谎称居民手里的物品仍在台面上。 ");
+            use.Dispose();
+        }
+
+        [Test]
+        public void ConsumedUseLease_CannotAffectNewerTransactionWithSameItemId()
+        {
+            var ledger = new PlacementRegionLedger();
+            PlacementRegionDefinition source = CupSurface("counter-a", 0);
+            PlacementFootprint cup = CupFootprint();
+            ledger.RegisterRegion(source);
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    PlacementRegionPose.Centered,
+                    out _,
+                    out PlacementRegionFailure failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                ledger.TryReserveUse("cup-01", out PlacementRegionUseLease oldUse, out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(oldUse.TryPickUp(out failure), Is.True, failure.ToString());
+            Assert.That(oldUse.TryConsume(out failure), Is.True, failure.ToString());
+
+            Assert.That(
+                ledger.TryRestorePlacement(
+                    "cup-01",
+                    cup,
+                    source.RegionId,
+                    new PlacementRegionPose(20, 10, 0),
+                    out _,
+                    out failure),
+                Is.True,
+                failure.ToString());
+            Assert.That(
+                ledger.TryReserveUse("cup-01", out PlacementRegionUseLease currentUse, out failure),
+                Is.True,
+                failure.ToString());
+
+            oldUse.Dispose();
+            Assert.That(oldUse.TryPickUp(out failure), Is.False);
+            Assert.That(failure, Is.EqualTo(PlacementRegionFailure.ReservationNotActive));
+            Assert.That(oldUse.TryConsume(out failure), Is.False);
+            Assert.That(failure, Is.EqualTo(PlacementRegionFailure.ReservationNotActive));
+            Assert.That(currentUse.IsActive, Is.True);
+            Assert.That(ledger.ReservationCount, Is.EqualTo(1));
+            Assert.That(ledger.TryGetPlacement("cup-01", out _), Is.True);
+            currentUse.Dispose();
+        }
+
         private static PlacementRegionDefinition CupSurface(string owner, int worldX) =>
             new(
                 PlacementRegionLedger.ComposeRegionId(owner, "countertop"),

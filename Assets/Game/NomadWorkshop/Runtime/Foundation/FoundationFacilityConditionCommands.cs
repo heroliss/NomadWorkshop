@@ -3,8 +3,8 @@ using Game.Framework.Command;
 
 namespace Game.NomadWorkshop.Foundation
 {
-    /// <summary>开发 Harness 注入一次沙尘环境冲击；正式天气系统以后调用同一 System 入口。</summary>
-    [Description("向主车辆水箱注入一次沙尘环境冲击")]
+    /// <summary>开发 Harness 注入一次离散状态冲击；它不代表正在运行的持续天气。</summary>
+    [Description("开发验收：向主水箱注入一次离散沙尘状态冲击")]
     public readonly struct ApplyPrimaryWaterTankSandstormCommand : ICommand<bool>
     {
         public bool Execute(ICommandContext ctx) =>
@@ -27,8 +27,8 @@ namespace Game.NomadWorkshop.Foundation
             ctx.GetSystem<NomadFoundationSystem>().ForcePrimaryWaterTankFault();
     }
 
-    /// <summary>修复水箱出水阀并开始新的确定性风险周期。</summary>
-    [Description("修复主水箱出水阀并开始新的故障风险周期")]
+    /// <summary>开发 Harness 跳过居民、备件与工时，瞬时修复水箱故障。</summary>
+    [Description("开发验收：跳过实体维修链并瞬时修复主水箱")]
     public readonly struct RepairPrimaryWaterTankFaultCommand : ICommand<bool>
     {
         public bool Execute(ICommandContext ctx) =>

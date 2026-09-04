@@ -15,6 +15,7 @@ namespace Game.NomadWorkshop.Simulation
         Consume,
         CleanUp,
         Rest,
+        Repair,
     }
 
     /// <summary>完整行动方案在进入效用选择前被硬性排除的稳定原因。</summary>

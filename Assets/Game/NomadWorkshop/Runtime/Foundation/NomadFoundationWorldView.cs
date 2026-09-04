@@ -108,6 +108,9 @@ namespace Game.NomadWorkshop.Foundation
         private int _lastPointerZMillimeters;
         private bool _hasPointerPose;
         private bool _touchCameraGestureActive;
+        private ParticleSystem _sandstormParticles;
+        private NomadWeatherKind _currentWeather;
+        private int _sandstormIntensityPermille;
 
 #if UNITY_EDITOR
         /// <summary>只供未激活 GameObject 上的隔离测试装配；正式场景由 Editor Pipeline 接线。</summary>
@@ -168,6 +171,16 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.FacilityConditionRevision, _ =>
                 UpdateFacilityConditions(
                     this.ExecuteCommand(new GetFoundationFacilityConditionsCommand())));
+            Bag.Subscribe(readModel.CurrentWeather, weather =>
+            {
+                _currentWeather = weather;
+                UpdateEnvironmentVisual();
+            });
+            Bag.Subscribe(readModel.SandstormIntensityPermille, intensity =>
+            {
+                _sandstormIntensityPermille = intensity;
+                UpdateEnvironmentVisual();
+            });
             Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
                 RebuildWorldItems(
                     this.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand())));
@@ -497,6 +510,7 @@ namespace Game.NomadWorkshop.Foundation
             _placementRegionMaterial = CreateTransparentMaterial(
                 "M_PlacementRegion",
                 new Color(0.12f, 0.78f, 1f, 0.34f));
+            CreateSandstormVisual();
 
             CreatePrimitive(
                 PrimitiveType.Cube,
@@ -861,6 +875,111 @@ namespace Game.NomadWorkshop.Foundation
                     _facilityConditions[states[i].InstanceId] = states[i];
             }
             ApplyFacilityAccessVisuals();
+        }
+
+        /// <summary>
+        /// 创建不参与玩法碰撞的程序化沙尘层。天气真值仍来自 System；这里仅用粒子、雾和灯光
+        /// 表现同一个强度投影，后续替换 VFX Graph 不会改变设施老化或存档语义。
+        /// </summary>
+        private void CreateSandstormVisual()
+        {
+            var dust = new GameObject("Environment · Sandstorm Dust");
+            // ParticleSystem 加到激活对象时会先按默认 playOnAwake 启动；先禁用再配置，
+            // 避免运行中修改 duration 触发 Unity Assert，也避免清朗开局闪过一帧沙尘。
+            dust.SetActive(false);
+            dust.transform.SetParent(deckRoot, false);
+            dust.transform.localPosition = deckLayout.DeckCenterLocal + new Vector3(0f, 2.2f, 0f);
+            _sandstormParticles = dust.AddComponent<ParticleSystem>();
+
+            ParticleSystem.MainModule main = _sandstormParticles.main;
+            main.loop = true;
+            main.playOnAwake = false;
+            main.duration = 2.4f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(1.3f, 2.4f);
+            main.startSpeed = 0f;
+            main.startSize = new ParticleSystem.MinMaxCurve(0.025f, 0.075f);
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(0.78f, 0.47f, 0.2f, 0.14f),
+                new Color(0.93f, 0.7f, 0.35f, 0.34f));
+            main.maxParticles = 700;
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+            ParticleSystem.EmissionModule emission = _sandstormParticles.emission;
+            emission.rateOverTime = 0f;
+            ParticleSystem.ShapeModule shape = _sandstormParticles.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(
+                deckLayout.DeckSize.x + 8f,
+                4.5f,
+                deckLayout.DeckSize.z + 8f);
+
+            ParticleSystem.VelocityOverLifetimeModule velocity =
+                _sandstormParticles.velocityOverLifetime;
+            velocity.enabled = true;
+            velocity.space = ParticleSystemSimulationSpace.Local;
+            velocity.x = new ParticleSystem.MinMaxCurve(-7.5f);
+            velocity.y = new ParticleSystem.MinMaxCurve(-0.35f, 0.1f);
+            velocity.z = new ParticleSystem.MinMaxCurve(-2.4f);
+
+            ParticleSystemRenderer renderer = dust.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Stretch;
+            renderer.lengthScale = 5.5f;
+            renderer.velocityScale = 0.16f;
+            renderer.sharedMaterial = CreateTransparentMaterial(
+                "M_SandstormDust",
+                new Color(0.86f, 0.55f, 0.24f, 0.48f));
+            dust.SetActive(false);
+        }
+
+        private void UpdateEnvironmentVisual()
+        {
+            if (_sandstormParticles == null) return;
+
+            bool sandstorm = _currentWeather == NomadWeatherKind.Sandstorm &&
+                             _sandstormIntensityPermille > 0;
+            float intensity = Mathf.Clamp01(_sandstormIntensityPermille / 1000f);
+            if (_sandstormParticles.gameObject.activeSelf != sandstorm)
+                _sandstormParticles.gameObject.SetActive(sandstorm);
+
+            if (sandstorm)
+            {
+                ParticleSystem.EmissionModule emission = _sandstormParticles.emission;
+                emission.rateOverTime = Mathf.Lerp(80f, 230f, intensity);
+                if (!_sandstormParticles.isPlaying) _sandstormParticles.Play();
+
+                RenderSettings.fog = true;
+                RenderSettings.fogMode = FogMode.Linear;
+                RenderSettings.fogColor = Color.Lerp(
+                    new Color(0.38f, 0.3f, 0.23f),
+                    new Color(0.52f, 0.35f, 0.22f),
+                    intensity);
+                // 俯视相机离甲板较远；雾距必须按可玩空间校准，风暴可以压低对比度，
+                // 但不能把设施、居民和建造反馈全部染成纯色。
+                RenderSettings.fogStartDistance = Mathf.Lerp(24f, 14f, intensity);
+                RenderSettings.fogEndDistance = Mathf.Lerp(70f, 45f, intensity);
+                RenderSettings.ambientIntensity = Mathf.Lerp(0.94f, 0.76f, intensity);
+                if (keyLight != null)
+                {
+                    keyLight.color = Color.Lerp(
+                        new Color(1f, 0.89f, 0.72f),
+                        new Color(0.95f, 0.55f, 0.24f),
+                        intensity);
+                    keyLight.intensity = Mathf.Lerp(1.6f, 1.12f, intensity);
+                }
+                if (fillLight != null) fillLight.intensity = Mathf.Lerp(0.52f, 0.32f, intensity);
+                return;
+            }
+
+            if (_sandstormParticles.isPlaying)
+                _sandstormParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            RenderSettings.fog = false;
+            RenderSettings.ambientIntensity = skyboxMaterial != null ? 1.02f : 1f;
+            if (keyLight != null)
+            {
+                keyLight.color = new Color(1f, 0.89f, 0.72f);
+                keyLight.intensity = 1.6f;
+            }
+            if (fillLight != null) fillLight.intensity = 0.52f;
         }
 
         private void ApplyFacilityAccessVisuals()

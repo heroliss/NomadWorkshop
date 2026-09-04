@@ -64,7 +64,8 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentPhase.MovingToWorldItemSource,
                 $"杯具事务已锁定来源与目标：前往 {sourceFacility.InstanceId} 拿取",
                 sourceFacility,
-                allowAlternativeFacility: false);
+                allowAlternativeFacility: false,
+                interactionGroupId: KitchenInteractionGroupId);
             if (_activeWorldItemMove == null)
                 return false;
 
@@ -167,7 +168,8 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentPhase.MovingToWorldItemDestination,
                 $"手持杯具前往已预留目标 {destinationFacility.InstanceId}",
                 destinationFacility,
-                allowAlternativeFacility: false);
+                allowAlternativeFacility: false,
+                interactionGroupId: KitchenInteractionGroupId);
         }
 
         private void CompleteWorldItemPlacement()

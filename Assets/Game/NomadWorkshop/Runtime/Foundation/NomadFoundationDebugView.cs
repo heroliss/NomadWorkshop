@@ -25,6 +25,8 @@ namespace Game.NomadWorkshop.Foundation
         private long _climateYear;
         private int _seasonIndex;
         private int _climateWeekInSeason;
+        private NomadWeatherKind _currentWeather;
+        private int _sandstormIntensityPermille;
         private FoundationInteractionMode _interactionMode;
         private FoundationPlacementPreviewState _preview;
         private FoundationFacilityAccessState[] _facilityAccess =
@@ -75,6 +77,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _completedGroundRests;
         private int _completedHobbies;
         private int _completedWorldItemMoves;
+        private int _completedWaterTankRepairs;
         private bool _hasSoakResult;
         private FoundationSoakRunResult _lastSoakResult;
         private float _actionProgress;
@@ -113,6 +116,10 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(
                 readModel.ClimateWeekInSeason,
                 value => _climateWeekInSeason = value);
+            Bag.Subscribe(readModel.CurrentWeather, value => _currentWeather = value);
+            Bag.Subscribe(
+                readModel.SandstormIntensityPermille,
+                value => _sandstormIntensityPermille = value);
             Bag.Subscribe(readModel.InteractionMode, OnInteractionModeChanged);
             Bag.Subscribe(readModel.PlacementPreview, value => _preview = value);
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
@@ -201,6 +208,9 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(
                 readModel.CompletedWorldItemMoveCount,
                 value => _completedWorldItemMoves = value);
+            Bag.Subscribe(
+                readModel.CompletedWaterTankRepairCount,
+                value => _completedWaterTankRepairs = value);
             Bag.Subscribe(readModel.ActionProgress, value => _actionProgress = value);
             Bag.Subscribe(readModel.CurrentTask, value => _currentTask = value);
             Bag.Subscribe(readModel.LastBlocker, value => _lastBlocker = value);
@@ -458,7 +468,7 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Label(
                 $"完成：饮水 {_completedDrinks} · 如厕 {_completedToiletUses} · " +
                 $"休闲 {_completedLeisure}（发呆 {_completedDaydreams} / 闲逛 {_completedWanders} / 爱好 {_completedHobbies}）· " +
-                $"地面休息 {_completedGroundRests}",
+                $"地面休息 {_completedGroundRests} · 水箱维修 {_completedWaterTankRepairs}",
                 _smallStyle);
 
             if (!string.IsNullOrEmpty(_lastBlocker))
@@ -757,6 +767,11 @@ namespace Game.NomadWorkshop.Foundation
                 $"日进度 {_lifeDayProgressPermille / 10f:0.0}% · " +
                 $"统一 Tick {_simulationTick / 1000d:0.000}s",
                 _smallStyle);
+            GUILayout.Label(
+                _currentWeather == NomadWeatherKind.Sandstorm
+                    ? $"当前天气：沙尘暴 · 强度 {_sandstormIntensityPermille / 10f:0.0}%（正在加速积尘、老化与故障风险）"
+                    : "当前天气：晴朗 · 环境只施加基础老化",
+                _smallStyle);
 
             GUILayout.Space(7f);
             GUILayout.Label("居民与资源", _sectionStyle);
@@ -872,8 +887,8 @@ namespace Game.NomadWorkshop.Foundation
 
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button(new GUIContent(
-                        "注入沙尘冲击",
-                        "增加 10‰ 磨损、80‰ 维护欠账和 250‰ 积尘；不直接伪造故障。")))
+                        "Harness 沙尘冲击",
+                        "只供验收：一次增加 10‰ 磨损、80‰ 维护欠账和 250‰ 积尘；不同于随统一时钟持续结算的真实沙尘暴。")))
                     this.ExecuteCommand(new ApplyPrimaryWaterTankSandstormCommand());
                 bool conditionButtonsEnabled = GUI.enabled;
                 GUI.enabled = conditionButtonsEnabled &&
@@ -890,8 +905,8 @@ namespace Game.NomadWorkshop.Foundation
                     this.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand());
                 GUI.enabled = conditionButtonsEnabled && !condition.IsOperational;
                 if (GUILayout.Button(new GUIContent(
-                        "修理出水阀",
-                        "清除具体故障并开启新的风险周期；磨损、欠保养和积尘仍保留。")))
+                        "Harness 瞬时修理",
+                        "只供验收：跳过居民取实体备件、行走与维修工时；普通玩法会执行完整维修链。")))
                     this.ExecuteCommand(new RepairPrimaryWaterTankFaultCommand());
                 GUI.enabled = conditionButtonsEnabled;
                 GUILayout.EndHorizontal();
@@ -926,7 +941,8 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Label(
                 $"已完成饮水：{_completedDrinks}   如厕：{_completedToiletUses}   " +
                 $"自主休闲：{_completedLeisure}（发呆 {_completedDaydreams} / 散步 {_completedWanders} / 爱好 {_completedHobbies}）   " +
-                $"地面休息：{_completedGroundRests}   物品拿放：{_completedWorldItemMoves}");
+                $"地面休息：{_completedGroundRests}   物品拿放：{_completedWorldItemMoves}   " +
+                $"水箱维修：{_completedWaterTankRepairs}");
             if (!string.IsNullOrEmpty(_lastBlocker))
             {
                 bool hardBlocked = _residentPhase == FoundationResidentPhase.Blocked;
@@ -1226,6 +1242,10 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.PickingUpWorldItem => "拿起物品",
             FoundationResidentPhase.MovingToWorldItemDestination => "携带物品",
             FoundationResidentPhase.PlacingWorldItem => "放下物品",
+            FoundationResidentPhase.MovingToRepairPart => "前往维修备件",
+            FoundationResidentPhase.PickingUpRepairPart => "拿取维修备件",
+            FoundationResidentPhase.MovingToRepairTarget => "携带备件前往故障点",
+            FoundationResidentPhase.RepairingFacility => "维修水箱出水阀",
             FoundationResidentPhase.Dead => "死亡",
             FoundationResidentPhase.Blocked => "阻塞",
             _ => phase.ToString(),

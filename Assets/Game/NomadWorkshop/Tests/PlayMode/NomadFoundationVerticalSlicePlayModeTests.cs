@@ -725,6 +725,91 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator SoakHarness_MidActionCheckpointDeclaresBoundedBusinessDifference()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            yield return ResetAndBuildSoakScenario(1_618_033);
+
+            // 主动找到半个行动，而不是碰巧在 Idle 捕获。当前存档契约不会保存路径、动画或租约，
+            // 因而读档分支允许回到同 Tick 的守恒业务边界，但必须量化这次回退的影响上限。
+            for (var step = 0; step < 1_200; step++)
+            {
+                _context.ExecuteCommand(new RunFoundationSoakHarnessCommand(100L, 100));
+                if (_model.ActionProgress.Value is > 0.2f and < 0.8f) break;
+            }
+            Assert.That(_model.ActionProgress.Value, Is.InRange(0.2f, 0.8f),
+                "应在半个居民行动中捕获检查点，避免用安全 Idle 掩盖回退差异。 ");
+            FoundationResidentPhase phaseAtCapture = _model.ResidentPhase.Value;
+            long checkpointTick = _model.SimulationTick.Value;
+            NomadWorkshopSaveData checkpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            Assert.That(checkpoint.Residents[0].ActiveAction, Is.Null);
+
+            FoundationSoakRunResult uninterrupted = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(90_000L, 100));
+            float uninterruptedHealth = _model.ResidentHealth.Value;
+            float uninterruptedThirst = _model.ResidentThirst.Value;
+            float uninterruptedEntertainment = _model.ResidentEntertainment.Value;
+            float uninterruptedMood = _model.ResidentMood.Value;
+            float uninterruptedFatigue = _model.ResidentFatigue.Value;
+            float uninterruptedStress = _model.ResidentStress.Value;
+            int uninterruptedWater = CalculateProjectedWaterTotal();
+            FoundationFacilityConditionState uninterruptedTank = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                "initial-vehicle-water-tank");
+
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+            FoundationSoakRunResult restored = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(90_000L, 100));
+            FoundationFacilityConditionState restoredTank = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                "initial-vehicle-water-tank");
+
+            Assert.That(uninterrupted.CompletedRequestedDuration, Is.True);
+            Assert.That(restored.CompletedRequestedDuration, Is.True);
+            Assert.That(uninterrupted.StartSimulationTick, Is.EqualTo(checkpointTick));
+            Assert.That(restored.StartSimulationTick, Is.EqualTo(checkpointTick));
+            Assert.That(restored.EndSimulationTick, Is.EqualTo(uninterrupted.EndSimulationTick));
+            Assert.That(uninterruptedWater, Is.EqualTo(60_000));
+            Assert.That(CalculateProjectedWaterTotal(), Is.EqualTo(uninterruptedWater),
+                "回退半个行动可以改变后续选择，但不能改变物质总量。 ");
+            Assert.That(restoredTank.FailureThresholdMicroHazard,
+                Is.EqualTo(uninterruptedTank.FailureThresholdMicroHazard));
+            Assert.That(restoredTank.AccumulatedFailureMicroHazard,
+                Is.EqualTo(uninterruptedTank.AccumulatedFailureMicroHazard),
+                "设施风险只由绝对 Tick 和已保存暴露决定，不应受居民瞬时行动回退影响。 ");
+
+            int completedActionDifference = Mathf.Abs(
+                CountCompletedActions(uninterrupted) - CountCompletedActions(restored));
+            Assert.That(completedActionDifference, Is.LessThanOrEqualTo(1),
+                "回退一个半行动不应在 90 秒窗口内放大成持续吞吐漂移。 ");
+            Assert.That(Mathf.Abs(_model.ResidentHealth.Value - uninterruptedHealth),
+                Is.LessThanOrEqualTo(0.005f));
+            Assert.That(Mathf.Abs(_model.ResidentThirst.Value - uninterruptedThirst),
+                Is.LessThanOrEqualTo(0.005f));
+            Assert.That(Mathf.Abs(
+                    _model.ResidentEntertainment.Value - uninterruptedEntertainment),
+                Is.LessThanOrEqualTo(0.005f));
+            Assert.That(Mathf.Abs(_model.ResidentMood.Value - uninterruptedMood),
+                Is.LessThanOrEqualTo(0.005f));
+            Assert.That(Mathf.Abs(_model.ResidentFatigue.Value - uninterruptedFatigue),
+                Is.LessThanOrEqualTo(0.005f));
+            Assert.That(Mathf.Abs(_model.ResidentStress.Value - uninterruptedStress),
+                Is.LessThanOrEqualTo(0.005f));
+
+            Debug.Log(
+                $"[NomadWorkshop.Soak] checkpoint budget · phase={phaseAtCapture} · " +
+                $"tick={checkpointTick} · actionsΔ={completedActionDifference} · " +
+                $"healthΔ={Mathf.Abs(_model.ResidentHealth.Value - uninterruptedHealth):0.0000} · " +
+                $"thirstΔ={Mathf.Abs(_model.ResidentThirst.Value - uninterruptedThirst):0.0000} · " +
+                $"entertainmentΔ={Mathf.Abs(_model.ResidentEntertainment.Value - uninterruptedEntertainment):0.0000} · " +
+                $"moodΔ={Mathf.Abs(_model.ResidentMood.Value - uninterruptedMood):0.0000} · " +
+                $"fatigueΔ={Mathf.Abs(_model.ResidentFatigue.Value - uninterruptedFatigue):0.0000} · " +
+                $"stressΔ={Mathf.Abs(_model.ResidentStress.Value - uninterruptedStress):0.0000}");
+        }
+
+        [UnityTest]
         public IEnumerator SoakHarness_MultipleSeedsAndStepSizesExposeBoundedDistribution()
         {
             _worldView.enabled = false;
@@ -1038,6 +1123,108 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator DeterministicSandstorm_CheckpointAndStepSizePreserveExactFacilityExposure()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 600f,
+                configuredInitialThirst: 0f,
+                configuredThirstIncreasePerSecond: 0f);
+
+            const int weatherSeed = 24_061;
+            Assert.That(
+                _context.ExecuteCommand(new ResetFoundationForSoakHarnessCommand(weatherSeed)),
+                Is.True);
+            yield return null;
+
+            NomadEnvironmentSchedule schedule = NomadEnvironmentSchedule.Default;
+            NomadEnvironmentSnapshot initialEnvironment = schedule.Project(weatherSeed, 0L);
+            Assert.That(initialEnvironment.Weather, Is.EqualTo(NomadWeatherKind.Clear));
+
+            FoundationSoakRunResult clearRun = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(
+                    initialEnvironment.SandstormStartSimulationTick,
+                    stepMilliseconds: 1000,
+                    observableStallLimitMilliseconds: 0L));
+            Assert.That(clearRun.CompletedRequestedDuration, Is.True);
+            Assert.That(
+                _model.SimulationTick.Value,
+                Is.EqualTo(initialEnvironment.SandstormStartSimulationTick));
+
+            NomadEnvironmentSnapshot storm = schedule.Project(
+                weatherSeed,
+                _model.SimulationTick.Value);
+            Assert.That(storm.Weather, Is.EqualTo(NomadWeatherKind.Sandstorm));
+            Assert.That(_model.CurrentWeather.Value, Is.EqualTo(storm.Weather));
+            Assert.That(
+                _model.SandstormIntensityPermille.Value,
+                Is.EqualTo(storm.IntensityPermille));
+
+            NomadWorkshopSaveData stormStartCheckpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadFacilitySaveData conditionAtStormStart = stormStartCheckpoint.Facilities.Find(
+                facility => facility.InstanceId == "initial-vehicle-water-tank");
+            Assert.That(conditionAtStormStart, Is.Not.Null);
+
+            FoundationSoakRunResult coarseRun = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(
+                    schedule.SandstormDurationMilliseconds,
+                    stepMilliseconds: 1000,
+                    observableStallLimitMilliseconds: 0L));
+            Assert.That(coarseRun.CompletedRequestedDuration, Is.True);
+            Assert.That(_model.CurrentWeather.Value, Is.EqualTo(NomadWeatherKind.Clear));
+            Assert.That(_model.SandstormIntensityPermille.Value, Is.Zero);
+
+            NomadWorkshopSaveData coarseCheckpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadFacilitySaveData coarseCondition = coarseCheckpoint.Facilities.Find(
+                facility => facility.InstanceId == "initial-vehicle-water-tank");
+            Assert.That(coarseCondition, Is.Not.Null);
+            long expectedStormDustDelta = checked(
+                (167L + 2_000L * storm.IntensityPermille / 1000L) *
+                schedule.SandstormDurationMilliseconds);
+            Assert.That(
+                coarseCondition.DustConditionUnits - conditionAtStormStart.DustConditionUnits,
+                Is.EqualTo(expectedStormDustDelta),
+                "首版沙尘暴必须按实际强度持续增加积尘，而不是只切换画面。 ");
+
+            _context.ExecuteCommand(
+                new RestoreFoundationCheckpointCommand(stormStartCheckpoint));
+            Assert.That(_model.CurrentWeather.Value, Is.EqualTo(NomadWeatherKind.Sandstorm),
+                "天气应由恢复后的世界 Seed 与根 Tick 重建，不需要额外保存当前天气布尔值。 ");
+            FoundationSoakRunResult fineRun = _context.ExecuteCommand(
+                new RunFoundationSoakHarnessCommand(
+                    schedule.SandstormDurationMilliseconds,
+                    stepMilliseconds: 137,
+                    observableStallLimitMilliseconds: 0L));
+            Assert.That(fineRun.CompletedRequestedDuration, Is.True);
+
+            NomadWorkshopSaveData fineCheckpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadFacilitySaveData fineCondition = fineCheckpoint.Facilities.Find(
+                facility => facility.InstanceId == "initial-vehicle-water-tank");
+            Assert.That(fineCondition, Is.Not.Null);
+            Assert.That(fineCheckpoint.SimulationTick, Is.EqualTo(coarseCheckpoint.SimulationTick));
+            Assert.That(fineCondition.WearConditionUnits,
+                Is.EqualTo(coarseCondition.WearConditionUnits));
+            Assert.That(fineCondition.MaintenanceDebtConditionUnits,
+                Is.EqualTo(coarseCondition.MaintenanceDebtConditionUnits));
+            Assert.That(fineCondition.DustConditionUnits,
+                Is.EqualTo(coarseCondition.DustConditionUnits));
+            Assert.That(fineCondition.AccumulatedFailureMicroHazard,
+                Is.EqualTo(coarseCondition.AccumulatedFailureMicroHazard));
+            Assert.That(fineCondition.FailureHazardSubMicroRemainder,
+                Is.EqualTo(coarseCondition.FailureHazardSubMicroRemainder));
+            Assert.That(fineCondition.ActiveFault, Is.EqualTo(coarseCondition.ActiveFault));
+            Assert.That(fineCondition.FaultTriggeredSimulationTick,
+                Is.EqualTo(coarseCondition.FaultTriggeredSimulationTick));
+            Assert.That(fineCondition.ConditionLastSettledSimulationTick,
+                Is.EqualTo(fineCheckpoint.SimulationTick));
+        }
+
+        [UnityTest]
         public IEnumerator FacilityConditionHarness_MaintainsFaultsRepairsAndRestoresExactState()
         {
             _context.ExecuteCommand(new SetFoundationPausedCommand(true));
@@ -1125,6 +1312,203 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 restoredFault.AccumulatedFailureMicroHazard,
                 Is.EqualTo(faulted.AccumulatedFailureMicroHazard));
             Assert.That(restoredFault.WearPermille, Is.EqualTo(faulted.WearPermille));
+        }
+
+        [UnityTest]
+        public IEnumerator WaterTankFault_ResidentConsumesPhysicalKitAtServiceValve()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 1f,
+                configuredInitialThirst: 0.95f,
+                configuredThirstIncreasePerSecond: 0f);
+            _context.ExecuteCommand(new ResetFoundationSliceCommand());
+            yield return null;
+
+            FoundationItemPlacementState[] initialItems = _context.ExecuteCommand(
+                new GetFoundationWorldItemPlacementsCommand());
+            Assert.That(
+                FindWorldItem(initialItems, "water-valve-kit-01").DefinitionId,
+                Is.EqualTo("water-valve-repair-kit"),
+                "新局水箱维护托盘应有一份真实可消耗备件。 ");
+            Assert.That(
+                _context.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand()),
+                Is.True);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int completionFrameLimit = 900;
+            for (var i = 0;
+                 i < completionFrameLimit &&
+                 _model.CompletedWaterTankRepairCount.Value == 0;
+                 i++)
+                yield return null;
+
+            Assert.That(
+                _model.CompletedWaterTankRepairCount.Value,
+                Is.EqualTo(1),
+                $"居民应在紧急供水风险下完成实体维修；Task={_model.CurrentTask.Value}; " +
+                $"Blocker={_model.LastBlocker.Value}");
+            FoundationFacilityConditionState repaired = FindCondition(
+                _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                "initial-vehicle-water-tank");
+            Assert.That(repaired.IsOperational, Is.True);
+            Assert.That(
+                ContainsWorldItem(
+                    _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                    "water-valve-kit-01"),
+                Is.False,
+                "维修提交后实体备件必须被消耗，不能只改故障布尔值。 ");
+            Assert.That(_model.ResidentCarriedWorldItem.Value.Active, Is.False);
+            AssertResidentDockedToGroup(
+                FindFacility(
+                    _context.ExecuteCommand(new GetFoundationFacilitiesCommand()),
+                    "initial-vehicle-water-tank"),
+                FindDefinition(_definitions, "vehicle-water-tank"),
+                "service-valve",
+                new FoundationReadModel(_model));
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            NomadWorkshopSaveData repairedCheckpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(repairedCheckpoint));
+            Assert.That(
+                ContainsWorldItem(
+                    _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                    "water-valve-kit-01"),
+                Is.False,
+                "已消耗备件的空位是存档事实，读档不得把新局默认备件补回来。 ");
+            Assert.That(
+                FindCondition(
+                    _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                    "initial-vehicle-water-tank").IsOperational,
+                Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator CheckpointWhileCarryingRepairKit_RestoresConservedSourceAndFault()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 1f,
+                configuredInitialThirst: 0.95f,
+                configuredThirstIncreasePerSecond: 0f);
+            _context.ExecuteCommand(new ResetFoundationSliceCommand());
+            yield return null;
+            Assert.That(
+                _context.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand()),
+                Is.True);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int pickupFrameLimit = 600;
+            for (var i = 0;
+                 i < pickupFrameLimit &&
+                 _model.ResidentPhase.Value is not
+                     (FoundationResidentPhase.MovingToRepairTarget or
+                      FoundationResidentPhase.RepairingFacility);
+                 i++)
+                yield return null;
+            Assert.That(
+                _model.ResidentPhase.Value,
+                Is.EqualTo(FoundationResidentPhase.MovingToRepairTarget)
+                    .Or.EqualTo(FoundationResidentPhase.RepairingFacility),
+                $"应观察到维修包已被实际拿起；Task={_model.CurrentTask.Value}; " +
+                $"Blocker={_model.LastBlocker.Value}");
+            Assert.That(_model.ResidentCarriedWorldItem.Value.ItemId,
+                Is.EqualTo("water-valve-kit-01"));
+            Assert.That(
+                ContainsWorldItem(
+                    _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                    "water-valve-kit-01"),
+                Is.False,
+                "运行态物品投影应显示维修包已离开托盘。 ");
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            NomadWorkshopSaveData checkpoint = _context.ExecuteCommand(
+                new CaptureFoundationCheckpointCommand());
+            NomadWorldItemSaveData savedKit = checkpoint.WorldItems.Find(
+                item => item.ItemId == "water-valve-kit-01");
+            Assert.That(savedKit, Is.Not.Null,
+                "安全检查点应把半途携带的消耗品回退到精确来源。 ");
+            StringAssert.EndsWith("/placement/maintenance-tray", savedKit.PlacementRegionId);
+
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(checkpoint));
+
+            Assert.That(_model.ResidentCarriedWorldItem.Value.Active, Is.False);
+            FoundationItemPlacementState restoredKit = FindWorldItem(
+                _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                "water-valve-kit-01");
+            StringAssert.EndsWith("/placement/maintenance-tray", restoredKit.RegionId);
+            Assert.That(
+                FindCondition(
+                    _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                    "initial-vehicle-water-tank").ActiveFault,
+                Is.EqualTo(FacilityFaultKind.OutletValveJammed));
+            Assert.That(_model.CompletedWaterTankRepairCount.Value, Is.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator HarnessRepairDuringResidentHaul_CancelsWholeActionAndRestoresKit()
+        {
+            _worldView.enabled = false;
+            _debugView.enabled = false;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            _system.ConfigurePhysiologyForTests(
+                configuredDrinkMetabolismSeconds: 1f,
+                configuredInitialThirst: 0.95f,
+                configuredThirstIncreasePerSecond: 0f);
+            _context.ExecuteCommand(new ResetFoundationSliceCommand());
+            yield return null;
+            Assert.That(
+                _context.ExecuteCommand(new ForcePrimaryWaterTankFaultCommand()),
+                Is.True);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+
+            const int pickupFrameLimit = 600;
+            for (var i = 0;
+                 i < pickupFrameLimit &&
+                 _model.ResidentPhase.Value is not
+                     (FoundationResidentPhase.MovingToRepairTarget or
+                      FoundationResidentPhase.RepairingFacility);
+                 i++)
+                yield return null;
+            Assert.That(
+                _model.ResidentCarriedWorldItem.Value.ItemId,
+                Is.EqualTo("water-valve-kit-01"),
+                $"应先观察到正式维修正在携带备件；Task={_model.CurrentTask.Value}; " +
+                $"Blocker={_model.LastBlocker.Value}");
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Assert.That(
+                _context.ExecuteCommand(new RepairPrimaryWaterTankFaultCommand()),
+                Is.True);
+
+            Assert.That(_model.ResidentPhase.Value, Is.EqualTo(FoundationResidentPhase.Idle));
+            Assert.That(_model.ResidentCarriedWorldItem.Value.Active, Is.False);
+            Assert.That(_model.CompletedWaterTankRepairCount.Value, Is.Zero,
+                "开发 Harness 不能冒充一次居民完成的维修。 ");
+            FoundationItemPlacementState restoredKit = FindWorldItem(
+                _context.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand()),
+                "water-valve-kit-01");
+            StringAssert.EndsWith("/placement/maintenance-tray", restoredKit.RegionId);
+            Assert.That(
+                FindCondition(
+                    _context.ExecuteCommand(new GetFoundationFacilityConditionsCommand()),
+                    "initial-vehicle-water-tank").IsOperational,
+                Is.True);
+            Assert.That(_model.LastBlocker.Value, Is.Empty,
+                "Harness 提交点应先清除被修复故障留下的诊断。 ");
+
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            yield return null;
+            yield return null;
+            Assert.That(_model.ResidentPhase.Value, Is.Not.EqualTo(FoundationResidentPhase.Blocked),
+                "被 Harness 中断后不应沿旧路径进入失效的维修提交点。 ");
+            StringAssert.DoesNotContain("维修包拿取事务", _model.LastBlocker.Value);
+            StringAssert.DoesNotContain("维修提交条件", _model.LastBlocker.Value);
         }
 
         [UnityTest]
@@ -1353,17 +1737,29 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Transform functionWarnings = sourceVisual.Find(
                 "Inaccessible Function Warnings (build mode)");
             Assert.That(functionWarnings, Is.Not.Null);
-            Assert.That(functionWarnings.childCount, Is.EqualTo(1));
             Assert.That(
-                functionWarnings.GetChild(0).gameObject.activeSelf,
-                Is.True,
-                "没有可达 Slot 的功能点应在建造视图持续标红，不依赖悬停。");
+                functionWarnings.childCount,
+                Is.EqualTo(_definitions[0].InteractionGroups.Count),
+                "每个独立功能组都应有自己的不可达提示，不能把取水、备件和维修阀混成一个状态。 ");
+            for (var warningIndex = 0;
+                 warningIndex < functionWarnings.childCount;
+                 warningIndex++)
+                Assert.That(
+                    functionWarnings.GetChild(warningIndex).gameObject.activeSelf,
+                    Is.True,
+                    "没有可达 Slot 的功能点应在建造视图持续标红，不依赖悬停。");
             Renderer sourceBody = sourceVisual.GetComponentInChildren<Renderer>();
             var properties = new MaterialPropertyBlock();
             sourceBody.GetPropertyBlock(properties);
             Assert.That(properties.isEmpty, Is.False, "不可达设施应在建造视图持续着色。");
 
-            Assert.That(sourceSlots.childCount, Is.EqualTo(3));
+            var expectedSourceSlotCount = 0;
+            for (var groupIndex = 0;
+                 groupIndex < _definitions[0].InteractionGroups.Count;
+                 groupIndex++)
+                expectedSourceSlotCount +=
+                    _definitions[0].InteractionGroups[groupIndex].AlternativeSlots.Count;
+            Assert.That(sourceSlots.childCount, Is.EqualTo(expectedSourceSlotCount));
             for (var slotIndex = 0; slotIndex < sourceSlots.childCount; slotIndex++)
             {
                 Renderer[] slotRenderers =
@@ -1898,6 +2294,17 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             return default;
         }
 
+        private static bool ContainsWorldItem(
+            FoundationItemPlacementState[] items,
+            string itemId)
+        {
+            for (var i = 0; i < items.Length; i++)
+            {
+                if (items[i].ItemId == itemId) return true;
+            }
+            return false;
+        }
+
         private static FoundationFacilityState FindFacility(
             FoundationFacilityState[] facilities,
             string instanceId)
@@ -1936,18 +2343,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                         Vector2.zero,
                         new Vector2(1.8f, 1f)),
                 },
-                RequiredGroup(
-                    "water-pickup",
-                    new NomadFacilityInteractionSlotDefinition(
-                        "left",
-                        new Vector2(-0.48f, -0.9f)),
-                    new NomadFacilityInteractionSlotDefinition(
-                        "center",
-                        new Vector2(0f, -0.94f)),
-                    new NomadFacilityInteractionSlotDefinition(
-                        "right",
-                        new Vector2(0.48f, -0.9f))),
-                WaterCanParkingRegion(1.2f),
+                WaterTankInteractionGroups(),
+                WaterTankPlacementRegions(),
                 true,
                 new Vector2(-3.4f, 2.25f),
                 0f,
@@ -2156,8 +2553,43 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 new[] { 0f },
                 NomadWorldItemPrototypeStyle.Cup,
                 new Color(0.83f, 0.48f, 0.16f));
-            return new[] { waterCan, cup };
+
+            var repairKit = ScriptableObject.CreateInstance<NomadWorldItemDefinition>();
+            repairKit.ConfigureForTests(
+                "water-valve-repair-kit",
+                "水箱出水阀维修包",
+                "spare-part",
+                new Vector2(0.28f, 0.18f),
+                0.12f,
+                0.015f,
+                false,
+                new[] { 0f, 90f },
+                NomadWorldItemPrototypeStyle.Box,
+                new Color(0.86f, 0.29f, 0.06f));
+            return new[] { waterCan, cup, repairKit };
         }
+
+        private static NomadPlacementRegionDefinition[] WaterTankPlacementRegions() =>
+            new[]
+            {
+                new NomadPlacementRegionDefinition(
+                    "water-can-parking",
+                    new Vector2(1.2f, 0f),
+                    new Vector2(0.42f, 0.32f),
+                    0f,
+                    0f,
+                    0.02f,
+                    "water-can"),
+                new NomadPlacementRegionDefinition(
+                    "maintenance-tray",
+                    Vector2.zero,
+                    new Vector2(0.52f, 0.34f),
+                    0f,
+                    1.42f,
+                    0.02f,
+                    "spare-part",
+                    "tool-small"),
+            };
 
         private static NomadPlacementRegionDefinition[] WaterCanParkingRegion(float localX) =>
             new[]
@@ -2227,6 +2659,22 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(_model.SimulationTick.Value, Is.Zero);
         }
 
+        private int CalculateProjectedWaterTotal() =>
+            _model.VehicleWaterMilliliters.Value +
+            _model.WaterCanWaterMilliliters.Value +
+            _model.DrinkingStationWaterMilliliters.Value +
+            _model.BodyWaterMilliliters.Value +
+            _model.BladderWasteMilliliters.Value +
+            _model.ToiletHoldingWasteMilliliters.Value;
+
+        private static int CountCompletedActions(FoundationSoakRunResult result) =>
+            result.CompletedDrinkDelta +
+            result.CompletedToiletUseDelta +
+            result.CompletedDaydreamDelta +
+            result.CompletedWanderDelta +
+            result.CompletedGroundRestDelta +
+            result.CompletedHobbyDelta;
+
         private static void AssertResidentDockedToAnySlot(
             in FoundationFacilityState facility,
             NomadFacilityDefinition definition,
@@ -2255,6 +2703,39 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Mathf.Abs(Mathf.DeltaAngle(residentYaw, (float)bestPose.YawDegrees)),
                 Is.LessThanOrEqualTo(0.01f),
                 "动作开始前居民朝向应精确对齐设施，供后续交互动画复用。 ");
+        }
+
+        private static void AssertResidentDockedToGroup(
+            in FoundationFacilityState facility,
+            NomadFacilityDefinition definition,
+            string groupId,
+            in FoundationReadModel readModel)
+        {
+            Vector3 resident = readModel.ResidentLocalPosition.CurrentValue;
+            float residentYaw = readModel.ResidentLocalYawDegrees.CurrentValue;
+            float bestDistance = float.PositiveInfinity;
+            DeckPose bestPose = default;
+            foreach (NomadFacilityInteractionGroupDefinition group in definition.InteractionGroups)
+            {
+                if (group.GroupId != groupId) continue;
+                foreach (NomadFacilityInteractionSlotDefinition slot in group.AlternativeSlots)
+                {
+                    DeckPose pose = slot.Resolve(facility.Pose);
+                    float distance = Vector2.Distance(
+                        new Vector2(resident.x, resident.z),
+                        new Vector2((float)pose.XMeters, (float)pose.ZMeters));
+                    if (distance >= bestDistance) continue;
+                    bestDistance = distance;
+                    bestPose = pose;
+                }
+            }
+
+            Assert.That(bestDistance, Is.LessThanOrEqualTo(0.002f),
+                $"居民应精确停靠到指定功能点 {groupId}，不能借用同设施其他交互组。 ");
+            Assert.That(
+                Mathf.Abs(Mathf.DeltaAngle(residentYaw, (float)bestPose.YawDegrees)),
+                Is.LessThanOrEqualTo(0.01f),
+                $"居民在功能点 {groupId} 的朝向应精确对齐。 ");
         }
 
         private static FoundationFacilityAccessState FindAccess(
@@ -2300,6 +2781,52 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             new[]
             {
                 new NomadFacilityInteractionGroupDefinition(groupId, true, slots),
+            };
+
+        private static NomadFacilityInteractionGroupDefinition[] WaterTankInteractionGroups() =>
+            new[]
+            {
+                new NomadFacilityInteractionGroupDefinition(
+                    "water-pickup",
+                    true,
+                    new[]
+                    {
+                        new NomadFacilityInteractionSlotDefinition(
+                            "left",
+                            new Vector2(-0.48f, -0.9f)),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "center",
+                            new Vector2(0f, -0.94f)),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "right",
+                            new Vector2(0.48f, -0.9f)),
+                    }),
+                new NomadFacilityInteractionGroupDefinition(
+                    "maintenance-supply",
+                    true,
+                    new[]
+                    {
+                        new NomadFacilityInteractionSlotDefinition(
+                            "front-left",
+                            new Vector2(-0.6f, -0.9f)),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "front-right",
+                            new Vector2(0.6f, -0.9f)),
+                    }),
+                new NomadFacilityInteractionGroupDefinition(
+                    "service-valve",
+                    true,
+                    new[]
+                    {
+                        new NomadFacilityInteractionSlotDefinition(
+                            "rear-left",
+                            new Vector2(-0.45f, 0.9f),
+                            180f),
+                        new NomadFacilityInteractionSlotDefinition(
+                            "rear-right",
+                            new Vector2(0.45f, 0.9f),
+                            180f),
+                    }),
             };
 
         private static void CreateNavigationInfrastructure(

@@ -13,7 +13,8 @@ namespace Game.NomadWorkshop.Foundation
             string task,
             NomadFacilityFunction facilityFunction,
             string preferredFacilityInstanceId,
-            bool allowAlternativeFacility)
+            bool allowAlternativeFacility,
+            string interactionGroupId = "")
         {
             TravelPhase = travelPhase;
             Task = string.IsNullOrWhiteSpace(task)
@@ -22,6 +23,7 @@ namespace Game.NomadWorkshop.Foundation
             FacilityFunction = facilityFunction;
             PreferredFacilityInstanceId = preferredFacilityInstanceId?.Trim() ?? string.Empty;
             AllowAlternativeFacility = allowAlternativeFacility;
+            InteractionGroupId = interactionGroupId?.Trim() ?? string.Empty;
         }
 
         public FoundationResidentPhase TravelPhase { get; }
@@ -29,12 +31,18 @@ namespace Game.NomadWorkshop.Foundation
         public NomadFacilityFunction FacilityFunction { get; }
         public string PreferredFacilityInstanceId { get; }
         public bool AllowAlternativeFacility { get; }
+        /// <summary>
+        /// 当前行动需要的设施功能点。为空表示旧行为：允许使用设施上的任意交互组。
+        /// 非空时，换 Slot 或换同类设施都不能悄悄改到另一个功能点。
+        /// </summary>
+        public string InteractionGroupId { get; }
 
         public FoundationResidentMoveIntent Retarget(string facilityInstanceId) => new(
             TravelPhase,
             Task,
             FacilityFunction,
             facilityInstanceId,
-            AllowAlternativeFacility);
+            AllowAlternativeFacility,
+            InteractionGroupId);
     }
 }

@@ -40,7 +40,19 @@ namespace Game.NomadWorkshop.Foundation
         private const string StarterCupItemId = "cup-01";
         private const string StarterCupDefinitionId = "drinking-cup";
         private const string CountertopRegionLocalId = "countertop-center";
+        private const string WaterValveRepairKitItemId = "water-valve-kit-01";
+        private const string WaterValveRepairKitDefinitionId = "water-valve-repair-kit";
+        private const string MaintenanceTrayRegionLocalId = "maintenance-tray";
+        private const string WaterPickupInteractionGroupId = "water-pickup";
+        private const string MaintenanceSupplyInteractionGroupId = "maintenance-supply";
+        private const string ServiceValveInteractionGroupId = "service-valve";
+        private const string DrinkAndDeliverInteractionGroupId = "drink-and-deliver";
+        private const string ToiletInteractionGroupId = "use-toilet";
+        private const string HobbyInteractionGroupId = "paint-and-observe";
+        private const string KitchenInteractionGroupId = "cook";
         private static readonly NomadCalendarPolicy CalendarPolicy = NomadCalendarPolicy.Default;
+        private static readonly NomadEnvironmentSchedule EnvironmentSchedule =
+            NomadEnvironmentSchedule.Default;
         // 50% 以下不为如厕单独生成意图，随后平滑非线性上升；90% 起必然进入紧急处理。
         // 相同数学原语也可用于饥饿、疲劳、卫生等需求，只需使用各自可调参数和随机流。
         private static readonly NeedPressureCurve BladderPressureCurve = new(
@@ -108,6 +120,14 @@ namespace Game.NomadWorkshop.Foundation
         private long waterTankMaintenanceMicroHazardPerPermilleSecond = 2L;
         [SerializeField, Tooltip("每 1‰ 积尘、每模拟秒贡献的微风险；清洁会降低后续风险率，但不会倒扣过去暴露。")]
         private long waterTankDustMicroHazardPerPermilleSecond = 1L;
+        [SerializeField, Tooltip("沙尘暴强度 100% 时额外增加的每毫秒等效磨损细分单位；会按天气强度线性缩放。")]
+        private long waterTankSandstormWearUnitsPerMillisecond = 55L;
+        [SerializeField, Tooltip("沙尘暴强度 100% 时额外增加的每毫秒维护欠账细分单位。")]
+        private long waterTankSandstormMaintenanceDebtUnitsPerMillisecond = 120L;
+        [SerializeField, Tooltip("沙尘暴强度 100% 时额外增加的每毫秒积尘细分单位，是首版天气影响的主要来源。")]
+        private long waterTankSandstormDustUnitsPerMillisecond = 2_000L;
+        [SerializeField, Tooltip("沙尘暴强度 100% 时额外增加的每模拟秒基础微风险；不会直接伪造故障。")]
+        private long waterTankSandstormBaseMicroHazardPerSecond = 1_000L;
 
         [Header("居民身心连续状态")]
         [SerializeField, Range(0f, 1f), Tooltip("新场景中居民的正向娱乐满足度；普通发呆和闲逛不会提高它。")]
@@ -124,6 +144,10 @@ namespace Game.NomadWorkshop.Foundation
         private float residentBaseWorkEfficiency = 1f;
         [SerializeField, Range(0f, 0.25f), Tooltip("每次工作开始时固定采样的速度波动半径；0.08 表示在预期效率上下各浮动最多 8%，不会逐帧抖动。")]
         private float workPaceVariation = 0.08f;
+
+        [Header("居民维修灰盒节奏")]
+        [SerializeField, Min(0.1f), Tooltip("使用已搬到故障点的维修包处理水箱出水阀所需标准人力秒；实际时长由行动开始时固定采样的工作效率换算。")]
+        private float waterTankRepairSeconds = 16f;
 
         [Header("空闲休整灰盒节奏")]
         [SerializeField, Min(0.1f), Tooltip("发呆或散步到达后的停留时长；首版保留足够观察窗口，后续再由性格与身心状态形成随机区间。")]
@@ -449,6 +473,32 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentPhase.PlacingWorldItem:
                     if (TickTimer(deltaTime)) CompleteWorldItemPlacement();
                     break;
+                case FoundationResidentPhase.MovingToRepairPart:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(
+                            FoundationResidentPhase.PickingUpRepairPart,
+                            pickupSeconds,
+                            "从水箱维护托盘拿取出水阀维修包");
+                    }
+                    break;
+                case FoundationResidentPhase.PickingUpRepairPart:
+                    if (TickTimer(deltaTime)) CompleteRepairPartPickup();
+                    break;
+                case FoundationResidentPhase.MovingToRepairTarget:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(
+                            FoundationResidentPhase.RepairingFacility,
+                            waterTankRepairSeconds,
+                            "在出水阀功能点更换卡滞部件");
+                    }
+                    break;
+                case FoundationResidentPhase.RepairingFacility:
+                    if (TickTimer(deltaTime)) CompletePrimaryWaterTankRepair();
+                    break;
             }
 
             WriteSimulationProjection();
@@ -666,6 +716,7 @@ namespace Game.NomadWorkshop.Foundation
             leisureSeconds = 0.05f;
             groundRestSeconds = 0.05f;
             hobbySeconds = 0.5f;
+            waterTankRepairSeconds = 0.1f;
         }
 
 #if UNITY_EDITOR
@@ -872,6 +923,7 @@ namespace Game.NomadWorkshop.Foundation
             {
                 RegisterFacilityPlacementRegions(initialFacilities[i]);
                 TryCreateStarterCupForFacility(initialFacilities[i]);
+                TryCreateStarterRepairKitForFacility(initialFacilities[i]);
             }
             _model.ResidentLocalPosition.Value = ToNavigationPoint(residentStartLocalPosition);
             _model.ResidentLocalYawDegrees.Value = 180f;
@@ -952,6 +1004,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
             _model.CompletedWorldItemMoveCount.Value = 0;
+            _model.CompletedWaterTankRepairCount.Value = 0;
             _model.LastBlocker.Value = string.Empty;
             _model.ActionProgress.Value = 0f;
             _activeLeisureKind = FoundationLeisureKind.None;
@@ -994,10 +1047,12 @@ namespace Game.NomadWorkshop.Foundation
                 _worldItemFootprints.Add(itemDefinition.Id, itemDefinition.CreateFootprint());
             }
             if (!_worldItemFootprints.ContainsKey(WaterCanDefinitionId) ||
-                !_worldItemFootprints.ContainsKey(StarterCupDefinitionId))
+                !_worldItemFootprints.ContainsKey(StarterCupDefinitionId) ||
+                !_worldItemFootprints.ContainsKey(WaterValveRepairKitDefinitionId))
                 throw new InvalidOperationException(
                     $"Foundation 需要 '{WaterCanDefinitionId}' 与 " +
-                    $"'{StarterCupDefinitionId}' 两种世界物品定义。");
+                    $"'{StarterCupDefinitionId}'、'{WaterValveRepairKitDefinitionId}' " +
+                    "三种世界物品定义。");
 
             _definitions.Clear();
             var functions = new HashSet<NomadFacilityFunction>();
@@ -1820,6 +1875,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             var options = new List<FoundationResidentDecisionOption>(8);
             var pendingDiagnostic = new PendingDecisionDiagnostic();
+            AddPrimaryWaterTankRepairDecisionOption(options, ref pendingDiagnostic);
             AddToiletDecisionOption(options, ref pendingDiagnostic);
             AddWaterDecisionOptions(options, ref pendingDiagnostic);
             AddHobbyDecisionOption(options);
@@ -1890,7 +1946,8 @@ namespace Game.NomadWorkshop.Foundation
             if (!TrySelectReachableFacility(
                     NomadFacilityFunction.Toilet,
                     out FoundationFacilityState toilet,
-                    out float pathLength))
+                    out float pathLength,
+                    ToiletInteractionGroupId))
             {
                 options.Add(CreateBlockedNeedOption(
                     FoundationResidentDecisionKind.Toilet,
@@ -2204,7 +2261,8 @@ namespace Game.NomadWorkshop.Foundation
             if (!TrySelectReachableFacility(
                     NomadFacilityFunction.HobbyPoint,
                     out FoundationFacilityState facility,
-                    out float pathLength) ||
+                    out float pathLength,
+                    HobbyInteractionGroupId) ||
                 !_definitions.TryGetValue(
                     facility.DefinitionId,
                     out NomadFacilityDefinition definition))
@@ -2332,6 +2390,9 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentDecisionKind.Hobby:
                     BeginHobby(option);
                     return;
+                case FoundationResidentDecisionKind.RepairWaterTank:
+                    BeginPrimaryWaterTankRepair(option);
+                    return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(option.Kind), option.Kind, null);
             }
@@ -2377,7 +2438,8 @@ namespace Game.NomadWorkshop.Foundation
             TryBeginMove(
                 FoundationResidentPhase.MovingToToilet,
                 "统一 Utility 已选择如厕：前往可达旱厕",
-                toilet);
+                toilet,
+                interactionGroupId: ToiletInteractionGroupId);
         }
 
         private void BeginWaterRestock(FoundationResidentDecisionOption option)
@@ -2425,7 +2487,8 @@ namespace Game.NomadWorkshop.Foundation
                 TryBeginMove(
                     FoundationResidentPhase.MovingToWaterSource,
                     "已持有空水罐：沿连续 NavMesh 路径前往车辆水箱",
-                    option.SourceFacility);
+                    option.SourceFacility,
+                    interactionGroupId: WaterPickupInteractionGroupId);
                 return;
             }
 
@@ -2435,7 +2498,24 @@ namespace Game.NomadWorkshop.Foundation
                     ? "统一 Utility 选择紧急补水：先前往唯一防漏水罐"
                     : "统一 Utility 选择例行补货：先前往唯一防漏水罐",
                 option.WaterCanFacility,
-                allowAlternativeFacility: false);
+                allowAlternativeFacility: false,
+                interactionGroupId: GetWaterCanAccessInteractionGroup(option.WaterCanFacility));
+        }
+
+        private string GetWaterCanAccessInteractionGroup(
+            in FoundationFacilityState facility)
+        {
+            if (!_definitions.TryGetValue(
+                    facility.DefinitionId,
+                    out NomadFacilityDefinition definition))
+                return string.Empty;
+
+            return definition.Function switch
+            {
+                NomadFacilityFunction.VehicleWaterTank => WaterPickupInteractionGroupId,
+                NomadFacilityFunction.DrinkingStation => DrinkAndDeliverInteractionGroupId,
+                _ => string.Empty,
+            };
         }
 
         private void BeginLeisure(FoundationResidentDecisionOption option)
@@ -2494,7 +2574,8 @@ namespace Game.NomadWorkshop.Foundation
             if (TryBeginMove(
                     FoundationResidentPhase.MovingToHobby,
                     $"统一 Utility 选择爱好：前往 {option.TargetFacility.InstanceId} 的观景画架",
-                    option.TargetFacility))
+                    option.TargetFacility,
+                    interactionGroupId: HobbyInteractionGroupId))
                 return;
 
             // TryBeginMove 会保留语义移动意图并进入等待重试；只有初始化前置条件异常时才需要清理。
@@ -2681,7 +2762,8 @@ namespace Game.NomadWorkshop.Foundation
                         out _,
                         out _,
                         out float acquireTravelMeters,
-                        out _))
+                        out _,
+                        GetWaterCanAccessInteractionGroup(waterCanFacility)))
                     return false;
 
                 AddTravelStep(steps, acquireTravelMeters, "前往防漏水罐");
@@ -2706,7 +2788,8 @@ namespace Game.NomadWorkshop.Foundation
                         out _,
                         out _,
                         out float sourceTravelMeters,
-                        out _))
+                        out _,
+                        WaterPickupInteractionGroupId))
                     return false;
                 AddTravelStep(steps, sourceTravelMeters, "携带空水罐前往车辆水箱");
             }
@@ -2724,7 +2807,8 @@ namespace Game.NomadWorkshop.Foundation
                     out _,
                     out _,
                     out float stationTravelMeters,
-                    out _))
+                    out _,
+                    DrinkAndDeliverInteractionGroupId))
                 return false;
             AddTravelStep(steps, stationTravelMeters, "携带有水的水罐前往饮水站");
             steps.Add(new ResidentActionStepEstimate(
@@ -2834,7 +2918,8 @@ namespace Game.NomadWorkshop.Foundation
             TryBeginMove(
                 FoundationResidentPhase.MovingToWaterSource,
                 "携带空水罐沿连续 NavMesh 路径前往车辆水箱",
-                source);
+                source,
+                interactionGroupId: WaterPickupInteractionGroupId);
         }
 
         private void CompleteWaterPickup()
@@ -2870,7 +2955,8 @@ namespace Game.NomadWorkshop.Foundation
             TryBeginMove(
                 FoundationResidentPhase.MovingToDrinkingStation,
                 "携带装有水的防漏水罐沿连续路径前往饮水站",
-                station);
+                station,
+                interactionGroupId: DrinkAndDeliverInteractionGroupId);
         }
 
         private void CompleteWaterDelivery()
@@ -2952,7 +3038,8 @@ namespace Game.NomadWorkshop.Foundation
                     FoundationResidentPhase.MovingToDrinkingStation,
                     "沿连续 NavMesh 路径前往饮水站",
                     station,
-                    allowAlternativeFacility: false))
+                    allowAlternativeFacility: false,
+                    interactionGroupId: DrinkAndDeliverInteractionGroupId))
                 return;
 
             if (AdvanceResidentAlongPath(0f))
@@ -3051,13 +3138,17 @@ namespace Game.NomadWorkshop.Foundation
                     FoundationResidentPhase.MovingToToilet or
                     FoundationResidentPhase.MovingToHobby or
                     FoundationResidentPhase.MovingToWorldItemSource or
-                    FoundationResidentPhase.MovingToWorldItemDestination =>
+                    FoundationResidentPhase.MovingToWorldItemDestination or
+                    FoundationResidentPhase.MovingToRepairPart or
+                    FoundationResidentPhase.MovingToRepairTarget =>
                     ResidentWellbeingActivity.Travel,
                 FoundationResidentPhase.PickingUpWaterCan or
                     FoundationResidentPhase.PickingUpWater or
                     FoundationResidentPhase.DeliveringWater or
                     FoundationResidentPhase.PickingUpWorldItem or
-                    FoundationResidentPhase.PlacingWorldItem =>
+                    FoundationResidentPhase.PlacingWorldItem or
+                    FoundationResidentPhase.PickingUpRepairPart or
+                    FoundationResidentPhase.RepairingFacility =>
                     ResidentWellbeingActivity.Work,
                 FoundationResidentPhase.Drinking or
                     FoundationResidentPhase.UsingToilet =>
@@ -3070,7 +3161,8 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase phase,
             string task,
             in FoundationFacilityState facility,
-            bool allowAlternativeFacility = true)
+            bool allowAlternativeFacility = true,
+            string interactionGroupId = "")
         {
             if (!_definitions.TryGetValue(
                     facility.DefinitionId,
@@ -3085,7 +3177,8 @@ namespace Game.NomadWorkshop.Foundation
                 task,
                 definition.Function,
                 facility.InstanceId,
-                allowAlternativeFacility);
+                allowAlternativeFacility,
+                interactionGroupId);
             _hasActiveMoveIntent = true;
             return TryResumeActiveMove();
         }
@@ -3215,7 +3308,8 @@ namespace Game.NomadWorkshop.Foundation
                     out selectedDockingPose,
                     out selectedLabel,
                     out _,
-                    out selectedSlot))
+                    out selectedSlot,
+                    intent.InteractionGroupId))
             {
                 selectedFacility = preferred;
                 return true;
@@ -3249,7 +3343,8 @@ namespace Game.NomadWorkshop.Foundation
                         out DeckPose dockingPose,
                         out string label,
                         out float pathLength,
-                        out InteractionSpaceSlot slot) ||
+                        out InteractionSpaceSlot slot,
+                        intent.InteractionGroupId) ||
                     pathLength >= bestLength)
                     continue;
 
@@ -3290,7 +3385,8 @@ namespace Game.NomadWorkshop.Foundation
             NomadFacilityDefinition definition,
             out Vector3 selectedPosition,
             out string selectedLabel,
-            out InteractionSpaceSlot selectedSlot)
+            out InteractionSpaceSlot selectedSlot,
+            string interactionGroupId = "")
             => TrySelectBestInteractionSlot(
                 ToNavigationPoint(_model.ResidentLocalPosition.Value),
                 facility,
@@ -3299,7 +3395,8 @@ namespace Game.NomadWorkshop.Foundation
                 out _,
                 out selectedLabel,
                 out _,
-                out selectedSlot);
+                out selectedSlot,
+                interactionGroupId);
 
         private bool TrySelectBestInteractionSlot(
             Vector3 start,
@@ -3309,7 +3406,8 @@ namespace Game.NomadWorkshop.Foundation
             out DeckPose selectedDockingPose,
             out string selectedLabel,
             out float selectedPathLength,
-            out InteractionSpaceSlot selectedSlot)
+            out InteractionSpaceSlot selectedSlot,
+            string interactionGroupId = "")
         {
             selectedPosition = default;
             selectedDockingPose = default;
@@ -3322,6 +3420,12 @@ namespace Game.NomadWorkshop.Foundation
             for (var groupIndex = 0; groupIndex < groups.Count; groupIndex++)
             {
                 NomadFacilityInteractionGroupDefinition group = groups[groupIndex];
+                if (!string.IsNullOrEmpty(interactionGroupId) &&
+                    !string.Equals(
+                        group.GroupId,
+                        interactionGroupId,
+                        StringComparison.Ordinal))
+                    continue;
                 for (var slotIndex = 0; slotIndex < group.AlternativeSlots.Count; slotIndex++)
                 {
                     NomadFacilityInteractionSlotDefinition slotDefinition =
@@ -3511,7 +3615,8 @@ namespace Game.NomadWorkshop.Foundation
             bool canSafelyReplan = _activeResidentAction != null ||
                                    (_activeHaul != null &&
                                     _activeHaul.State == HaulTaskState.Reserved) ||
-                                   _activeWorldItemMove != null;
+                                   _activeWorldItemMove != null ||
+                                   _activeRepairPartUse != null;
             if (!canSafelyReplan) return;
 
             ReleaseActiveTasks();
@@ -3616,7 +3721,9 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationResidentPhase.PickingUpWater or
                 FoundationResidentPhase.DeliveringWater or
                 FoundationResidentPhase.PickingUpWorldItem or
-                FoundationResidentPhase.PlacingWorldItem;
+                FoundationResidentPhase.PlacingWorldItem or
+                FoundationResidentPhase.PickingUpRepairPart or
+                FoundationResidentPhase.RepairingFacility;
 
         private bool TickTimer(float deltaTime)
         {
@@ -3635,6 +3742,8 @@ namespace Game.NomadWorkshop.Foundation
                 phase != FoundationResidentPhase.DeliveringWater &&
                 phase != FoundationResidentPhase.PickingUpWorldItem &&
                 phase != FoundationResidentPhase.PlacingWorldItem &&
+                phase != FoundationResidentPhase.PickingUpRepairPart &&
+                phase != FoundationResidentPhase.RepairingFacility &&
                 phase != FoundationResidentPhase.Drinking &&
                 phase != FoundationResidentPhase.UsingToilet &&
                 phase != FoundationResidentPhase.Relaxing &&
@@ -3708,7 +3817,8 @@ namespace Game.NomadWorkshop.Foundation
                         residentPosition,
                         candidate,
                         definition,
-                        out float pathLength) ||
+                        out float pathLength,
+                        DrinkAndDeliverInteractionGroupId) ||
                     pathLength >= bestPathLength)
                     continue;
 
@@ -3722,7 +3832,8 @@ namespace Game.NomadWorkshop.Foundation
         private bool TrySelectReachableFacility(
             NomadFacilityFunction function,
             out FoundationFacilityState selected,
-            out float bestPathLength)
+            out float bestPathLength,
+            string interactionGroupId = "")
         {
             selected = default;
             bestPathLength = float.PositiveInfinity;
@@ -3739,7 +3850,8 @@ namespace Game.NomadWorkshop.Foundation
                         residentPosition,
                         candidate,
                         definition,
-                        out float pathLength) ||
+                        out float pathLength,
+                        interactionGroupId) ||
                     pathLength >= bestPathLength)
                     continue;
 
@@ -3757,7 +3869,8 @@ namespace Game.NomadWorkshop.Foundation
             Vector3 start,
             in FoundationFacilityState facility,
             NomadFacilityDefinition definition,
-            out float bestPathLength)
+            out float bestPathLength,
+            string interactionGroupId = "")
         {
             bestPathLength = float.PositiveInfinity;
             IReadOnlyList<NomadFacilityInteractionGroupDefinition> groups =
@@ -3765,6 +3878,12 @@ namespace Game.NomadWorkshop.Foundation
             for (var groupIndex = 0; groupIndex < groups.Count; groupIndex++)
             {
                 NomadFacilityInteractionGroupDefinition group = groups[groupIndex];
+                if (!string.IsNullOrEmpty(interactionGroupId) &&
+                    !string.Equals(
+                        group.GroupId,
+                        interactionGroupId,
+                        StringComparison.Ordinal))
+                    continue;
                 for (var slotIndex = 0; slotIndex < group.AlternativeSlots.Count; slotIndex++)
                 {
                     DeckPose slotPose = group.AlternativeSlots[slotIndex].Resolve(facility.Pose);
@@ -3873,6 +3992,41 @@ namespace Game.NomadWorkshop.Foundation
                     out PlacementRegionFailure failure))
                 throw new InvalidOperationException(
                     $"设施 {facility.InstanceId} 的初始杯子无法放到台面：{failure}。");
+            PublishWorldItemPlacements();
+        }
+
+        /// <summary>
+        /// 新局只在初始车辆水箱维护托盘上生成一份真实备件。读档路径只恢复存档中的物品，
+        /// 不会因为维修包已经被消耗而偷偷补货。
+        /// </summary>
+        private void TryCreateStarterRepairKitForFacility(
+            in FoundationFacilityState facility)
+        {
+            if (_worldItemPlacementLedger.TryGetPlacement(
+                    WaterValveRepairKitItemId,
+                    out _))
+                return;
+            if (!_definitions.TryGetValue(
+                    facility.DefinitionId,
+                    out NomadFacilityDefinition facilityDefinition) ||
+                facilityDefinition.Function != NomadFacilityFunction.VehicleWaterTank ||
+                !facilityDefinition.TryGetPlacementRegion(
+                    MaintenanceTrayRegionLocalId,
+                    out _))
+                return;
+
+            string regionId = PlacementRegionLedger.ComposeRegionId(
+                facility.InstanceId,
+                MaintenanceTrayRegionLocalId);
+            if (!_worldItemPlacementLedger.TryRestorePlacement(
+                    WaterValveRepairKitItemId,
+                    GetRequiredWorldItemFootprint(WaterValveRepairKitDefinitionId),
+                    regionId,
+                    PlacementRegionPose.Centered,
+                    out _,
+                    out PlacementRegionFailure failure))
+                throw new InvalidOperationException(
+                    $"设施 {facility.InstanceId} 的初始维修包无法放到维护托盘：{failure}。");
             PublishWorldItemPlacements();
         }
 
@@ -4006,6 +4160,12 @@ namespace Game.NomadWorkshop.Foundation
             SetInt(_model.SeasonIndex, calendar.SeasonIndex);
             SetInt(_model.ClimateWeekInSeason, calendar.ClimateWeekInSeason);
             SetInt(_model.SeasonProgressPermille, calendar.SeasonProgressPermille);
+            NomadEnvironmentSnapshot environment = EnvironmentSchedule.Project(
+                worldSeed,
+                _simulationClock.SimulationTick);
+            if (_model.CurrentWeather.Value != environment.Weather)
+                _model.CurrentWeather.Value = environment.Weather;
+            SetInt(_model.SandstormIntensityPermille, environment.IntensityPermille);
             SetFloat(_model.ResidentThirst, _residentWaterCycle.Thirst);
             SetFloat(_model.ResidentHealth, _residentWellbeing.Health);
             SetFloat(_model.ResidentEntertainment, _residentWellbeing.Entertainment);
@@ -4303,6 +4463,7 @@ namespace Game.NomadWorkshop.Foundation
             _activeResidentAction?.Dispose();
             _activeResidentAction = null;
             CancelActiveWorldItemMove();
+            CancelActiveFacilityRepair();
             _activeWaterSourceFacilityInstanceId = string.Empty;
             _activeWaterTargetFacilityInstanceId = string.Empty;
             ReleaseActiveInteractionSpace(publishProjection: false);

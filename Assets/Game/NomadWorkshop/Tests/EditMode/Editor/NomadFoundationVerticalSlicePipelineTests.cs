@@ -22,6 +22,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                 NomadFoundationVerticalSlicePipeline.WaterCanItemPath));
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<NomadWorldItemDefinition>(
                 NomadFoundationVerticalSlicePipeline.DrinkingCupItemPath));
+            Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<NomadWorldItemDefinition>(
+                NomadFoundationVerticalSlicePipeline.WaterValveKitItemPath));
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<SceneAsset>(
                 NomadFoundationVerticalSlicePipeline.ScenePath));
 
@@ -87,8 +89,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                     "逻辑与表现必须引用同一份甲板布局，避免边界与可选网格漂移。");
                 Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
                 Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
-                Assert.That(systemSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(2));
-                Assert.That(viewSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(2));
+                Assert.That(systemSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(3));
+                Assert.That(viewSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(3));
                 Assert.That(
                     systemSerialized.FindProperty("worldSeed").intValue,
                     Is.EqualTo(1729),
@@ -113,7 +115,7 @@ namespace Game.NomadWorkshop.Editor.Tests
                     Assert.That(definition.CreateFootprint().Parts.Count, Is.GreaterThan(0));
                     Assert.That(definition.InteractionGroups.Count, Is.GreaterThan(0));
                 }
-                for (var i = 0; i < 2; i++)
+                for (var i = 0; i < 3; i++)
                 {
                     Object systemItem = systemSerialized.FindProperty("worldItemDefinitions")
                         .GetArrayElementAtIndex(i).objectReferenceValue;
@@ -143,6 +145,16 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Assert.That(observationEasel, Is.Not.Null);
                 Assert.That(observationEasel.Function, Is.EqualTo(NomadFacilityFunction.HobbyPoint));
                 Assert.That(observationEasel.Buildable, Is.True);
+
+                var waterTank = AssetDatabase.LoadAssetAtPath<NomadFacilityDefinition>(
+                    NomadFoundationVerticalSlicePipeline.VehicleWaterTankPath);
+                Assert.That(waterTank, Is.Not.Null);
+                Assert.That(waterTank.InteractionGroups.Count, Is.EqualTo(3));
+                Assert.That(
+                    waterTank.TryGetPlacementRegion("maintenance-tray", out var maintenanceTray),
+                    Is.True,
+                    "实体维修包需要由水箱定义声明稳定托盘，而不是由维修逻辑猜一个位置。 ");
+                Assert.That(maintenanceTray.AcceptedCategories, Does.Contain("spare-part"));
 
                 Light keyLight = worldView.transform.Find("Key Light")?.GetComponent<Light>();
                 Light fillLight = worldView.transform.Find("Fill Light")?.GetComponent<Light>();

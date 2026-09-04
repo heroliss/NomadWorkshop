@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Game.Framework.Command;
+using Game.NomadWorkshop.Simulation;
 using R3;
 using UnityEngine;
 
@@ -19,6 +20,8 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> SeasonIndex;
         public readonly ReadOnlyReactiveProperty<int> ClimateWeekInSeason;
         public readonly ReadOnlyReactiveProperty<int> SeasonProgressPermille;
+        public readonly ReadOnlyReactiveProperty<NomadWeatherKind> CurrentWeather;
+        public readonly ReadOnlyReactiveProperty<int> SandstormIntensityPermille;
         public readonly ReadOnlyReactiveProperty<FoundationInteractionMode> InteractionMode;
         public readonly ReadOnlyReactiveProperty<FoundationPlacementPreviewState> PlacementPreview;
         public readonly ReadOnlyReactiveProperty<FoundationBuildTransactionPhase> BuildTransactionPhase;
@@ -71,6 +74,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> CompletedGroundRestCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedHobbyCount;
         public readonly ReadOnlyReactiveProperty<int> CompletedWorldItemMoveCount;
+        public readonly ReadOnlyReactiveProperty<int> CompletedWaterTankRepairCount;
         public readonly ReadOnlyReactiveProperty<string> CurrentTask;
         public readonly ReadOnlyReactiveProperty<string> LastBlocker;
 
@@ -87,6 +91,8 @@ namespace Game.NomadWorkshop.Foundation
             SeasonIndex = model.SeasonIndex;
             ClimateWeekInSeason = model.ClimateWeekInSeason;
             SeasonProgressPermille = model.SeasonProgressPermille;
+            CurrentWeather = model.CurrentWeather;
+            SandstormIntensityPermille = model.SandstormIntensityPermille;
             InteractionMode = model.InteractionMode;
             PlacementPreview = model.PlacementPreview;
             BuildTransactionPhase = model.BuildTransactionPhase;
@@ -138,6 +144,7 @@ namespace Game.NomadWorkshop.Foundation
             CompletedGroundRestCount = model.CompletedGroundRestCount;
             CompletedHobbyCount = model.CompletedHobbyCount;
             CompletedWorldItemMoveCount = model.CompletedWorldItemMoveCount;
+            CompletedWaterTankRepairCount = model.CompletedWaterTankRepairCount;
             CurrentTask = model.CurrentTask;
             LastBlocker = model.LastBlocker;
         }

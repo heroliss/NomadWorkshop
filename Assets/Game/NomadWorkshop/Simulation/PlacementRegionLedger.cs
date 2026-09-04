@@ -227,12 +227,16 @@ namespace Game.NomadWorkshop.Simulation
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, PendingMove> _movesByItem =
             new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PendingUse> _usesByItem =
+            new(StringComparer.Ordinal);
         private long _nextReservationId = 1;
 
         public int RegionCount => _regions.Count;
         public int PlacedItemCount => _placedByItem.Count;
-        public int ReservationCount => _reservedByItem.Count + _movesByItem.Count;
+        public int ReservationCount =>
+            _reservedByItem.Count + _movesByItem.Count + _usesByItem.Count;
         public int MoveReservationCount => _movesByItem.Count;
+        public int UseReservationCount => _usesByItem.Count;
 
         public static string ComposeRegionId(string ownerEntityId, string localRegionId)
         {
@@ -277,6 +281,14 @@ namespace Game.NomadWorkshop.Simulation
                         StringComparison.Ordinal) ||
                     string.Equals(
                         move.Destination.Region.RegionId,
+                        regionId,
+                        StringComparison.Ordinal))
+                    return false;
+            }
+            foreach (PendingUse use in _usesByItem.Values)
+            {
+                if (string.Equals(
+                        use.Source.Region.RegionId,
                         regionId,
                         StringComparison.Ordinal))
                     return false;
@@ -476,9 +488,49 @@ namespace Game.NomadWorkshop.Simulation
                 out failure);
         }
 
+        /// <summary>
+        /// 为一件已落位物品建立“拿取后消耗”的可回滚事务。拿取前物品仍在来源；拿取后来源
+        /// 继续为中断恢复保留，只有 <see cref="PlacementRegionUseLease.TryConsume"/> 成功才真正
+        /// 提交消耗。食材、药品、建材与备件都应复用这条所有权路径。
+        /// </summary>
+        public bool TryReserveUse(
+            string itemId,
+            out PlacementRegionUseLease lease,
+            out PlacementRegionFailure failure)
+        {
+            lease = null;
+            if (string.IsNullOrWhiteSpace(itemId))
+            {
+                failure = PlacementRegionFailure.InvalidRequest;
+                return false;
+            }
+
+            string stableItemId = itemId.Trim();
+            if (_movesByItem.ContainsKey(stableItemId) ||
+                _usesByItem.ContainsKey(stableItemId) ||
+                _reservedByItem.ContainsKey(stableItemId))
+            {
+                failure = PlacementRegionFailure.ItemTransferActive;
+                return false;
+            }
+            if (!_placedByItem.TryGetValue(stableItemId, out PlacementRegionItem source))
+            {
+                failure = PlacementRegionFailure.ItemNotLocated;
+                return false;
+            }
+
+            long reservationId = _nextReservationId++;
+            _usesByItem.Add(stableItemId, new PendingUse(reservationId, source));
+            lease = new PlacementRegionUseLease(this, reservationId, source);
+            failure = PlacementRegionFailure.None;
+            return true;
+        }
+
         public bool RemoveItem(string itemId)
         {
-            if (string.IsNullOrWhiteSpace(itemId) || _movesByItem.ContainsKey(itemId))
+            if (string.IsNullOrWhiteSpace(itemId) ||
+                _movesByItem.ContainsKey(itemId) ||
+                _usesByItem.ContainsKey(itemId))
                 return false;
             return _placedByItem.Remove(itemId);
         }
@@ -498,12 +550,17 @@ namespace Game.NomadWorkshop.Simulation
         public IReadOnlyList<PlacementRegionItem> CreateCheckpointSnapshot()
         {
             var result = new List<PlacementRegionItem>(
-                _placedByItem.Count + _movesByItem.Count);
+                _placedByItem.Count + _movesByItem.Count + _usesByItem.Count);
             result.AddRange(_placedByItem.Values);
             foreach (PendingMove move in _movesByItem.Values)
             {
                 if (move.State == PlacementRegionMoveState.Carrying)
                     result.Add(move.Source);
+            }
+            foreach (PendingUse use in _usesByItem.Values)
+            {
+                if (use.State == PlacementRegionUseState.Carrying)
+                    result.Add(use.Source);
             }
             result.Sort((left, right) =>
                 string.Compare(left.ItemId, right.ItemId, StringComparison.Ordinal));
@@ -599,6 +656,63 @@ namespace Game.NomadWorkshop.Simulation
             move.State = PlacementRegionMoveState.Cancelled;
         }
 
+        internal bool TryPickUpUse(
+            long reservationId,
+            string itemId,
+            out PlacementRegionFailure failure)
+        {
+            if (!_usesByItem.TryGetValue(itemId, out PendingUse use) ||
+                use.ReservationId != reservationId ||
+                use.State != PlacementRegionUseState.Reserved)
+            {
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+            if (!_placedByItem.Remove(itemId))
+                throw new InvalidOperationException(
+                    $"物品消耗事务 {itemId} 的来源位置已经丢失。 ");
+
+            use.State = PlacementRegionUseState.Carrying;
+            failure = PlacementRegionFailure.None;
+            return true;
+        }
+
+        internal bool TryConsumeUse(
+            long reservationId,
+            string itemId,
+            out PlacementRegionFailure failure)
+        {
+            if (!_usesByItem.TryGetValue(itemId, out PendingUse use) ||
+                use.ReservationId != reservationId ||
+                use.State != PlacementRegionUseState.Carrying)
+            {
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+
+            _usesByItem.Remove(itemId);
+            use.State = PlacementRegionUseState.Consumed;
+            failure = PlacementRegionFailure.None;
+            return true;
+        }
+
+        internal void CancelUse(long reservationId, string itemId)
+        {
+            if (!_usesByItem.TryGetValue(itemId, out PendingUse use) ||
+                use.ReservationId != reservationId)
+                return;
+
+            _usesByItem.Remove(itemId);
+            if (use.State == PlacementRegionUseState.Carrying)
+            {
+                if (_placedByItem.ContainsKey(itemId))
+                    throw new InvalidOperationException(
+                        $"物品消耗事务 {itemId} 回滚时发现重复来源实体。 ");
+                _placedByItem.Add(itemId, use.Source);
+            }
+            use.State = PlacementRegionUseState.Cancelled;
+        }
+
         private PlacementRegionFailure ValidateRequest(
             string itemId,
             PlacementFootprint footprint,
@@ -612,7 +726,7 @@ namespace Game.NomadWorkshop.Simulation
                 return PlacementRegionFailure.InvalidRequest;
             }
             if (_placedByItem.ContainsKey(itemId) || _reservedByItem.ContainsKey(itemId) ||
-                _movesByItem.ContainsKey(itemId))
+                _movesByItem.ContainsKey(itemId) || _usesByItem.ContainsKey(itemId))
             {
                 region = null;
                 return PlacementRegionFailure.ItemAlreadyLocated;
@@ -638,6 +752,7 @@ namespace Game.NomadWorkshop.Simulation
 
             string stableItemId = itemId.Trim();
             if (_movesByItem.ContainsKey(stableItemId) ||
+                _usesByItem.ContainsKey(stableItemId) ||
                 _reservedByItem.ContainsKey(stableItemId))
                 return PlacementRegionFailure.ItemTransferActive;
             if (!_placedByItem.TryGetValue(stableItemId, out source))
@@ -827,6 +942,14 @@ namespace Game.NomadWorkshop.Simulation
                     yield return move.Source;
                 yield return move.Destination;
             }
+            foreach (PendingUse use in _usesByItem.Values)
+            {
+                if (string.Equals(use.Source.ItemId, ignoredItemId, StringComparison.Ordinal))
+                    continue;
+                // Reserved 状态来源仍在 _placedByItem；拿起后保留精确恢复姿态。
+                if (use.State == PlacementRegionUseState.Carrying)
+                    yield return use.Source;
+            }
         }
 
         private static bool CanFitRegionBounds(
@@ -949,6 +1072,20 @@ namespace Game.NomadWorkshop.Simulation
             public PlacementRegionItem Destination { get; }
             public PlacementRegionMoveState State { get; set; }
         }
+
+        private sealed class PendingUse
+        {
+            public PendingUse(long reservationId, PlacementRegionItem source)
+            {
+                ReservationId = reservationId;
+                Source = source;
+                State = PlacementRegionUseState.Reserved;
+            }
+
+            public long ReservationId { get; }
+            public PlacementRegionItem Source { get; }
+            public PlacementRegionUseState State { get; set; }
+        }
     }
 
     public enum PlacementRegionMoveState
@@ -956,6 +1093,14 @@ namespace Game.NomadWorkshop.Simulation
         Reserved,
         Carrying,
         Delivered,
+        Cancelled,
+    }
+
+    public enum PlacementRegionUseState
+    {
+        Reserved,
+        Carrying,
+        Consumed,
         Cancelled,
     }
 
@@ -1034,6 +1179,71 @@ namespace Game.NomadWorkshop.Simulation
             _ledger = null;
             ledger.CancelMove(_reservationId, Source.ItemId);
             State = PlacementRegionMoveState.Cancelled;
+        }
+    }
+
+    /// <summary>
+    /// 已落位物品被实际取用的原子句柄。拿起后 Dispose 会恢复精确来源；只有
+    /// <see cref="TryConsume"/> 会提交物品消失。
+    /// </summary>
+    public sealed class PlacementRegionUseLease : IDisposable
+    {
+        private PlacementRegionLedger _ledger;
+        private readonly long _reservationId;
+
+        internal PlacementRegionUseLease(
+            PlacementRegionLedger ledger,
+            long reservationId,
+            PlacementRegionItem source)
+        {
+            _ledger = ledger;
+            _reservationId = reservationId;
+            Source = source;
+            State = PlacementRegionUseState.Reserved;
+        }
+
+        public PlacementRegionItem Source { get; }
+        public PlacementRegionUseState State { get; private set; }
+        public bool IsActive => _ledger != null;
+
+        public bool TryPickUp(out PlacementRegionFailure failure)
+        {
+            PlacementRegionLedger ledger = _ledger;
+            if (ledger == null || State != PlacementRegionUseState.Reserved)
+            {
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+            if (!ledger.TryPickUpUse(_reservationId, Source.ItemId, out failure))
+                return false;
+
+            State = PlacementRegionUseState.Carrying;
+            return true;
+        }
+
+        public bool TryConsume(out PlacementRegionFailure failure)
+        {
+            PlacementRegionLedger ledger = _ledger;
+            if (ledger == null || State != PlacementRegionUseState.Carrying)
+            {
+                failure = PlacementRegionFailure.ReservationNotActive;
+                return false;
+            }
+            if (!ledger.TryConsumeUse(_reservationId, Source.ItemId, out failure))
+                return false;
+
+            _ledger = null;
+            State = PlacementRegionUseState.Consumed;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            PlacementRegionLedger ledger = _ledger;
+            if (ledger == null) return;
+            _ledger = null;
+            ledger.CancelUse(_reservationId, Source.ItemId);
+            State = PlacementRegionUseState.Cancelled;
         }
     }
 

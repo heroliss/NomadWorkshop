@@ -39,25 +39,77 @@ namespace Game.NomadWorkshop.Foundation
                         out NomadFacilityDefinition definition))
                     continue;
 
-                FacilityConditionExposure exposure = GetConditionExposure(
-                    definition.Function);
-                if (condition.AdvanceTo(simulationTick, exposure))
+                if (AdvanceConditionThroughEnvironment(
+                        condition,
+                        definition.Function,
+                        simulationTick))
                     HandleNewFacilityFault(facility.InstanceId, condition.ActiveFault);
             }
         }
 
         private FacilityConditionExposure GetConditionExposure(
-            NomadFacilityFunction function) =>
+            NomadFacilityFunction function,
+            in NomadEnvironmentSnapshot environment) =>
             function == NomadFacilityFunction.VehicleWaterTank
                 ? new FacilityConditionExposure(
-                    waterTankWearUnitsPerMillisecond,
-                    waterTankMaintenanceDebtUnitsPerMillisecond,
-                    waterTankDustUnitsPerMillisecond,
-                    waterTankBaseMicroHazardPerSecond,
+                    waterTankWearUnitsPerMillisecond + ScaleByPermille(
+                        waterTankSandstormWearUnitsPerMillisecond,
+                        environment.IntensityPermille),
+                    waterTankMaintenanceDebtUnitsPerMillisecond + ScaleByPermille(
+                        waterTankSandstormMaintenanceDebtUnitsPerMillisecond,
+                        environment.IntensityPermille),
+                    waterTankDustUnitsPerMillisecond + ScaleByPermille(
+                        waterTankSandstormDustUnitsPerMillisecond,
+                        environment.IntensityPermille),
+                    waterTankBaseMicroHazardPerSecond + ScaleByPermille(
+                        waterTankSandstormBaseMicroHazardPerSecond,
+                        environment.IntensityPermille),
                     waterTankWearMicroHazardPerPermilleSecond,
                     waterTankMaintenanceMicroHazardPerPermilleSecond,
                     waterTankDustMicroHazardPerPermilleSecond)
                 : default;
+
+        /// <summary>
+        /// 按天气边界拆分设施积分。这样一次跨过整场沙尘暴与逐帧经过它得到完全相同的整数状态，
+        /// Harness、倍速和读档都不会因为步长恰好落在哪一帧而改变事故轨迹。
+        /// </summary>
+        private bool AdvanceConditionThroughEnvironment(
+            FacilityConditionCycle condition,
+            NomadFacilityFunction function,
+            long targetSimulationTick) =>
+            AdvanceConditionThroughEnvironment(
+                condition,
+                function,
+                targetSimulationTick,
+                worldSeed);
+
+        private bool AdvanceConditionThroughEnvironment(
+            FacilityConditionCycle condition,
+            NomadFacilityFunction function,
+            long targetSimulationTick,
+            int environmentWorldSeed)
+        {
+            bool triggered = false;
+            while (condition.LastSettledSimulationTick < targetSimulationTick)
+            {
+                NomadEnvironmentSnapshot environment = EnvironmentSchedule.Project(
+                    environmentWorldSeed,
+                    condition.LastSettledSimulationTick);
+                long segmentEnd = Math.Min(
+                    targetSimulationTick,
+                    environment.NextTransitionSimulationTick);
+                if (segmentEnd <= condition.LastSettledSimulationTick)
+                    throw new InvalidOperationException(
+                        "天气时间表没有向前提供下一个状态边界。 ");
+                triggered |= condition.AdvanceTo(
+                    segmentEnd,
+                    GetConditionExposure(function, environment));
+            }
+            return triggered;
+        }
+
+        private static long ScaleByPermille(long value, int permille) =>
+            checked(value * permille / 1000L);
 
         private void WriteFacilityConditionProjection()
         {
@@ -75,7 +127,11 @@ namespace Game.NomadWorkshop.Foundation
                     continue;
 
                 decimal exactRiskRate = condition.GetCurrentRiskRate(
-                    GetConditionExposure(definition.Function));
+                    GetConditionExposure(
+                        definition.Function,
+                        EnvironmentSchedule.Project(
+                            worldSeed,
+                            _simulationClock.SimulationTick)));
                 long displayedRiskRate = exactRiskRate >= long.MaxValue
                     ? long.MaxValue
                     : (long)decimal.Round(
@@ -152,6 +208,19 @@ namespace Game.NomadWorkshop.Foundation
                     out FacilityConditionCycle condition))
                 return false;
             SettleCondition(condition, NomadFacilityFunction.VehicleWaterTank);
+            bool interruptedResidentRepair = string.Equals(
+                _activeRepairTargetFacilityInstanceId,
+                waterTank.InstanceId,
+                StringComparison.Ordinal);
+            if (interruptedResidentRepair)
+            {
+                // 开发 Harness 允许跳过正式维修链，但不能只拿走 Lease 后留下旧路径 / 阶段。
+                // 整体撤销会把已拿起的维修包恢复到精确托盘来源，并释放功能点容量。
+                ReleaseActiveTasks();
+                ClearActivePath();
+                _phaseDuration = 0f;
+                _phaseRemaining = 0f;
+            }
             if (!condition.Repair()) return false;
 
             string diagnosticPrefix = BuildWaterTankFaultDiagnostic(waterTank.InstanceId);
@@ -164,16 +233,27 @@ namespace Game.NomadWorkshop.Foundation
                 _model.LastBlocker.Value = string.Empty;
             _lastPublishedDecisionDiagnostic = string.Empty;
             _residentDecisionRetryRemaining = 0f;
+            if (interruptedResidentRepair)
+            {
+                PublishCurrentFacilityAccessProjection();
+                SetResidentPhase(
+                    FoundationResidentPhase.Idle,
+                    "Harness 已瞬时修复水箱；居民维修已取消，实体备件已放回托盘");
+            }
             WriteFacilityConditionProjection();
             return true;
         }
 
         private void SettleCondition(
             FacilityConditionCycle condition,
-            NomadFacilityFunction function) =>
-            condition.AdvanceTo(
-                _simulationClock.SimulationTick,
-                GetConditionExposure(function));
+            NomadFacilityFunction function)
+        {
+            if (AdvanceConditionThroughEnvironment(
+                    condition,
+                    function,
+                    _simulationClock.SimulationTick))
+                HandleNewFacilityFault(condition.FacilityId, condition.ActiveFault);
+        }
 
         private bool TryGetPrimaryWaterTankCondition(
             out FoundationFacilityState waterTank,

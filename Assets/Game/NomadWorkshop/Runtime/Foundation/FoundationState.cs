@@ -68,6 +68,10 @@ namespace Game.NomadWorkshop.Foundation
         PickingUpWorldItem = 20,
         MovingToWorldItemDestination = 21,
         PlacingWorldItem = 22,
+        MovingToRepairPart = 23,
+        PickingUpRepairPart = 24,
+        MovingToRepairTarget = 25,
+        RepairingFacility = 26,
     }
 
     /// <summary>当前基础休闲的可观察类型；以后新增爱好时不会把所有休闲继续压成一个计数。</summary>

@@ -604,6 +604,7 @@ namespace Game.NomadWorkshop.Foundation
             _model.CompletedGroundRestCount.Value = 0;
             _model.CompletedHobbyCount.Value = 0;
             _model.CompletedWorldItemMoveCount.Value = 0;
+            _model.CompletedWaterTankRepairCount.Value = 0;
             SetWaterCanLocation(
                 waterCanLocation,
                 waterCanAnchor,
@@ -1186,7 +1187,11 @@ namespace Game.NomadWorkshop.Foundation
                 saved.FaultSeverityPermille,
                 saved.FaultTriggeredSimulationTick);
             var restored = new FacilityConditionCycle(savedWorldSeed, checkpoint);
-            restored.AdvanceTo(rootSimulationTick, GetConditionExposure(function));
+            AdvanceConditionThroughEnvironment(
+                restored,
+                function,
+                rootSimulationTick,
+                savedWorldSeed);
             return restored;
         }
 

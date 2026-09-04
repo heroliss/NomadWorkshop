@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Framework.Model;
+using Game.NomadWorkshop.Simulation;
 using R3;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -32,6 +33,11 @@ namespace Game.NomadWorkshop.Foundation
         public RP<int> ClimateWeekInSeason { get; private set; } = new(1);
         [field: SerializeField, Tooltip("当前季节的千分比连续进度，范围 0–999。")]
         public RP<int> SeasonProgressPermille { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("由统一 Tick 与世界种子确定性投影的当前天气；不保存第二只天气时钟。")]
+        public RP<NomadWeatherKind> CurrentWeather { get; private set; } =
+            new(NomadWeatherKind.Clear);
+        [field: SerializeField, Tooltip("当前沙尘暴强度千分比；晴朗时为 0。")]
+        public RP<int> SandstormIntensityPermille { get; private set; } = new(0);
         [field: SerializeField] public RP<FoundationInteractionMode> InteractionMode { get; private set; } =
             new(FoundationInteractionMode.Observe);
         [field: SerializeField] public RP<FoundationPlacementPreviewState> PlacementPreview { get; private set; } =
@@ -109,6 +115,8 @@ namespace Game.NomadWorkshop.Foundation
         public RP<int> CompletedHobbyCount { get; private set; } = new(0);
         [field: SerializeField, Tooltip("已由居民完成原子拿起与放下的普通世界物品次数。")]
         public RP<int> CompletedWorldItemMoveCount { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("居民实际拿取并消耗维修包、在故障功能点完成的水箱维修次数。")]
+        public RP<int> CompletedWaterTankRepairCount { get; private set; } = new(0);
         [field: SerializeField] public RP<string> CurrentTask { get; private set; } = new("等待初始化");
         [field: SerializeField] public RP<string> LastBlocker { get; private set; } = new(string.Empty);
 

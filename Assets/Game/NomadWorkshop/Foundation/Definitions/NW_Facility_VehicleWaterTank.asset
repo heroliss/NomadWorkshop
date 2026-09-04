@@ -33,6 +33,24 @@ MonoBehaviour:
     - slotId: right
       localPositionMeters: {x: 0.48, y: -0.9}
       localYawDegrees: 0
+  - groupId: maintenance-supply
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: front-left
+      localPositionMeters: {x: -0.6, y: -0.9}
+      localYawDegrees: 0
+    - slotId: front-right
+      localPositionMeters: {x: 0.6, y: -0.9}
+      localYawDegrees: 0
+  - groupId: service-valve
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: rear-left
+      localPositionMeters: {x: -0.45, y: 0.9}
+      localYawDegrees: 180
+    - slotId: rear-right
+      localPositionMeters: {x: 0.45, y: 0.9}
+      localYawDegrees: 180
   placementRegions:
   - regionId: water-can-parking
     localCenterMeters: {x: 1.2, y: 0}
@@ -42,6 +60,15 @@ MonoBehaviour:
     edgeInsetMeters: 0.02
     acceptedCategories:
     - water-can
+  - regionId: maintenance-tray
+    localCenterMeters: {x: 0, y: 0}
+    sizeMeters: {x: 0.52, y: 0.34}
+    localYawDegrees: 0
+    supportHeightMeters: 1.42
+    edgeInsetMeters: 0.02
+    acceptedCategories:
+    - spare-part
+    - tool-small
   placeAtStart: 1
   startPositionMeters: {x: -3.4, y: 2.25}
   startYawDegrees: 0

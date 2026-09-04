@@ -193,6 +193,9 @@ namespace Game.NomadWorkshop.Foundation
             hash = Fold(hash, _model.CompletedLeisureCount.Value);
             hash = Fold(hash, _model.CompletedGroundRestCount.Value);
             hash = Fold(hash, _model.CompletedHobbyCount.Value);
+            hash = Fold(hash, _model.CompletedWaterTankRepairCount.Value);
+            hash = Fold(hash, (int)_model.CurrentWeather.Value);
+            hash = Fold(hash, _model.SandstormIntensityPermille.Value);
             hash = Fold(hash, (int)_model.WaterCanLocation.Value);
             hash = Fold(hash, _model.ResidentCarriedWorldItem.Value.Active ? 1 : 0);
             return Fold(hash, StableStringHash(_model.CurrentTask.Value));

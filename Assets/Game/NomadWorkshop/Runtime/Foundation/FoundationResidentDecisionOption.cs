@@ -28,6 +28,7 @@ namespace Game.NomadWorkshop.Foundation
         public bool WaterCanAtSource { get; set; }
         public Vector3 WanderTarget { get; set; }
         public string WanderLabel { get; set; } = string.Empty;
+        public string WorldItemId { get; set; } = string.Empty;
     }
 
     internal enum FoundationResidentDecisionKind
@@ -39,5 +40,6 @@ namespace Game.NomadWorkshop.Foundation
         Daydream,
         GroundRest,
         Hobby,
+        RepairWaterTank,
     }
 }
