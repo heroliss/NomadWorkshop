@@ -54,6 +54,8 @@ namespace Game.NomadWorkshop.Foundation
         private GameObject waystationVisualPrefab;
         [SerializeField, Tooltip("可选 Humanoid 模型。与 Controller 同时配置后取代胶囊表现。")]
         private GameObject residentVisualPrefab;
+        [SerializeField, Tooltip("可选手提容器 Prefab，需有完整 FoundationCarriedContainerRig；留空使用原灰盒。")]
+        private GameObject waterCanVisualPrefab;
         [SerializeField, Tooltip("可选：按居民稳定 id 固定外观。没有对应项时使用默认模型；不按列表顺序或随机数选择。")]
         private ResidentVisualBinding[] residentVisualBindings = Array.Empty<ResidentVisualBinding>();
         [SerializeField, Tooltip("共享五语义动作 Controller；持物需要启用该 Controller 的 IK Pass。")]
@@ -144,8 +146,7 @@ namespace Game.NomadWorkshop.Foundation
         private Transform FindResidentRoot(string id) =>
             _residentVisuals.TryGetValue(id ?? string.Empty, out var visual) ? visual.Root : null;
         private Transform _waterCanVisual;
-        private Transform _waterCanPalmTarget;
-        private Transform _waterCanBody;
+        private FoundationCarriedContainerRig _waterCanRig;
         private Transform _waterCanFillVisual;
         private Transform _waterCanCap;
         private const float WaterCanPourDegrees = 100f;
@@ -770,7 +771,7 @@ namespace Game.NomadWorkshop.Foundation
                     throw new InvalidOperationException("美术样板居民缺少有效 Humanoid 或五个语义动作状态。");
                 visual.Humanoid = humanoid;
                 visual.Body.gameObject.SetActive(false);
-                visual.CarryAnchor.localPosition = FoundationWaterCanVisualFactory.GetGripPosition(humanoid);
+                visual.CarryAnchor.localPosition = _waterCanRig.GetGripPosition(humanoid);
                 visual.StandingShoulderHeight = root.InverseTransformPoint(
                     humanoid.Animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position).y;
                 visual.CarryAnchor.localRotation = Quaternion.identity;
@@ -848,8 +849,8 @@ namespace Game.NomadWorkshop.Foundation
                 float groundReach = 0f, contactWeight = 0f;
                 bool handling = !dead && ApplyWaterCanContactPose(visual, out groundReach, out contactWeight);
                 visual.CarryIK.SetGroundReach(handling ? groundReach : 0f);
-                if (handling) visual.CarryIK.SetWaterCanGrip(_waterCanPalmTarget, _waterCanBody, contactWeight);
-                else if (hasWaterCan && !dead) visual.CarryIK.SetWaterCanGrip(_waterCanPalmTarget, _waterCanBody);
+                if (handling) visual.CarryIK.SetContainerGrip(_waterCanRig, contactWeight);
+                else if (hasWaterCan && !dead) visual.CarryIK.SetContainerGrip(_waterCanRig);
                 else visual.CarryIK.SetRightGrip(carrying && !dead ? visual.CarryAnchor : null);
             }
         }
@@ -869,7 +870,7 @@ namespace Game.NomadWorkshop.Foundation
             {
                 Vector3 mouthAtFullTilt = visual.CarryAnchor.localPosition +
                     Quaternion.AngleAxis(WaterCanPourDegrees, Vector3.right) *
-                    (FoundationWaterCanVisualFactory.OpeningPosition - Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
+                    (_waterCanRig.OpeningLocalPosition - _waterCanRig.CarryPivotLocalPosition);
                 Vector3 localInlet = visual.Root.InverseTransformPoint(inlet.position);
                 float inletHeight = localInlet.y;
                 lift = Mathf.Max(visual.StandingShoulderHeight - .06f - visual.CarryAnchor.localPosition.y,
@@ -885,7 +886,7 @@ namespace Game.NomadWorkshop.Foundation
                 Mathf.Sign(visual.CarryAnchor.localPosition.x) * .02f, lift, forwardReach) * envelope;
             Quaternion rotation = Quaternion.AngleAxis(WaterCanPourDegrees * envelope, Vector3.right);
             _waterCanVisual.localRotation = rotation;
-            _waterCanVisual.localPosition = grip - rotation * (Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
+            _waterCanVisual.localPosition = grip - rotation * _waterCanRig.CarryPivotLocalPosition;
             _waterCanCap.gameObject.SetActive(!supported ||
                 (work.Phase != FoundationResidentPhase.PickingUpWater && !pouring));
         }
@@ -902,7 +903,7 @@ namespace Game.NomadWorkshop.Foundation
                 placement.SupportHeightMillimeters / 1000f));
             Quaternion groundedRotation = deckRoot.rotation * Quaternion.Euler(0f, (float)placement.WorldPose.YawDegrees, 0f);
             Vector3 carried = visual.Root.TransformPoint(visual.CarryAnchor.localPosition -
-                Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
+                _waterCanRig.CarryPivotLocalPosition);
             float movement = Mathf.SmoothStep(0f, 1f, work.Progress);
             float lift = 0f;
             switch (work.Phase)
@@ -930,7 +931,7 @@ namespace Game.NomadWorkshop.Foundation
             Vector3 position = Vector3.Lerp(grounded, carried, lift);
             Vector3 outward = Vector3.ProjectOnPlane(position - visual.Root.position, visual.Root.up).normalized;
             Vector3 clearanceArc = (outward + visual.Root.up) *
-                (FoundationWaterCanVisualFactory.BodyHalfWidth * Mathf.Sin(Mathf.PI * lift));
+                (_waterCanRig.LateralClearance * Mathf.Sin(Mathf.PI * lift));
             _waterCanVisual.SetPositionAndRotation(position + clearanceArc,
                 Quaternion.Slerp(groundedRotation, visual.Root.rotation, lift));
             _waterCanCap.gameObject.SetActive(true);
@@ -973,18 +974,21 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BuildWaterCanVisual()
         {
-            Material shell = CreateLitMaterial("M_WaterCan", new Color(0.12f, 0.58f, 0.63f));
-            Material hardware = CreateLitMaterial(
-                "M_WaterCanHardware",
-                new Color(0.2f, 0.26f, 0.27f),
-                0.42f,
-                0.34f);
-            Material water = CreateLitMaterial("M_WaterCanFilled", new Color(0.1f, 0.72f, 1f));
-            _waterCanVisual = FoundationWaterCanVisualFactory.Create(deckRoot, shell, hardware, water,
-                out _waterCanFillVisual);
-            _waterCanPalmTarget = _waterCanVisual.Find(FoundationWaterCanVisualFactory.PalmTargetName);
-            _waterCanBody = _waterCanVisual.Find("Can Body");
-            _waterCanCap = _waterCanVisual.Find("Sealed Cap");
+            if (waterCanVisualPrefab != null)
+                _waterCanVisual = Instantiate(waterCanVisualPrefab, deckRoot).transform;
+            else
+            {
+                Material shell = CreateLitMaterial("M_WaterCan", new Color(0.12f, 0.58f, 0.63f));
+                Material hardware = CreateLitMaterial("M_WaterCanHardware", new Color(0.2f, 0.26f, 0.27f), .42f, .34f);
+                Material water = CreateLitMaterial("M_WaterCanFilled", new Color(0.1f, 0.72f, 1f));
+                _waterCanVisual = FoundationWaterCanVisualFactory.Create(deckRoot, shell, hardware, water, out _);
+            }
+            _waterCanVisual.name = "Water Can 01 [physical carrier]";
+            _waterCanRig = _waterCanVisual.GetComponent<FoundationCarriedContainerRig>();
+            if (_waterCanRig == null) throw new InvalidOperationException("水罐外观缺少完整容器绑定。");
+            _waterCanRig.ValidateBindings();
+            _waterCanFillVisual = _waterCanRig.FillIndicator;
+            _waterCanCap = _waterCanRig.Closure;
             UpdateWaterCanVisual();
         }
 
@@ -1544,7 +1548,7 @@ namespace Game.NomadWorkshop.Foundation
                 _waterCanVisual.localPosition = new Vector3(0.42f, 0.32f, 0f);
                 if (_residentVisuals.TryGetValue(_waterCanCarrierId, out ResidentVisual visual) &&
                     visual.Humanoid != null)
-                    _waterCanVisual.localPosition = visual.CarryAnchor.localPosition - Vector3.up * 0.56f;
+                    _waterCanVisual.localPosition = visual.CarryAnchor.localPosition - _waterCanRig.CarryPivotLocalPosition;
                 _waterCanVisual.localRotation = Quaternion.identity;
                 return;
             }

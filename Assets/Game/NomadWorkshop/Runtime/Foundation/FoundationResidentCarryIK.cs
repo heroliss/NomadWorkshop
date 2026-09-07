@@ -14,7 +14,7 @@ namespace Game.NomadWorkshop.Foundation
         private Transform _hand;
         private Transform _shoulder;
         private Transform _rightGrip;
-        private Transform _canBody;
+        private FoundationCarriedContainerRig _container;
         private int _gripLayer = -1;
         private Quaternion _palmFrameInHand;
         private Quaternion _handInIkGoal;
@@ -91,18 +91,18 @@ namespace Game.NomadWorkshop.Foundation
         /// <summary>通用物品暂保留腕部位置接缝，不把其锚点冒充水罐的掌心表面。</summary>
         public void SetRightGrip(Transform grip, float weight = 1f)
         {
-            _canBody = null;
+            _container = null;
             SetGrip(grip, weight, false);
         }
 
         /// <summary>
-        /// 水罐目标 +Y 是把手上表面的外法线，+Z 是手指朝向；body 是原点居中的单位立方壳体 Transform。
-        /// 壳体边界用于选择无穿入的肘部朝向，不改变臂长或物品姿态；目标为空会释放全部约束。
+        /// 容器掌心目标 +Y 是把手上表面的外法线，+Z 是手指朝向；避让盒由同一绑定提供。
+        /// 壳体边界用于选择无穿入的肘部朝向，不改变臂长或物品姿态；容器为空会释放手部约束。
         /// </summary>
-        public void SetWaterCanGrip(Transform palmTarget, Transform body, float weight = 1f)
+        public void SetContainerGrip(FoundationCarriedContainerRig container, float weight = 1f)
         {
-            _canBody = body;
-            SetGrip(palmTarget, weight, true);
+            _container = container;
+            SetGrip(container != null ? container.RightPalm : null, weight, true);
         }
 
         /// <summary>地面拾放的绝对蹲身进度；只调整 Humanoid 骨盆和双脚，不移动导航/身体胶囊。</summary>
@@ -157,7 +157,7 @@ namespace Game.NomadWorkshop.Foundation
         private Vector3 ResolveCanElbow(Vector3 wrist, Vector3 preferred)
         {
             RightElbowClearanceResolved = false;
-            if (_canBody == null) return preferred;
+            if (_container == null) return preferred;
             // bodyPosition 的 IK 修正在本次求解后才写回骨骼 Transform，不能直接读取未修正的肩膀。
             Vector3 shoulder = _shoulder.position + _bodyOffsetAtSolve;
             RightShoulderAtSolve = shoulder;
@@ -172,9 +172,6 @@ namespace Game.NomadWorkshop.Foundation
             Vector3 center = shoulder + along * axis;
             Vector3 radial = Vector3.ProjectOnPlane(preferred - center, axis).normalized * radius;
             if (radial.sqrMagnitude < .000001f) return preferred;
-            Vector3 scale = _canBody.lossyScale;
-            // 在 3 cm 最小手臂净空外再留 5 mm，吸收 Avatar 求解误差。
-            var bounds = new Bounds(Vector3.zero, Vector3.one + new Vector3(.07f / scale.x, .07f / scale.y, .07f / scale.z));
             Vector3 At(float angle) => center + Quaternion.AngleAxis(angle, axis) * radial;
             bool Clear(float angle)
             {
@@ -184,10 +181,17 @@ namespace Game.NomadWorkshop.Foundation
             }
             bool SegmentClear(Vector3 from, Vector3 to)
             {
-                from = _canBody.InverseTransformPoint(from);
-                to = _canBody.InverseTransformPoint(to);
-                return !bounds.Contains(from) && !(bounds.IntersectRay(new Ray(from, to - from), out float hit) &&
-                    hit <= Vector3.Distance(from, to));
+                foreach (var volume in _container.ClearanceVolumes)
+                {
+                    Vector3 scale = volume.frame.lossyScale;
+                    // 在 3 cm 最小手臂净空外再留 5 mm，吸收 Avatar 求解误差。
+                    Bounds bounds = volume.bounds;
+                    bounds.Expand(new Vector3(.07f / scale.x, .07f / scale.y, .07f / scale.z));
+                    Vector3 a = volume.frame.InverseTransformPoint(from), b = volume.frame.InverseTransformPoint(to);
+                    if (bounds.Contains(a) || (bounds.IntersectRay(new Ray(a, b - a), out float hit) &&
+                        hit <= Vector3.Distance(a, b))) return false;
+                }
+                return true;
             }
             if (Clear(0f)) { RightElbowClearanceResolved = true; return At(0f); }
             // 肩和腕固定时，肘部只在双骨长度确定的圆上移动。寻找离自然弯曲最近的可行方向，
@@ -236,7 +240,8 @@ namespace Game.NomadWorkshop.Foundation
                 _rightGroundRotation = Quaternion.Inverse(_bodyFrame.rotation) * _animator.GetIKRotation(AvatarIKGoal.RightFoot);
                 _groundFeetCaptured = true;
             }
-            _bodyOffsetAtSolve = (_bodyFrame.forward * .20f - _bodyFrame.up * .55f) * _groundReach;
+            Vector3 groundOffset = _container != null ? _container.GroundReachOffset : new Vector3(0f, -.55f, .20f);
+            _bodyOffsetAtSolve = _bodyFrame.TransformVector(groundOffset) * _groundReach;
             _animator.bodyPosition += _bodyOffsetAtSolve;
             GroundFootContactWeight = Mathf.SmoothStep(0f, 1f, _groundReach / .15f);
             LeftGroundFootTarget = _bodyFrame.TransformPoint(_leftGroundFoot);

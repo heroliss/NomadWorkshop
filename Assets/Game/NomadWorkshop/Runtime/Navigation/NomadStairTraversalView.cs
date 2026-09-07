@@ -16,12 +16,15 @@ namespace Game.NomadWorkshop.Navigation
         [SerializeField] private Material canShell;
         [SerializeField] private Material canHardware;
         [SerializeField] private Material water;
+        [SerializeField, Tooltip("可选容器 Prefab，需有完整 FoundationCarriedContainerRig；留空使用原灰盒。")]
+        private GameObject containerPrefab;
         private ReadOnlyReactiveProperty<StairTraversalState> _read;
         private string _checkpoint;
         private float _moveSpeed;
         private StairTraversalState _previous;
         public ResidentHumanoidPresentation Resident { get; private set; }
         public Transform WaterCan { get; private set; }
+        public FoundationCarriedContainerRig Container { get; private set; }
         public ResidentStairFootIK FootIK { get; private set; }
 
         public void Configure(GameObject prefab, RuntimeAnimatorController animationController, Transform space,
@@ -34,23 +37,25 @@ namespace Game.NomadWorkshop.Navigation
         private void Start()
         {
             if (humanoidPrefab == null || controller == null || navigationSpace == null ||
-                canShell == null || canHardware == null || water == null)
+                (containerPrefab == null && (canShell == null || canHardware == null || water == null)))
                 throw new InvalidOperationException("携物楼梯实验缺少 Humanoid、导航空间或水罐材质。");
             var root = new GameObject("Stair Carrier · Shared Humanoid");
             root.transform.SetParent(transform, false);
             Resident = root.AddComponent<ResidentHumanoidPresentation>();
             if (!Resident.TryInitialize(humanoidPrefab, controller))
                 throw new InvalidOperationException("携物楼梯实验无法接入共享 Humanoid。");
-            WaterCan = FoundationWaterCanVisualFactory.Create(root.transform, canShell, canHardware, water,
-                out Transform fill);
-            fill.gameObject.SetActive(true);
-            WaterCan.localPosition = FoundationWaterCanVisualFactory.GetGripPosition(Resident) -
-                Vector3.up * FoundationWaterCanVisualFactory.GripHeight;
+            WaterCan = containerPrefab != null ? Instantiate(containerPrefab, root.transform).transform :
+                FoundationWaterCanVisualFactory.Create(root.transform, canShell, canHardware, water, out _);
+            Container = WaterCan.GetComponent<FoundationCarriedContainerRig>();
+            if (Container == null) throw new InvalidOperationException("携物楼梯缺少容器绑定。");
+            Container.ValidateBindings();
+            Container.FillIndicator.gameObject.SetActive(true);
+            WaterCan.localPosition = Container.GetGripPosition(Resident) - Container.CarryPivotLocalPosition;
             FootIK = Resident.Animator.gameObject.AddComponent<ResidentStairFootIK>();
             FootIK.Configure(Resident.Animator, root.transform, navigationSpace);
             FoundationResidentCarryIK carry = Resident.Animator.gameObject.AddComponent<FoundationResidentCarryIK>();
             carry.Configure(Resident.Animator, root.transform, FootIK.ApplySupport);
-            carry.SetWaterCanGrip(WaterCan.Find(FoundationWaterCanVisualFactory.PalmTargetName), WaterCan.Find("Can Body"));
+            carry.SetContainerGrip(Container);
             _read = this.ExecuteCommand(new GetStairTraversalStateCommand());
             Bag.Subscribe(_read, Apply);
         }

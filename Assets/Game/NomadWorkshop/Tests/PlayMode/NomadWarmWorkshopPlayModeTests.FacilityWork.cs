@@ -39,11 +39,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.That(_read.WaterCanCarrierId.CurrentValue, Is.EqualTo(worker));
                 Transform can = FindCan();
                 AssertHandOnCan(can, "progress=" + resident.FacilityWork.CurrentValue.Progress.ToString("F4"));
-                Transform body = can.Find("Can Body");
                 Physics.SyncTransforms();
-                Assert.That(Physics.OverlapBox(body.position, body.lossyScale * .5f, body.rotation,
-                    ~0, QueryTriggerInteraction.Ignore).OfType<CharacterController>().Select(c => c.name), Is.Empty,
-                    "抬起/倾倒/放回携行姿态时，水罐壳体不能穿进居民身体。");
+                foreach (var body in can.GetComponent<FoundationCarriedContainerRig>().ClearanceVolumes)
+                    Assert.That(Physics.OverlapBox(body.frame.TransformPoint(body.bounds.center),
+                        Vector3.Scale(body.bounds.extents, body.frame.lossyScale), body.frame.rotation,
+                        ~0, QueryTriggerInteraction.Ignore).OfType<CharacterController>().Select(c => c.name), Is.Empty,
+                        "抬起/倾倒/放回携行姿态时，水罐壳体不能穿进居民身体。");
                 float progress = resident.FacilityWork.CurrentValue.Progress;
                 if (progress < .16f) raising++;
                 else if (progress > .84f) lowering++;
@@ -74,9 +75,9 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(tank.Hose.enabled && tank.Water.enabled, Is.True,
                 "真实装水阶段必须出现连接当前水罐的管线和水流。");
             Transform can = FindCan();
-            Assert.That(can.Find("Sealed Cap").gameObject.activeSelf, Is.False);
+            Assert.That(can.GetComponent<FoundationCarriedContainerRig>().Closure.gameObject.activeSelf, Is.False);
             Assert.That(Vector3.Distance(tank.Water.GetPosition(tank.Water.positionCount - 1),
-                can.TransformPoint(FoundationWaterCanVisualFactory.OpeningPosition)), Is.LessThan(.001f));
+                can.GetComponent<FoundationCarriedContainerRig>().Opening.position), Is.LessThan(.001f));
             AssertHandOnCan(can);
             AssertResidentClearance(tank.Hose, .026f);
             AssertResidentClearance(tank.Water, .011f);
@@ -106,7 +107,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             yield return WaitForFilledCanInMotion();
             Assert.That(FindCan().GetInstanceID(), Is.EqualTo(identity));
             Assert.That(tank.Hose.enabled || tank.Water.enabled, Is.False);
-            Assert.That(FindCan().Find("Sealed Cap").gameObject.activeSelf, Is.True);
+            Assert.That(FindCan().GetComponent<FoundationCarriedContainerRig>().Closure.gameObject.activeSelf, Is.True);
             LogAssert.NoUnexpectedReceived();
         }
 
@@ -170,7 +171,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(Deck.GetComponentsInChildren<FoundationFacilityArtRig>().All(r =>
                 !r.IsWorking && !r.Water.enabled && !r.Hose.enabled), Is.True,
                 "恢复后的规范化事务不应留下旧设施动作或旧水流。");
-            Assert.That(FindCan().Find("Sealed Cap").gameObject.activeSelf, Is.True);
+            Assert.That(FindCan().GetComponent<FoundationCarriedContainerRig>().Closure.gameObject.activeSelf, Is.True);
             LogAssert.NoUnexpectedReceived();
         }
 
@@ -269,7 +270,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(_read.WaterCanWaterMilliliters.CurrentValue, Is.Zero);
             Assert.That(FindCan().GetInstanceID(), Is.EqualTo(identity));
             Assert.That(tank.Water.enabled, Is.False);
-            Assert.That(FindCan().Find("Sealed Cap").gameObject.activeSelf, Is.True);
+            Assert.That(FindCan().GetComponent<FoundationCarriedContainerRig>().Closure.gameObject.activeSelf, Is.True);
             LogAssert.NoUnexpectedReceived();
         }
 
@@ -307,7 +308,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             var humanoid = can.parent.GetComponent<ResidentHumanoidPresentation>();
             Assert.That(humanoid, Is.Not.Null);
             var contact = humanoid.Animator.GetComponent<FoundationResidentCarryIK>();
-            Transform palmTarget = can.Find(FoundationWaterCanVisualFactory.PalmTargetName);
+            Transform palmTarget = can.GetComponent<FoundationCarriedContainerRig>().RightPalm;
             Assert.That(Vector3.Distance(contact.RightPalmContactPosition, palmTarget.position), Is.LessThan(.015f),
                 "抬桶/倾倒时掌心表面仍需接触同一把手；target=" +
                 humanoid.transform.InverseTransformPoint(palmTarget.position).ToString("F4") + "; shoulder=" +
@@ -317,7 +318,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Vector3 elbow = humanoid.transform.InverseTransformPoint(humanoid.Animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position);
             Vector3 shoulder = humanoid.transform.InverseTransformPoint(humanoid.Animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position);
             Assert.That(elbow.x * Mathf.Sign(shoulder.x), Is.GreaterThan(.16f), "肘部不能折向胸腔内部。");
-            Transform body = can.Find("Can Body");
+            var body = can.GetComponent<FoundationCarriedContainerRig>();
             Vector3 upperArm = humanoid.Animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position;
             Vector3 lowerArm = humanoid.Animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position;
             Vector3 hand = humanoid.Animator.GetBoneTransform(HumanBodyBones.RightHand).position;
@@ -329,18 +330,20 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             AssertBoneSegmentOutsideCan(lowerArm, hand, body, phaseInfo);
         }
 
-        private static void AssertBoneSegmentOutsideCan(Vector3 start, Vector3 end, Transform body, string phaseInfo,
+        private static void AssertBoneSegmentOutsideCan(Vector3 start, Vector3 end, FoundationCarriedContainerRig body, string phaseInfo,
             float radius = .03f)
         {
-            // 将骨段变到罐体单位盒，手臂默认留 3 cm、穿工装的腿显式留 6 cm；不以导航胶囊代替肢体。
-            Vector3 scale = body.lossyScale;
-            var bounds = new Bounds(Vector3.zero, Vector3.one + new Vector3(
-                2f * radius / scale.x, 2f * radius / scale.y, 2f * radius / scale.z));
-            Vector3 from = body.InverseTransformPoint(start);
-            Vector3 to = body.InverseTransformPoint(end);
-            bool hit = bounds.Contains(from) || (bounds.IntersectRay(new Ray(from, to - from), out float distance) &&
-                distance <= Vector3.Distance(from, to));
-            Assert.That(hit, Is.False, $"水罐壳体不能穿入肢体，半径 {radius:F3} m；罐体单位盒骨段 {from:F4} → {to:F4}。{phaseInfo}");
+            // 从实际骨段核对所有模型避让盒；手臂留 3 cm、穿工装的腿留 6 cm，不读取求解器的成功标志。
+            foreach (var volume in body.ClearanceVolumes)
+            {
+                Vector3 scale = volume.frame.lossyScale;
+                var bounds = volume.bounds;
+                bounds.Expand(new Vector3(2f * radius / scale.x, 2f * radius / scale.y, 2f * radius / scale.z));
+                Vector3 from = volume.frame.InverseTransformPoint(start), to = volume.frame.InverseTransformPoint(end);
+                bool hit = bounds.Contains(from) || (bounds.IntersectRay(new Ray(from, to - from), out float distance) &&
+                    distance <= Vector3.Distance(from, to));
+                Assert.That(hit, Is.False, $"水罐壳体不能穿入肢体，半径 {radius:F3} m；局部骨段 {from:F4} → {to:F4}。{phaseInfo}");
+            }
         }
 
         private static void AssertResidentClearance(LineRenderer line, float radius)

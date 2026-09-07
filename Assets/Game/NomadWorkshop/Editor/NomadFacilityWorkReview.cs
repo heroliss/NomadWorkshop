@@ -138,7 +138,7 @@ namespace Game.NomadWorkshop.Editor
                 ? new Vector3(2.2f, 1.8f, 3.2f) : new Vector3(3.2f, 2.6f, -3.0f));
             camera.transform.LookAt(focus);
             var contact = humanoid.Animator.GetComponent<FoundationResidentCarryIK>();
-            Transform palmTarget = can.Find(FoundationWaterCanVisualFactory.PalmTargetName);
+            Transform palmTarget = can.GetComponent<FoundationCarriedContainerRig>().RightPalm;
             if (work.ItemContactPlacement.Active)
             {
                 focus = (humanoid.transform.position + can.position) * .5f + Vector3.up * .65f;
@@ -170,7 +170,7 @@ namespace Game.NomadWorkshop.Editor
                 elbowLocal = humanoid.transform.InverseTransformPoint(humanoid.Animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position),
                 simulationTick = _read.SimulationTick.CurrentValue, waterMilliliters = _read.WaterCanWaterMilliliters.CurrentValue,
                 handGap = holdsCan ? Vector3.Distance(humanoid.Animator.GetBoneTransform(HumanBodyBones.RightHand).position,
-                    can.Find("Handle Top").position) : -1f,
+                    can.GetComponent<FoundationCarriedContainerRig>().CarryPivot.position) : -1f,
                 waterVisible = rig.Water.enabled, hoseVisible = rig.Hose.enabled,
                 waterFrom = rig.Water.enabled ? rig.Water.GetPosition(0) : default,
                 waterTo = rig.Water.enabled ? rig.Water.GetPosition(rig.Water.positionCount - 1) : default,

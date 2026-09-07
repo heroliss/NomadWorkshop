@@ -1,0 +1,277 @@
+{
+  "version": "0.1.1",
+  "status": "passed-export",
+  "blenderVersion": "5.2.1 LTS",
+  "atlasSize": 2048,
+  "assets": [
+    {
+      "name": "NW11_WaterCan",
+      "source": {
+        "meshCount": 3,
+        "triangles": 7518,
+        "degenerateTriangles": 0,
+        "vertices": 3829,
+        "uvComplete": true,
+        "boundsBlender": [
+          0.28999999165534973,
+          0.18470003455877304,
+          0.5119529505786851
+        ],
+        "minimumBlender": [
+          -0.14499999582767487,
+          -0.0942000150680542,
+          -1.3929362552289604e-08
+        ],
+        "maximumBlender": [
+          0.14499999582767487,
+          0.09050001949071884,
+          0.5119529366493225
+        ],
+        "pivots": {
+          "NW11_WaterCan": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW11_WaterCan_AxisForward": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "NW11_WaterCan_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW11_WaterCan_AxisUp": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "NW11_WaterCan_Cap": [
+            0.07500000298023224,
+            0.026000000536441803,
+            0.39800000190734863
+          ],
+          "NW11_WaterCan_CarryPivot": [
+            0.0,
+            -0.03200000151991844,
+            0.49000000953674316
+          ],
+          "NW11_WaterCan_Fill": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW11_WaterCan_LowerClearance": [
+            0.0,
+            0.0,
+            0.164000004529953
+          ],
+          "NW11_WaterCan_Opening": [
+            0.07500000298023224,
+            0.026000000536441803,
+            0.39800000190734863
+          ],
+          "NW11_WaterCan_RightPalm": [
+            0.0,
+            -0.03200000151991844,
+            0.5120000243186951
+          ],
+          "NW11_WaterCan_ShoulderClearance": [
+            0.0,
+            0.0,
+            0.35100001096725464
+          ]
+        },
+        "parts": [
+          "NW11_WaterCan",
+          "NW11_WaterCan_AxisForward",
+          "NW11_WaterCan_AxisRight",
+          "NW11_WaterCan_AxisUp",
+          "NW11_WaterCan_Cap",
+          "NW11_WaterCan_CarryPivot",
+          "NW11_WaterCan_Fill",
+          "NW11_WaterCan_LowerClearance",
+          "NW11_WaterCan_Opening",
+          "NW11_WaterCan_RightPalm",
+          "NW11_WaterCan_ShoulderClearance"
+        ]
+      },
+      "roundTrip": {
+        "meshCount": 3,
+        "triangles": 7518,
+        "degenerateTriangles": 0,
+        "vertices": 3829,
+        "uvComplete": true,
+        "boundsBlender": [
+          0.28999999165534973,
+          0.18470005691051483,
+          0.5119529813766484
+        ],
+        "minimumBlender": [
+          -0.14499999582767487,
+          -0.09419999271631241,
+          1.4877318932349226e-08
+        ],
+        "maximumBlender": [
+          0.14499999582767487,
+          0.09050006419420242,
+          0.5119529962539673
+        ],
+        "pivots": {
+          "NW11_WaterCan_AxisUp": [
+            0.0,
+            1.6292068494294654e-07,
+            1.0
+          ],
+          "NW11_WaterCan_CarryPivot": [
+            0.0,
+            -0.031999923288822174,
+            0.49000000953674316
+          ],
+          "NW11_WaterCan_AxisForward": [
+            0.0,
+            1.0,
+            -1.6292068494294654e-07
+          ],
+          "NW11_WaterCan_Opening": [
+            0.07500000298023224,
+            0.026000065729022026,
+            0.39800000190734863
+          ],
+          "NW11_WaterCan_Cap": [
+            0.07500000298023224,
+            0.026000065729022026,
+            0.39800000190734863
+          ],
+          "NW11_WaterCan_RightPalm": [
+            0.0,
+            -0.031999919563531876,
+            0.5120000243186951
+          ],
+          "NW11_WaterCan_ShoulderClearance": [
+            0.0,
+            5.718516149499919e-08,
+            0.35100001096725464
+          ],
+          "NW11_WaterCan": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW11_WaterCan_Fill": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW11_WaterCan_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW11_WaterCan_LowerClearance": [
+            0.0,
+            2.6718993240137934e-08,
+            0.164000004529953
+          ]
+        },
+        "parts": [
+          "NW11_WaterCan_AxisUp.001",
+          "NW11_WaterCan_CarryPivot.001",
+          "NW11_WaterCan_AxisForward.001",
+          "NW11_WaterCan_Opening.001",
+          "NW11_WaterCan_Cap.001",
+          "NW11_WaterCan_RightPalm.001",
+          "NW11_WaterCan_ShoulderClearance.001",
+          "NW11_WaterCan.001",
+          "NW11_WaterCan_Fill.001",
+          "NW11_WaterCan_AxisRight.001",
+          "NW11_WaterCan_LowerClearance.001"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "blender_nomad_watercan.py",
+      "sha256": "39a2da7e9548d149e76c66f7a72db779ef16754bef49bf7b1478416cdfa5b652"
+    },
+    {
+      "file": "blender_nomad_water_facilities.py",
+      "sha256": "bc182e8881ffec631112e5553f3029fe52c13f9f28cab051d7c41ec48c0f6bf1"
+    },
+    {
+      "file": "blender_nomad_vehicle_forms.py",
+      "sha256": "64a813aaa4a6f96b28f6df01453d2d0825d6d06a23bfcfeeeccd90f6d19b17db"
+    },
+    {
+      "file": "blender_nomad_form_study.py",
+      "sha256": "46e918bb14f4fde5d4ace6089f6cf7f44627cfa29318b8e50516be35f0d62a60"
+    },
+    {
+      "file": "blender_nomad_art_set.py",
+      "sha256": "ae09cbf9573493a013daeb64322f5336c53ef36ebe28a243c7f5b5220850c137"
+    },
+    {
+      "file": "blender_nomad_deck_cockpit.py",
+      "sha256": "c88be92d3cba5c5d1b63468fe8e86fb39da07de5284ebb033846bf685424890b"
+    },
+    {
+      "file": "blender_nomad_canopy.py",
+      "sha256": "8e8afb836ba1dc431858bd7013a440cb699c0fd8f60e1dee3f77c10c50a7814c"
+    }
+  ],
+  "files": [
+    {
+      "file": "NW11_WaterCan.fbx",
+      "sha256": "862a863f2a51aa0ffe308c7c28d3a329831b71c8d6fec739701ef3903192c801"
+    },
+    {
+      "file": "NW11_WaterCan_Color.png",
+      "sha256": "dfce760057e78af707e5a2cb1edba3d6411865af93ed06da19586ff56e28aeac"
+    },
+    {
+      "file": "NW11_WaterCan_Normal.png",
+      "sha256": "3aac76efea9e3ee3c5548800b464a70c42c2f558cd728584edcfe5ff92e6c175"
+    },
+    {
+      "file": "NW11_WaterCan_Surface.png",
+      "sha256": "029f21b95500ed2ee8ea9e9abe7f4ae94f96babd999cc1655a9d4fb9fb7a5255"
+    },
+    {
+      "file": "watercan-preview.png",
+      "sha256": "2a32b8fba853bc5b58835390decf0ec0e4a9dc2edb9677b706c98ca927e70c6d"
+    }
+  ],
+  "binding": {
+    "carryPivot": "NW11_WaterCan_CarryPivot",
+    "rightPalm": "NW11_WaterCan_RightPalm",
+    "opening": "NW11_WaterCan_Opening",
+    "closure": "NW11_WaterCan_Cap",
+    "fillIndicator": "NW11_WaterCan_Fill",
+    "groundReachOffset": [
+      0,
+      -0.62,
+      0.2
+    ],
+    "clearances": [
+      {
+        "marker": "NW11_WaterCan_LowerClearance",
+        "size": [
+          0.29,
+          0.328,
+          0.2
+        ]
+      },
+      {
+        "marker": "NW11_WaterCan_ShoulderClearance",
+        "size": [
+          0.27,
+          0.046,
+          0.16
+        ]
+      }
+    ]
+  }
+}

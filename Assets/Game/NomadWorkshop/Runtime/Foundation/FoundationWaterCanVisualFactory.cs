@@ -18,19 +18,24 @@ namespace Game.NomadWorkshop.Foundation
         {
             var root = new GameObject("Water Can 01 [physical carrier]").transform;
             root.SetParent(parent, false);
-            Part("Can Body", new(0,.2f,0), new(BodyHalfWidth * 2f,.4f,.24f), shell);
+            Transform body = Part("Can Body", new(0,.2f,0), new(BodyHalfWidth * 2f,.4f,.24f), shell);
             Part("Handle Left", new(-.11f,.47f,0), new(.055f,.18f,.055f), hardware);
             Part("Handle Right", new(.11f,.47f,0), new(.055f,.18f,.055f), hardware);
-            Part("Handle Top", new(0,GripHeight,0), new(.27f,.055f,.055f), hardware);
+            Transform pivot = Part("Handle Top", new(0,GripHeight,0), new(.27f,.055f,.055f), hardware);
             var palmTarget = new GameObject(PalmTargetName).transform;
             palmTarget.SetParent(root, false);
             palmTarget.localPosition = new Vector3(0, GripHeight + .0275f, 0);
             // 罐口放在把手前侧，避免装水线穿过右侧把手立柱；开盖后仍有可辨认的注水颈。
             Part("Pouring Neck", new(.12f,.415f,.085f), new(.082f,.025f,.082f), shell, PrimitiveType.Cylinder);
             Part("Open Mouth", new(.12f,.441f,.085f), new(.06f,.0015f,.06f), hardware, PrimitiveType.Cylinder);
-            Part("Sealed Cap", OpeningPosition + Vector3.up * .014f, new(.09f,.012f,.09f), hardware, PrimitiveType.Cylinder);
+            Transform cap = Part("Sealed Cap", OpeningPosition + Vector3.up * .014f, new(.09f,.012f,.09f), hardware, PrimitiveType.Cylinder);
             fill = Part("Contains Water", new(0,.2f,-.126f), new(.22f,.22f,.015f), water);
             fill.gameObject.SetActive(false);
+            var mouth = new GameObject("Fluid Opening").transform;
+            mouth.SetParent(root, false); mouth.localPosition = OpeningPosition;
+            root.gameObject.AddComponent<FoundationCarriedContainerRig>().Configure(pivot, palmTarget, mouth, cap, fill,
+                new[] { new FoundationCarriedContainerRig.ClearanceVolume(body, new Bounds(Vector3.zero, Vector3.one)) },
+                new Vector3(0f, -.55f, .20f));
             return root;
 
             Transform Part(string name, Vector3 center, Vector3 size, Material material,
@@ -50,18 +55,5 @@ namespace Game.NomadWorkshop.Foundation
             }
         }
 
-        /// <summary>按当前 Avatar 臂长标定持桶握点，返回居民逻辑根的局部坐标。</summary>
-        public static Vector3 GetGripPosition(ResidentHumanoidPresentation humanoid)
-        {
-            Animator animator = humanoid.Animator;
-            Transform upper = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
-            Transform lower = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
-            Transform hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
-            float length = Vector3.Distance(upper.position, lower.position) + Vector3.Distance(lower.position, hand.position);
-            Vector3 shoulder = humanoid.transform.InverseTransformPoint(upper.position);
-            // 肩骨外侧再留出半个罐宽和衣物/身体净空；只按臂长外移少量会把罐壳藏进大腿。
-            return new Vector3(shoulder.x + Mathf.Sign(shoulder.x) * (BodyHalfWidth + .10f),
-                shoulder.y - length * .72f, .08f);
-        }
     }
 }

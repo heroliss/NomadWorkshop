@@ -162,11 +162,11 @@ namespace Game.NomadWorkshop.Editor
                 gripLocal = resident.Find("Right Hand Carry Anchor").localPosition,
                 shoulderLocal = resident.InverseTransformPoint(animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position),
                 headLocal = resident.InverseTransformPoint(animator.GetBoneTransform(HumanBodyBones.Head).position),
-                handGap = Vector3.Distance(animator.GetBoneTransform(HumanBodyBones.RightHand).position, can.Find("Handle Top").position),
+                handGap = Vector3.Distance(animator.GetBoneTransform(HumanBodyBones.RightHand).position, can.GetComponent<FoundationCarriedContainerRig>().CarryPivot.position),
                 palmGap = Vector3.Distance(animator.GetComponent<FoundationResidentCarryIK>().RightPalmContactPosition,
-                    can.Find(FoundationWaterCanVisualFactory.PalmTargetName).position),
+                    can.GetComponent<FoundationCarriedContainerRig>().RightPalm.position),
                 palmAngleDegrees = Quaternion.Angle(animator.GetComponent<FoundationResidentCarryIK>().RightPalmRotation,
-                    can.Find(FoundationWaterCanVisualFactory.PalmTargetName).rotation),
+                    can.GetComponent<FoundationCarriedContainerRig>().RightPalm.rotation),
                 renderers = animator.GetComponentsInChildren<SkinnedMeshRenderer>().Select(r =>
                     r.name + ": " + string.Join(",",r.sharedMaterials.Select(m => m.name)) + " center=" +
                     resident.InverseTransformPoint(r.bounds.center)).ToArray()

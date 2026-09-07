@@ -356,6 +356,7 @@ MonoBehaviour:
   environmentVisualPrefab: {fileID: 4308421762387776824, guid: 21092c3009e14f64c9d073cac1fec08b, type: 3}
   waystationVisualPrefab: {fileID: 4698855629650623304, guid: 2b0cfb13e3278c045836769e3a47f89a, type: 3}
   residentVisualPrefab: {fileID: 1943497185141603987, guid: d596d3cdce43c1a4a986ade1707bbc40, type: 3}
+  waterCanVisualPrefab: {fileID: 1515495862397667547, guid: ecb706c552a167f4db8c37030f82f4ca, type: 3}
   residentVisualBindings:
   - residentId: resident-01
     prefab: {fileID: 1943497185141603987, guid: d596d3cdce43c1a4a986ade1707bbc40, type: 3}

@@ -50,10 +50,10 @@ namespace Game.NomadWorkshop.Editor
             NomadStairTraversalView view = Find<NomadStairTraversalView>();
             StairTraversalState state = Find<NomadFoundationContext>().ExecuteCommand(new GetStairTraversalStateCommand()).CurrentValue;
             NavMeshAgent agent = Find<NavMeshAgent>();
-            Transform handle = view.WaterCan.Find("Handle Top");
+            Transform handle = view.Container.CarryPivot;
             Animator animator = view.Resident.Animator;
             var contact = animator.GetComponent<FoundationResidentCarryIK>();
-            Transform palmTarget = view.WaterCan.Find(FoundationWaterCanVisualFactory.PalmTargetName);
+            Transform palmTarget = view.Container.RightPalm;
             Vector3 shoulder = animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position;
             Vector3 elbow = animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position;
             var report = new Report

@@ -190,7 +190,9 @@ namespace Game.NomadWorkshop.Foundation
             float envelope = WorkEnvelope(work.Progress);
             foreach (var motion in binding.Motions) motion.Apply(envelope);
             if (physicalCan == null) return;
-            Vector3 mouth = physicalCan.TransformPoint(FoundationWaterCanVisualFactory.OpeningPosition);
+            var container = physicalCan.GetComponent<FoundationCarriedContainerRig>();
+            if (container == null) throw new InvalidOperationException("设施操作的容器缺少罐口绑定。");
+            Vector3 mouth = container.Opening.position;
             if (binding.WaterFlow == FoundationFacilityWaterFlow.FillCan && work.Progress is > .16f and < .84f)
             {
                 Vector3 nozzle = mouth + Vector3.up * .085f;

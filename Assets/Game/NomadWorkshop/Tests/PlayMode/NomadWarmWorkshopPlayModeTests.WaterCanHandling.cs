@@ -71,7 +71,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 var human = Deck.Find("Resident " + worker.StableId.Substring(worker.StableId.LastIndexOf('-') + 1))
                     .GetComponent<ResidentHumanoidPresentation>();
                 var ik = human.Animator.GetComponent<FoundationResidentCarryIK>();
-                Transform target = can.Find(FoundationWaterCanVisualFactory.PalmTargetName);
+                Transform target = can.GetComponent<FoundationCarriedContainerRig>().RightPalm;
                 string info = $"{work.Phase} p={work.Progress:F4}, reach={ik.RightArmReachRatio:F4}, " +
                     $"shoulder={human.transform.InverseTransformPoint(human.Animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position):F4}, " +
                     $"solveShoulder={human.transform.InverseTransformPoint(ik.RightShoulderAtSolve):F4}";
@@ -79,7 +79,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 {
                     Assert.That(Vector3.Distance(ik.RightPalmContactPosition, target.position), Is.LessThan(.015f), info);
                     Assert.That(Quaternion.Angle(ik.RightPalmRotation, target.rotation), Is.LessThan(4f), info);
-                    Transform body = can.Find("Can Body");
+                    var body = can.GetComponent<FoundationCarriedContainerRig>();
                     Vector3 shoulder = human.Animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position;
                     Vector3 elbow = human.Animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position;
                     Vector3 wrist = human.Animator.GetBoneTransform(HumanBodyBones.RightHand).position;
@@ -92,7 +92,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                         ik.LeftGroundFootTarget), Is.LessThan(.045f), "左脚支撑失效：" + info);
                     Assert.That(Vector3.Distance(human.Animator.GetBoneTransform(HumanBodyBones.RightFoot).position,
                         ik.RightGroundFootTarget), Is.LessThan(.045f), "右脚支撑失效：" + info);
-                    Transform body = can.Find("Can Body");
+                    var body = can.GetComponent<FoundationCarriedContainerRig>();
                     foreach (bool left in new[] { true, false })
                     {
                         Vector3 hip = human.Animator.GetBoneTransform(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg).position;

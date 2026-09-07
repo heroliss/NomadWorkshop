@@ -6317,6 +6317,7 @@ MonoBehaviour:
   canShell: {fileID: 2100000, guid: db4b1b04aea1d3c4f8ce2ef46037e644, type: 2}
   canHardware: {fileID: 2100000, guid: e1f2ec67408a7b447a478f0a5371033c, type: 2}
   water: {fileID: 2100000, guid: 37bf7585920a8a9459dd874e803474a2, type: 2}
+  containerPrefab: {fileID: 1515495862397667547, guid: ecb706c552a167f4db8c37030f82f4ca, type: 3}
 --- !u!1 &1686950093
 GameObject:
   m_ObjectHideFlags: 0
