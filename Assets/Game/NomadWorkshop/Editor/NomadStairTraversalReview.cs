@@ -112,7 +112,8 @@ namespace Game.NomadWorkshop.Editor
         {
             string path = SceneManager.GetActiveScene().path;
             if (!EditorApplication.isPlaying || (path != NomadStairTraversalPipeline.ScenePath &&
-                path != NomadResidentSamplePipeline.StairScenePath && !NomadResidentCrewPipeline.IsStairScene(path)))
+                path != NomadResidentSamplePipeline.StairScenePath && !NomadResidentCrewPipeline.IsStairScene(path) &&
+                !NomadWorkwearPipeline.IsStairScene(path)))
                 throw new InvalidOperationException("请先运行持桶楼梯实验场景。");
         }
 

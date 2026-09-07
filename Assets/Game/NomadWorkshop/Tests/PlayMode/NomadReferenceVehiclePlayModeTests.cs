@@ -13,6 +13,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
     public sealed partial class NomadReferenceVehiclePlayModeTests : NomadResidentCrewPlayModeTests
     {
         protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/ReferenceVehicleSample.unity";
+        protected override string WorkshirtPrefix => "NW10_Shirt_";
 
         [UnityTest]
         public IEnumerator VehicleAtlases_KeepShellDeckAndCockpitBindingsAndPose_AfterWorldRestore()

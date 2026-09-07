@@ -1,0 +1,509 @@
+{
+  "version": "0.2.3",
+  "status": "passed-export",
+  "blenderVersion": "5.2.1 LTS",
+  "variants": [
+    {
+      "id": "Mechanic",
+      "body": "Male",
+      "source": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ArtFirstPass\\Models\\NW3_Mechanic.fbx",
+      "sourceSha256": "c5257596324588f04dd1e335a864825037389e01e149ebe195c8f5cd072ec8fa",
+      "fbx": "NW10_Mechanic.fbx",
+      "sha256": "66ed41e3762889a0322e4f251937255f0a8ced55fa97b8b4d2e1c7233b470dd8",
+      "removedOrnamentVertices": 0,
+      "boneCount": 65,
+      "maxBoneRoundTripError": 1.6999999999999996e-05,
+      "skin": {
+        "vertices": 9460,
+        "maxInfluences": 4
+      },
+      "sourceSkinNormalization": [
+        {
+          "mesh": "Hair_Buzzed",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Male_Peasant_Body",
+          "sourceWeightSumMin": 0.4204205088317394,
+          "sourceWeightSumMax": 1.2887334092513782,
+          "maxDiscardedInfluenceFraction": 0.07710627749948462
+        },
+        {
+          "mesh": "Male_Peasant_Arms",
+          "sourceWeightSumMin": 0.3776319809257984,
+          "sourceWeightSumMax": 1.2841399579076014,
+          "maxDiscardedInfluenceFraction": 0.02204092398686719
+        },
+        {
+          "mesh": "Male_Peasant_Feet",
+          "sourceWeightSumMin": 0.9696673047728837,
+          "sourceWeightSumMax": 0.99999138712883,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Eyebrows",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Male_Peasant_Legs",
+          "sourceWeightSumMin": 0.3682900740132027,
+          "sourceWeightSumMax": 1.4160018106922507,
+          "maxDiscardedInfluenceFraction": 7.14911207549962e-05
+        },
+        {
+          "mesh": "Eyes",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "ResidentHead",
+          "sourceWeightSumMin": 0.7702581619378179,
+          "sourceWeightSumMax": 0.9997108578681946,
+          "maxDiscardedInfluenceFraction": 0.07660794049634922
+        }
+      ],
+      "readbackSkin": {
+        "vertices": 9460,
+        "maxInfluences": 4
+      },
+      "patches": [
+        {
+          "name": "Workshirt pocket -1",
+          "maxDiscardedInfluenceFraction": 0.000988575152551463
+        },
+        {
+          "name": "Pocket upper seam -1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Trouser patch -1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Workshirt pocket 1",
+          "maxDiscardedInfluenceFraction": 0.0009886338451026155
+        },
+        {
+          "name": "Pocket upper seam 1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Trouser patch 1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Workshirt placket",
+          "maxDiscardedInfluenceFraction": 0.0041965864521086305
+        },
+        {
+          "name": "Closed cloth neckline",
+          "maxDiscardedInfluenceFraction": 0.0020247313586496674
+        }
+      ],
+      "retainedTextures": [
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Ligh.png",
+          "sha256": "419f96dbb8811511e2d515bcdabc085ff2f219ec7b8b4e91050a84cba6888fe9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Normal.png",
+          "sha256": "3645858289beb51643155a924e5148735dd5fe226230532936375c06ba829dec"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Eye_Brown.png",
+          "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+        }
+      ],
+      "meshes": [
+        {
+          "name": "Hair_Buzzed",
+          "triangles": 830,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Body",
+          "triangles": 3928,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Arms",
+          "triangles": 4762,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Feet",
+          "triangles": 2700,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Eyebrows",
+          "triangles": 984,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Legs",
+          "triangles": 1176,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Eyes",
+          "triangles": 768,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "ResidentHead",
+          "triangles": 2928,
+          "maxPatchDiscardedInfluenceFraction": 0
+        }
+      ]
+    },
+    {
+      "id": "Caretaker",
+      "body": "Female",
+      "source": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ArtFirstPass\\Models\\NW3_Caretaker.fbx",
+      "sourceSha256": "c37f48005e1d6998f4c824e90d388514887649ccd06cdd60c1d7a4f9eae78abc",
+      "fbx": "NW10_Caretaker.fbx",
+      "sha256": "a83ac6add25586c4b4a31a5a5a522d867a9a3ffe4b64edb9091547df0c7f48d5",
+      "removedOrnamentVertices": 808,
+      "boneCount": 65,
+      "maxBoneRoundTripError": 2.3e-05,
+      "skin": {
+        "vertices": 10913,
+        "maxInfluences": 4
+      },
+      "sourceSkinNormalization": [
+        {
+          "mesh": "Female_Peasant_Arms",
+          "sourceWeightSumMin": 0.37630560249090195,
+          "sourceWeightSumMax": 1.0171497762203217,
+          "maxDiscardedInfluenceFraction": 0.08131451067145501
+        },
+        {
+          "mesh": "Eyebrows",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Female_Peasant_Body",
+          "sourceWeightSumMin": 0.49669746051949915,
+          "sourceWeightSumMax": 1.1516594868153334,
+          "maxDiscardedInfluenceFraction": 0.058320203821939254
+        },
+        {
+          "mesh": "Female_Peasant_Legs",
+          "sourceWeightSumMin": 0.49981189565733075,
+          "sourceWeightSumMax": 0.9999979604035616,
+          "maxDiscardedInfluenceFraction": 0.02728156166629181
+        },
+        {
+          "mesh": "Eyes",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Hair_Buns",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Female_Peasant_Feet",
+          "sourceWeightSumMin": 0.5858135148882866,
+          "sourceWeightSumMax": 1.3460503816604614,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "ResidentHead",
+          "sourceWeightSumMin": 0.11222732998430729,
+          "sourceWeightSumMax": 0.9999039173126221,
+          "maxDiscardedInfluenceFraction": 0.009658879937015308
+        }
+      ],
+      "readbackSkin": {
+        "vertices": 10913,
+        "maxInfluences": 4
+      },
+      "patches": [
+        {
+          "name": "Workshirt pocket -1",
+          "maxDiscardedInfluenceFraction": 0.003009356061980828
+        },
+        {
+          "name": "Pocket upper seam -1",
+          "maxDiscardedInfluenceFraction": 0.0015038020275685016
+        },
+        {
+          "name": "Trouser patch -1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Workshirt pocket 1",
+          "maxDiscardedInfluenceFraction": 0.002996480237995036
+        },
+        {
+          "name": "Pocket upper seam 1",
+          "maxDiscardedInfluenceFraction": 0.001507731761020148
+        },
+        {
+          "name": "Trouser patch 1",
+          "maxDiscardedInfluenceFraction": 0
+        }
+      ],
+      "retainedTextures": [
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Female_Light_BaseColor.png",
+          "sha256": "743f811857db0b950f3ad09a0733dfa4888801ead332313ca25becea14c54f8d"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Female_Normal.png",
+          "sha256": "cf922460b43ccd31e983e34db05514c9d451dd2f9cdd01a843978e797719f859"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Eye_Brown.png",
+          "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+        }
+      ],
+      "meshes": [
+        {
+          "name": "Female_Peasant_Arms",
+          "triangles": 5304,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Eyebrows",
+          "triangles": 1480,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Female_Peasant_Body",
+          "triangles": 2316,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Female_Peasant_Legs",
+          "triangles": 2008,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Eyes",
+          "triangles": 768,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Hair_Buns",
+          "triangles": 3284,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Female_Peasant_Feet",
+          "triangles": 2696,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "ResidentHead",
+          "triangles": 3320,
+          "maxPatchDiscardedInfluenceFraction": 0
+        }
+      ]
+    },
+    {
+      "id": "Driver",
+      "body": "Male",
+      "source": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ArtFirstPass\\Models\\NW3_Driver.fbx",
+      "sourceSha256": "f1a0a4e0c096e991cf65fec3bd235bce032b641ba7f527f09b4196d21bea3199",
+      "fbx": "NW10_Driver.fbx",
+      "sha256": "ac1ee8746df72086a6cf8f11d990c454bac063fc6bddcb11a7106e1304ae27ed",
+      "removedOrnamentVertices": 0,
+      "boneCount": 65,
+      "maxBoneRoundTripError": 1.7e-05,
+      "skin": {
+        "vertices": 10285,
+        "maxInfluences": 4
+      },
+      "sourceSkinNormalization": [
+        {
+          "mesh": "Male_Peasant_Body",
+          "sourceWeightSumMin": 0.4204205088317394,
+          "sourceWeightSumMax": 1.2887334092513782,
+          "maxDiscardedInfluenceFraction": 0.07710627749948462
+        },
+        {
+          "mesh": "Eyes",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Male_Peasant_Legs",
+          "sourceWeightSumMin": 0.3682900740132027,
+          "sourceWeightSumMax": 1.4160018106922507,
+          "maxDiscardedInfluenceFraction": 7.14911207549962e-05
+        },
+        {
+          "mesh": "Male_Peasant_Arms",
+          "sourceWeightSumMin": 0.3776319809257984,
+          "sourceWeightSumMax": 1.2841399579076014,
+          "maxDiscardedInfluenceFraction": 0.02204092398686719
+        },
+        {
+          "mesh": "Hair_SimpleParted",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "ResidentHead",
+          "sourceWeightSumMin": 0.7702581619378179,
+          "sourceWeightSumMax": 0.9997108578681946,
+          "maxDiscardedInfluenceFraction": 0.07660794049634922
+        },
+        {
+          "mesh": "Male_Peasant_Feet",
+          "sourceWeightSumMin": 0.9696673047728837,
+          "sourceWeightSumMax": 0.99999138712883,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Hair_Beard",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        },
+        {
+          "mesh": "Eyebrows",
+          "sourceWeightSumMin": 1.0,
+          "sourceWeightSumMax": 1.0,
+          "maxDiscardedInfluenceFraction": 0.0
+        }
+      ],
+      "readbackSkin": {
+        "vertices": 10285,
+        "maxInfluences": 4
+      },
+      "patches": [
+        {
+          "name": "Workshirt pocket -1",
+          "maxDiscardedInfluenceFraction": 0.000988576080122039
+        },
+        {
+          "name": "Pocket upper seam -1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Trouser patch -1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Workshirt pocket 1",
+          "maxDiscardedInfluenceFraction": 0.0009886339082501028
+        },
+        {
+          "name": "Pocket upper seam 1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Trouser patch 1",
+          "maxDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Workshirt placket",
+          "maxDiscardedInfluenceFraction": 0.004196586612166375
+        },
+        {
+          "name": "Closed cloth neckline",
+          "maxDiscardedInfluenceFraction": 0.0020247403984068324
+        }
+      ],
+      "retainedTextures": [
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Ligh.png",
+          "sha256": "419f96dbb8811511e2d515bcdabc085ff2f219ec7b8b4e91050a84cba6888fe9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Normal.png",
+          "sha256": "3645858289beb51643155a924e5148735dd5fe226230532936375c06ba829dec"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Eye_Brown.png",
+          "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+        }
+      ],
+      "meshes": [
+        {
+          "name": "Male_Peasant_Body",
+          "triangles": 3928,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Eyes",
+          "triangles": 768,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Legs",
+          "triangles": 1176,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Arms",
+          "triangles": 4762,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Hair_SimpleParted",
+          "triangles": 1301,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "ResidentHead",
+          "triangles": 2928,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Male_Peasant_Feet",
+          "triangles": 2700,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Hair_Beard",
+          "triangles": 1034,
+          "maxPatchDiscardedInfluenceFraction": 0
+        },
+        {
+          "name": "Eyebrows",
+          "triangles": 984,
+          "maxPatchDiscardedInfluenceFraction": 0
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "file": "D:\\SSFramework\\Tools\\ArtPipeline\\Blender\\blender_nomad_workwear.py",
+      "sha256": "5925ca4f96e83186b97d4ef29cd9820ae52fa6bab0db6bb0b987380492ebe0d7"
+    },
+    {
+      "file": "D:\\SSFramework\\Tools\\ArtPipeline\\Blender\\blender_nomad_resident_variants.py",
+      "sha256": "0c01711e5a506ead9998c952b2f3897ec171ae4c015ded04e7454e93a3e35e2c"
+    },
+    {
+      "file": "D:\\SSFramework\\Tools\\ArtPipeline\\Blender\\nomad_resident_variants.json",
+      "sha256": "2e45f325b7fa5b92198bdec7039f4210224f0de61b6adc896b458c82de9d0941"
+    },
+    {
+      "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ArtFirstPass\\Textures\\NW1_Fabric_Color.png",
+      "sha256": "c1d5b5532da394d381db8ebc5aae98b51a78219ad1f0064ee1d041596e04e3a5"
+    },
+    {
+      "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ArtFirstPass\\Textures\\NW1_Fabric_Normal.png",
+      "sha256": "3e53bf6456e51dfe4982a84b0a388408851341912dd611ac52a657fe2aea00af"
+    }
+  ]
+}

@@ -14,11 +14,12 @@ namespace Game.NomadWorkshop.PlayMode.Tests
     public class NomadResidentCrewPlayModeTests : NomadWarmWorkshopPlayModeTests
     {
         protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/ResidentCrewSample.unity";
+        protected virtual string WorkshirtPrefix => "NW3_Shirt_";
         protected override string ExpectedWorkshirtMaterial(ResidentHumanoidPresentation resident) => resident.name switch
         {
-            "Resident 01" => "NW3_Shirt_Mechanic",
-            "Resident 02" => "NW3_Shirt_Caretaker",
-            "Resident 03" => "NW3_Shirt_Driver",
+            "Resident 01" => WorkshirtPrefix + "Mechanic",
+            "Resident 02" => WorkshirtPrefix + "Caretaker",
+            "Resident 03" => WorkshirtPrefix + "Driver",
             _ => throw new InvalidOperationException("未声明的居民外观：" + resident.name)
         };
 
@@ -54,7 +55,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.That(renderers.Any(r => r.name == expectedHair[i]), Is.True, residents[i].name + " 发型/胡须绑定错误。");
                 Assert.That(renderers.All(r => r.quality == SkinQuality.Bone4), Is.True);
                 string shirt = renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null)
-                    .Select(m => m.name).Distinct().Single(n => n.StartsWith("NW3_Shirt_", StringComparison.Ordinal));
+                    .Select(m => m.name).Distinct().Single(n => n.StartsWith(WorkshirtPrefix, StringComparison.Ordinal));
                 Assert.That(shirt, Is.EqualTo(ExpectedWorkshirtMaterial(residents[i])));
                 result[i] = residents[i].name + "/" + shirt + "/" + expectedHair[i];
             }
@@ -74,6 +75,19 @@ namespace Game.NomadWorkshop.PlayMode.Tests
     public sealed class NomadDriverStairPlayModeTests : NomadStairTraversalPlayModeTests
     {
         protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/ResidentCrewDriverStairs.unity";
+    }
+
+    public sealed class NomadWorkwearMechanicStairPlayModeTests : NomadStairTraversalPlayModeTests
+    {
+        protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/WorkwearMechanicStairs.unity";
+    }
+    public sealed class NomadWorkwearCaretakerStairPlayModeTests : NomadStairTraversalPlayModeTests
+    {
+        protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/WorkwearCaretakerStairs.unity";
+    }
+    public sealed class NomadWorkwearDriverStairPlayModeTests : NomadStairTraversalPlayModeTests
+    {
+        protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/WorkwearDriverStairs.unity";
     }
 }
 #endif
