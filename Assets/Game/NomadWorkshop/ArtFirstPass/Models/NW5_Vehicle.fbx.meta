@@ -137,6 +137,16 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: NW5_CockpitAtlas
+    second: {fileID: 2100000, guid: d85a44d7cfe26ab40bc5f514e7e4a0fc, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: NW5_DeckAtlas
+    second: {fileID: 2100000, guid: 503a1cca9c22adb4f9a9f9e0c4978c6e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: NW5_ShellAtlas
     second: {fileID: 2100000, guid: f10f8816a0b621843bf448088cf277f6, type: 2}
   materials:

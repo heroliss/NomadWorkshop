@@ -19,6 +19,7 @@ namespace Game.NomadWorkshop.Editor
         public const string MaterialPath = NomadWarmWorkshopArtPipeline.Root + "/Materials/NW5_ShellAtlas.mat";
         private const string Root = NomadWarmWorkshopArtPipeline.Root;
         private const string SourceFolder = "ArtPipelineOutput/VehicleForms/current";
+        private static readonly string[] AtlasStems = { "NW5_Shell", "NW5_Deck", "NW5_Cockpit" };
 
 #pragma warning disable CS0649 // JsonUtility 读取明确版本的 Blender manifest。
         [Serializable] private sealed class Manifest
@@ -38,14 +39,14 @@ namespace Game.NomadWorkshop.Editor
             RequireCleanIdleScenes();
             string json = File.ReadAllText(SourceFolder + "/manifest.json");
             Manifest manifest = JsonUtility.FromJson<Manifest>(json);
-            if (manifest == null || manifest.version != "0.1.0" || manifest.status != "passed-export" ||
+            if (manifest == null || manifest.version != "0.2.0" || manifest.status != "passed-export" ||
                 manifest.atlasSize != 2048 || manifest.source == null || manifest.source.triangles <= 0)
                 throw new InvalidOperationException("参考车体没有完整的导出/烘焙证据。");
             ValidateFiles(manifest.sources, "Tools/ArtPipeline/Blender", new[]
-            { "blender_nomad_vehicle_forms.py", "blender_nomad_form_study.py", "blender_nomad_art_set.py" });
-            ValidateFiles(manifest.files, SourceFolder, new[]
-            { "NW5_Vehicle.fbx", "NW5_Shell_Color.png", "NW5_Shell_Normal.png", "NW5_Shell_Surface.png" });
-            Material atlas = ImportMaterial();
+            { "blender_nomad_vehicle_forms.py", "blender_nomad_form_study.py", "blender_nomad_art_set.py", "blender_nomad_deck_cockpit.py" });
+            ValidateFiles(manifest.files, SourceFolder, new[] { "NW5_Vehicle.fbx" }.Concat(AtlasStems
+                .SelectMany(stem => new[] { "Color", "Normal", "Surface" }.Select(channel => stem + "_" + channel + ".png"))).ToArray());
+            Material[] atlases = AtlasStems.Select(ImportMaterial).ToArray();
             string modelPath = Root + "/Models/NW5_Vehicle.fbx";
             File.Copy(SourceFolder + "/NW5_Vehicle.fbx", modelPath, true);
             AssetDatabase.ImportAsset(modelPath, ImportAssetOptions.ForceSynchronousImport);
@@ -62,7 +63,8 @@ namespace Game.NomadWorkshop.Editor
                 var material = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
                 importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), material.name), material);
             }
-            importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), "NW5_ShellAtlas"), atlas);
+            foreach (Material atlas in atlases)
+                importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), atlas.name), atlas);
             importer.SaveAndReimport();
             Scene preview = EditorSceneManager.NewPreviewScene();
             try
@@ -107,7 +109,7 @@ namespace Game.NomadWorkshop.Editor
             Directory.CreateDirectory("Logs/AIValidation/nomad-warm-art");
             File.WriteAllText("Logs/AIValidation/nomad-warm-art/reference-vehicle-import.json", JsonUtility.ToJson(new ImportReport
             { scene = ScenePath, triangles = manifest.source.triangles, capturedUtc = DateTime.UtcNow.ToString("O") }, true));
-            Debug.Log("参考车体候选已保存并回读；四段烘焙边框、原履带与同一三居民玩法，仍需实际运行和画面验收。");
+            Debug.Log("参考车体候选已保存并回读；结构边框、错缝甲板与折面车首接入同一三居民玩法，仍需实际运行和画面验收。");
         }
 
         [Serializable] private sealed class ImportReport
@@ -141,13 +143,13 @@ namespace Game.NomadWorkshop.Editor
             }
         }
 
-        private static Material ImportMaterial()
+        private static Material ImportMaterial(string stem)
         {
             var textures = new Texture2D[3]; string[] channels = { "Color", "Normal", "Surface" };
             for (int i = 0; i < channels.Length; i++)
             {
-                string path = Root + "/Textures/NW5_Shell_" + channels[i] + ".png";
-                File.Copy(SourceFolder + "/NW5_Shell_" + channels[i] + ".png", path, true);
+                string path = Root + "/Textures/" + stem + "_" + channels[i] + ".png";
+                File.Copy(SourceFolder + "/" + stem + "_" + channels[i] + ".png", path, true);
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
                 var importer = (TextureImporter)AssetImporter.GetAtPath(path);
                 importer.textureType = i == 1 ? TextureImporterType.NormalMap : TextureImporterType.Default;
@@ -160,14 +162,15 @@ namespace Game.NomadWorkshop.Editor
                 ClearUnusedSpriteMetadata(importer);
                 importer.SaveAndReimport(); textures[i] = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             }
-            var result = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
+            string materialPath = Root + "/Materials/" + stem + "Atlas.mat";
+            var result = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             if (result == null)
             {
                 Shader shader = Shader.Find("Universal Render Pipeline/Lit");
                 if (shader == null) throw new InvalidOperationException("缺少 URP/Lit。");
-                result = new Material(shader); AssetDatabase.CreateAsset(result, MaterialPath);
+                result = new Material(shader); AssetDatabase.CreateAsset(result, materialPath);
             }
-            result.name = "NW5_ShellAtlas";
+            result.name = stem + "Atlas";
             result.SetColor("_BaseColor", Color.white); result.SetTexture("_BaseMap", textures[0]);
             result.SetTexture("_BumpMap", textures[1]); result.SetFloat("_BumpScale", 1f);
             result.SetTexture("_MetallicGlossMap", textures[2]); result.SetFloat("_Smoothness", 1f);
@@ -176,7 +179,7 @@ namespace Game.NomadWorkshop.Editor
             EditorUtility.SetDirty(result); AssetDatabase.SaveAssetIfDirty(result); return result;
         }
 
-        // 仅处理本生成器拥有的三张材质图。Default 类型不会主动移除旧 Sprite 切片/身份记录；
+        // 仅处理本生成器拥有的材质图。Default 类型不会主动移除旧 Sprite 切片/身份记录；
         // Unity 6 的序列化字段若升级变化则明确拒绝，避免默默保留无用元数据或修改其他资产。
         private static void ClearUnusedSpriteMetadata(TextureImporter importer)
         {
@@ -211,6 +214,9 @@ namespace Game.NomadWorkshop.Editor
                     throw new InvalidOperationException("参考车体 FBX 轴向不匹配：" + axis.Item1);
             if (renderers.Count(r => r.sharedMaterials.Any(m => m.name == "NW5_ShellAtlas")) != 4)
                 throw new InvalidOperationException("车体烘焙边框数量或材质接线不匹配。");
+            foreach (string stem in AtlasStems.Skip(1))
+                if (renderers.Count(r => r.sharedMaterials.Any(m => m.name == stem + "Atlas")) != 1)
+                    throw new InvalidOperationException("甲板或驾驶舱的图集接线不匹配：" + stem);
         }
     }
 }
