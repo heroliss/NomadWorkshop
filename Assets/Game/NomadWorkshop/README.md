@@ -1,5 +1,7 @@
 # 《游牧工坊》Foundation 与技术实验
 
+> 2026-09-08 阶段收尾：首版 HUD 布局/主题 15/15、NW5 19/19、Foundation 108/108。修正居民完成爱好后反复占位、错过让路轮询的时序，保留原始失败和明确交错的红/绿证据。常驻居民选择、水量/燃料、暂停与倍速已可用，详见[HUD 验证记录](../../../docs/nomad-workshop-hud-first-pass.md)。下文旧数量属于相应历史阶段。
+
 > 状态：**Foundation 与技术实验 v0.51**，更新于 2026-09-06。正式场景已接入[首段驾驶](../../../docs/nomad-workshop-driving-integration.md)与[有限取水 / 污物清运 / 备件补给](../../../docs/nomad-workshop-stop-resource-ownership.md)，保留已有生活、水循环、建造与维修。[三居民接线](../../../docs/nomad-workshop-three-residents.md)已包括原生 Agent、个人行动所有权、共享工具、全员召回、多居民 v9 检查点和居民选择。原生测试与正式 1× 运行证据分开记录，当前进度及已知边界见[Foundation](../../../docs/nomad-workshop-foundation-vertical-slice.md)，产品目标见[愿景](../../../docs/nomad-workshop-game-vision.md)。玩家保存/读取/取消已接入旅程面板，身体碰撞、让路与续玩工程验收完成；最新 Foundation PlayMode 106/106。它仍是基础切片，不代表长期平衡或发行门槛已经成立。
 
 切片同时用于检验游戏设计、SSFramework 与 AI 自动工作流。优先通过小任务探索未经历的边界，依据实际失败与摩擦改进工具、文档和框架；不以堆叠功能作为唯一进度指标。
@@ -10,7 +12,7 @@
 
 此前单款 NW2 对比基线为 `Scenes/ResidentAppearanceSample.unity`，菜单“Assets/SSFramework/游牧工坊/首版美术/创建或打开现成人物对比”也可打开；独立持桶楼梯基线为 `Scenes/ResidentStairSample.unity`，对应菜单为“创建或打开现成人物楼梯对比”。一个 Quaternius 现成服装外观已接入三居民；修正内袖肩部穿插后，该模型工坊 12/12、楼梯 4/4 通过，并查看实际拿放和上楼画面。旧场景三人同外观；当前三种外观使用下面的 NW3 入口。UMA / MPFB 的候选研究、完整证据和后续可选游戏内捏人范围见[参数化人物制作](../../../docs/nomad-workshop-character-authoring.md)。
 
-**当前美术试玩优先打开 `Scenes/ReferenceVehicleSample.unity`。** NW5 已将分层钢板边框、内凹检修盖、错缝甲板、折面车首、旧漆和局部棚架接入同一三居民场景，最新 PlayMode 17/17。默认剖开屋顶，左下按钮或 **H** 显示外观；进入建造自动剖开，退出恢复偏好，详见[顶棚显示样板](../../../docs/nomad-workshop-canopy-cutaway.md)。完整来源、再生成入口和实机差距见[参考结构造型](../../../docs/nomad-workshop-reference-form-study.md)。原人物外观基线 `Scenes/ResidentCrewSample.unity` 保留，两个场景只有车体 Prefab 引用不同。当前棚顶尚无围护建造和天气效果。
+**当前美术试玩优先打开 `Scenes/ReferenceVehicleSample.unity`。** NW5 已将分层钢板边框、内凹检修盖、错缝甲板、折面车首、旧漆和局部棚架接入同一三居民场景，最新 PlayMode 19/19。默认剖开屋顶，左下按钮或 **H** 显示外观；进入建造自动剖开，退出恢复偏好，详见[顶棚显示样板](../../../docs/nomad-workshop-canopy-cutaway.md)。[首版玩家 HUD](../../../docs/nomad-workshop-hud-first-pass.md)提供三居民标签、常驻水量/燃料与右下时间控制，**空格**暂停/继续；详细面板可滚动，小窗口同步缩放输入。完整来源、再生成入口和实机差距见[参考结构造型](../../../docs/nomad-workshop-reference-form-study.md)。原人物外观基线 `Scenes/ResidentCrewSample.unity` 保留，两个场景只有车体 Prefab 引用不同，共用这套 HUD。当前棚顶尚无围护建造和天气效果。
 
 三人已改为短发、束发和灰发胡须的不同外观，保留同一套真实玩法；原工坊/身份保持检查 13/13、三款人物各自的楼梯检查 4/4。菜单“Assets/SSFramework/游牧工坊/首版美术/生成并打开三居民外观候选”用于按固定离线配方重新接线；直接打开已保存场景即可 Play。上面的单款 NW2 和原 Warm 场景保留为对比基线。服装仍有中世纪特征，游戏内捏人尚未接入。
 

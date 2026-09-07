@@ -19,9 +19,19 @@ namespace Game.NomadWorkshop.Foundation
     public static class FoundationHudLayout
     {
         public const float Margin = 14f;
-        public const float CompactResidentCardHeight = 112f;
+        public const float CompactResidentCardHeight = 132f;
         public const float ToolbarHeight = 36f;
-        public const float InformationPanelTop = 58f;
+        public const float InformationPanelTop = 140f;
+        public const float MinimumCanvasWidth = 960f;
+        public const float MinimumCanvasHeight = 540f;
+
+        /// <summary>绘制矩阵与屏幕拾取共享同一缩放；高分辨率保持正常字号，小窗口等比缩小。</summary>
+        public static float GetCanvasScale(float screenWidth, float screenHeight) =>
+            screenWidth <= 0f || screenHeight <= 0f ? 1f :
+                Mathf.Min(1f, screenWidth / MinimumCanvasWidth, screenHeight / MinimumCanvasHeight);
+
+        public static Vector2 GetCanvasSize(float screenWidth, float screenHeight) =>
+            new Vector2(screenWidth, screenHeight) / GetCanvasScale(screenWidth, screenHeight);
 
         public static FoundationHudPanel Toggle(
             FoundationHudPanel current,
@@ -48,7 +58,7 @@ namespace Game.NomadWorkshop.Foundation
         public static Rect GetCompactResidentCardRect(float screenWidth)
         {
             float availableWidth = Mathf.Max(0f, screenWidth - Margin * 2f);
-            float width = Mathf.Min(370f, availableWidth);
+            float width = Mathf.Min(352f, availableWidth);
             return new Rect(Margin, Margin, width, CompactResidentCardHeight);
         }
 
@@ -71,8 +81,15 @@ namespace Game.NomadWorkshop.Foundation
                 Mathf.Max(Margin, screenWidth - width - Margin),
                 InformationPanelTop,
                 width,
-                Mathf.Max(120f, screenHeight - InformationPanelTop - Margin));
+                Mathf.Max(0f, screenHeight - InformationPanelTop - 96f));
         }
+
+        public static Rect GetSupplyRect(float canvasWidth) =>
+            new(Mathf.Max(Margin, canvasWidth - 390f - Margin), 58f, Mathf.Min(390f, Mathf.Max(0f, canvasWidth - Margin * 2f)), 74f);
+
+        public static Rect GetTimeControlsRect(float canvasWidth, float canvasHeight) =>
+            new(Mathf.Max(Margin, canvasWidth - 320f - Margin), Mathf.Max(0f, canvasHeight - 82f),
+                Mathf.Min(320f, Mathf.Max(0f, canvasWidth - Margin * 2f)), 68f);
 
         /// <summary>可选屋顶切换控件固定左下；小窗口仍将可点击矩形限制在屏幕内。</summary>
         public static Rect GetRoofControlRect(float screenWidth, float screenHeight)
@@ -94,16 +111,20 @@ namespace Game.NomadWorkshop.Foundation
             bool informationPanelVisible,
             bool roofControlsVisible = false)
         {
-            var guiPoint = new Vector2(screenPoint.x, screenHeight - screenPoint.y);
-            if (GetCompactResidentCardRect(screenWidth).Contains(guiPoint) ||
-                GetCornerToolbarRect(screenWidth).Contains(guiPoint))
+            float scale = GetCanvasScale(screenWidth, screenHeight);
+            Vector2 size = GetCanvasSize(screenWidth, screenHeight);
+            var guiPoint = new Vector2(screenPoint.x, screenHeight - screenPoint.y) / scale;
+            if (GetCompactResidentCardRect(size.x).Contains(guiPoint) ||
+                GetCornerToolbarRect(size.x).Contains(guiPoint) ||
+                GetSupplyRect(size.x).Contains(guiPoint) ||
+                GetTimeControlsRect(size.x, size.y).Contains(guiPoint))
                 return true;
 
-            if (roofControlsVisible && GetRoofControlRect(screenWidth, screenHeight).Contains(guiPoint))
+            if (roofControlsVisible && GetRoofControlRect(size.x, size.y).Contains(guiPoint))
                 return true;
 
             return informationPanelVisible &&
-                   GetInformationPanelRect(screenWidth, screenHeight).Contains(guiPoint);
+                   GetInformationPanelRect(size.x, size.y).Contains(guiPoint);
         }
     }
 }

@@ -411,6 +411,7 @@ namespace Game.NomadWorkshop.Foundation
                         _resident.DecisionRetryRemaining = Mathf.Max(
                             0.1f,
                             residentDecisionRetrySeconds);
+                        if (TryRespondToWaitingTraffic()) break;
                         TryStartResidentRoutine();
                     }
                     break;

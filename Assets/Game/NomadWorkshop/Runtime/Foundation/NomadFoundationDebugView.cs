@@ -16,7 +16,7 @@ namespace Game.NomadWorkshop.Foundation
     /// 它与正式 3D View 使用同一读模型和 Command，后续换成 UGUI / UI Toolkit 不会改变 System；
     /// 当前重点是先验证信息层级、状态语义，以及让人和 AI 都能快速观察、暂停、加速和复位。
     /// </summary>
-    public sealed class NomadFoundationDebugView : MonoViewBase
+    public sealed partial class NomadFoundationDebugView : MonoViewBase
     {
         private FoundationBuildOption[] _buildOptions = Array.Empty<FoundationBuildOption>();
         private bool _ready;
@@ -54,6 +54,7 @@ namespace Game.NomadWorkshop.Foundation
         private int _sandstormIntensityPermille;
         private FoundationInteractionMode _interactionMode;
         private FoundationPlacementPreviewState _preview;
+        private string _lastBuildProbeReport;
         private FoundationFacilityAccessState[] _facilityAccess =
             Array.Empty<FoundationFacilityAccessState>();
         private FoundationBuildTransactionPhase _buildTransactionPhase;
@@ -143,7 +144,6 @@ namespace Game.NomadWorkshop.Foundation
         private GUIStyle _sectionStyle;
         private GUIStyle _smallStyle;
         private GUIStyle _compactNameStyle;
-        private GUIStyle _compactTaskStyle;
         private GUIStyle _meterLabelStyle;
         private GUIStyle _meterValueStyle;
         private GUIStyle _iconStyle;
@@ -197,7 +197,14 @@ namespace Game.NomadWorkshop.Foundation
                 readModel.SandstormIntensityPermille,
                 value => _sandstormIntensityPermille = value);
             Bag.Subscribe(readModel.InteractionMode, OnInteractionModeChanged);
-            Bag.Subscribe(readModel.PlacementPreview, value => _preview = value);
+            Bag.Subscribe(readModel.PlacementPreview, value =>
+            {
+                _preview = value;
+                // 切到开发面板会退出建造并清除幽灵；保留最后一次采样才能在该面板查看诊断。
+                if (value.RealtimeReachabilityEvaluated)
+                    _lastBuildProbeReport = $"最近一次建造通路预检：{value.RealtimeProbeMilliseconds:0.###} ms · " +
+                        $"访问 {value.RealtimeVisitedCells}/{value.RealtimeProbeCellCount} 采样点";
+            });
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
                 _facilityAccess = this.ExecuteCommand(
                     new GetFoundationFacilityAccessCommand()));
@@ -313,27 +320,36 @@ namespace Game.NomadWorkshop.Foundation
         private void OnGUI()
         {
             EnsureStyles();
-            DrawCompactResidentCard();
-            DrawCornerToolbar();
-            DrawRoofControl();
-
-            switch (_openPanel)
+            GUISkin previousSkin = GUI.skin;
+            Matrix4x4 previousMatrix = GUI.matrix;
+            Color previousColor = GUI.color;
+            bool previousEnabled = GUI.enabled;
+            try
             {
-                case FoundationHudPanel.Resident:
-                    DrawResidentDetailsPanel();
-                    break;
-                case FoundationHudPanel.Build:
-                    DrawBuildPanel();
-                    break;
-                case FoundationHudPanel.Developer:
-                    DrawDeveloperPanel();
-                    break;
-                case FoundationHudPanel.Journey:
-                    DrawJourneyPanel();
-                    break;
+                GUI.skin = _hudTheme.Skin;
+                float scale = FoundationHudLayout.GetCanvasScale(Screen.width, Screen.height);
+                GUI.matrix = previousMatrix * Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+                DrawPlayerResidentCard();
+                DrawCornerToolbar();
+                DrawSupplies();
+                DrawTimeControls();
+                DrawRoofControl();
+                switch (_openPanel)
+                {
+                    case FoundationHudPanel.Resident: DrawResidentDetailsPanel(); break;
+                    case FoundationHudPanel.Build: DrawBuildPanel(); break;
+                    case FoundationHudPanel.Developer: DrawDeveloperPanel(); break;
+                    case FoundationHudPanel.Journey: DrawJourneyPanel(); break;
+                }
+                DrawTooltip();
             }
-
-            DrawTooltip();
+            finally
+            {
+                GUI.skin = previousSkin;
+                GUI.matrix = previousMatrix;
+                GUI.color = previousColor;
+                GUI.enabled = previousEnabled;
+            }
         }
 
         /// <summary>
@@ -350,7 +366,7 @@ namespace Game.NomadWorkshop.Foundation
         private void DrawRoofControl()
         {
             if (!HasRoofControls) return;
-            Rect rect = FoundationHudLayout.GetRoofControlRect(Screen.width, Screen.height);
+            Rect rect = FoundationHudLayout.GetRoofControlRect(CanvasWidth, CanvasHeight);
             bool previous = GUI.enabled;
             GUI.enabled = previous && !_roofDisplay.BuildCutaway;
             string label = _roofDisplay.BuildCutaway ? "建造中 · 屋顶剖开" :
@@ -376,50 +392,9 @@ namespace Game.NomadWorkshop.Foundation
             }
         }
 
-        /// <summary>
-        /// 常驻卡观察选中居民；点击名字切换，IMGUI 每帧读取同一只读居民集合。
-        /// 个人订阅跟随选择子 Bag，复位/读档仍绑定该居民的稳定记录。
-        /// </summary>
-        private void DrawCompactResidentCard()
-        {
-            Rect outer = FoundationHudLayout.GetCompactResidentCardRect(Screen.width);
-            DrawPanelBackground(
-                outer,
-                new Color(0.10f, 0.13f, 0.14f, 0.94f),
-                new Color(0.22f, 0.66f, 0.68f, 0.95f));
-
-            GUILayout.BeginArea(new Rect(outer.x + 10f, outer.y + 8f, outer.width - 20f, outer.height - 16f));
-            GUILayout.BeginHorizontal();
-            Rect avatar = GUILayoutUtility.GetRect(28f, 28f, GUILayout.Width(28f), GUILayout.Height(28f));
-            DrawIconBadge(avatar, "人", new Color(0.2f, 0.72f, 0.74f));
-            GUILayout.BeginVertical();
-            if (GUILayout.Button($"{SelectedResidentName} ▸  ({_selectedResidentIndex + 1}/{_residents?.Count ?? 0})",
-                    _compactNameStyle, GUILayout.Height(18f)) && _residents is { Count: > 0 })
-                SelectResident((_selectedResidentIndex + 1) % _residents.Count);
-            GUILayout.Label(
-                $"{(_paused ? "已暂停" : Describe(_residentPhase))}\n" +
-                $"第 {_lifeDay} 天 · {_lifeMinuteOfDay / 60:00}:{_lifeMinuteOfDay % 60:00}",
-                _compactTaskStyle,
-                GUILayout.MinHeight(28f),
-                GUILayout.MaxHeight(32f));
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(2f);
-            Rect statusRow = GUILayoutUtility.GetRect(1f, 25f, GUILayout.ExpandWidth(true));
-            DrawMiniStatus(statusRow, 0, "水", "水分", 1f - _thirst, new Color(0.2f, 0.72f, 0.94f));
-            DrawMiniStatus(statusRow, 1, "健", "健康", _health, new Color(0.4f, 0.86f, 0.48f));
-            DrawMiniStatus(statusRow, 2, "能", "精力", 1f - _fatigue, new Color(0.35f, 0.82f, 0.48f));
-            DrawMiniStatus(statusRow, 3, "心", "心情", _mood, new Color(0.92f, 0.62f, 0.3f));
-
-            Rect actionRect = GUILayoutUtility.GetRect(1f, 5f, GUILayout.ExpandWidth(true));
-            DrawProgressBar(actionRect, _actionProgress, new Color(0.22f, 0.78f, 0.82f));
-            GUILayout.EndArea();
-        }
-
         private void DrawCornerToolbar()
         {
-            Rect outer = FoundationHudLayout.GetCornerToolbarRect(Screen.width);
+            Rect outer = FoundationHudLayout.GetCornerToolbarRect(CanvasWidth);
             string buildButtonLabel = _interactionMode != FoundationInteractionMode.Build
                 ? "建造"
                 : _openPanel == FoundationHudPanel.Build
@@ -427,8 +402,8 @@ namespace Game.NomadWorkshop.Foundation
                     : "建造面板";
             DrawPanelBackground(
                 outer,
-                new Color(0.09f, 0.11f, 0.12f, 0.94f),
-                new Color(0.28f, 0.32f, 0.33f, 0.95f));
+                FoundationHudTheme.Panel,
+                FoundationHudTheme.Border);
             GUILayout.BeginArea(new Rect(outer.x + 4f, outer.y + 4f, outer.width - 8f, outer.height - 8f));
             GUILayout.BeginHorizontal();
             if (DrawToolbarButton(
@@ -489,13 +464,11 @@ namespace Game.NomadWorkshop.Foundation
 
         private void DrawResidentDetailsPanel()
         {
-            Rect outer = FoundationHudLayout.GetInformationPanelRect(
-                Screen.width,
-                Screen.height);
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(CanvasWidth, CanvasHeight);
             DrawPanelBackground(
                 outer,
-                new Color(0.08f, 0.105f, 0.115f, 0.97f),
-                new Color(0.24f, 0.7f, 0.72f, 0.95f));
+                FoundationHudTheme.Panel,
+                FoundationHudTheme.Border);
 
             GUILayout.BeginArea(new Rect(outer.x + 10f, outer.y + 8f, outer.width - 20f, outer.height - 16f));
             _residentPanelScroll = GUILayout.BeginScrollView(_residentPanelScroll);
@@ -667,19 +640,16 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Space(3f);
         }
 
-        private static bool DrawToolbarButton(GUIContent content, bool active)
+        private bool DrawToolbarButton(GUIContent content, bool active)
         {
-            Color previous = GUI.backgroundColor;
-            if (active) GUI.backgroundColor = new Color(0.24f, 0.78f, 0.8f);
-            bool clicked = GUILayout.Button(content, GUILayout.Height(28f), GUILayout.ExpandWidth(true));
-            GUI.backgroundColor = previous;
-            return clicked;
+            return GUILayout.Button(content, active ? _hudTheme.SelectedButton : GUI.skin.button,
+                GUILayout.Height(28f), GUILayout.ExpandWidth(true));
         }
 
         private void DrawIconBadge(Rect rect, string symbol, Color color)
         {
             Color previous = GUI.color;
-            GUI.color = new Color(color.r, color.g, color.b, 0.92f);
+            GUI.color = new Color(color.r, color.g, color.b, 0.30f);
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
             GUI.color = Color.white;
             GUI.Label(rect, symbol, _iconStyle);
@@ -722,12 +692,12 @@ namespace Game.NomadWorkshop.Foundation
         private void DrawTooltip()
         {
             if (string.IsNullOrWhiteSpace(GUI.tooltip)) return;
-            float width = Mathf.Min(420f, Screen.width - 28f);
-            var rect = new Rect(14f, Mathf.Max(14f, Screen.height - 54f), width, 40f);
+            float width = Mathf.Min(420f, CanvasWidth - 28f);
+            var rect = new Rect(14f, Mathf.Max(14f, CanvasHeight - 112f), width, 48f);
             DrawPanelBackground(
                 rect,
-                new Color(0.06f, 0.075f, 0.08f, 0.98f),
-                new Color(0.42f, 0.62f, 0.64f, 0.95f));
+                FoundationHudTheme.Panel,
+                FoundationHudTheme.Border);
             GUI.Label(
                 new Rect(rect.x + 8f, rect.y + 5f, rect.width - 16f, rect.height - 10f),
                 GUI.tooltip,
@@ -739,7 +709,7 @@ namespace Game.NomadWorkshop.Foundation
 
         private void DrawJourneyPanel()
         {
-            Rect outer = FoundationHudLayout.GetInformationPanelRect(Screen.width, Screen.height);
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(CanvasWidth, CanvasHeight);
             GUILayout.BeginArea(outer, GUI.skin.box);
             _journeyScroll = GUILayout.BeginScrollView(_journeyScroll);
             GUILayout.Label("游牧工坊 · 首段旅程", _titleStyle);
@@ -849,22 +819,20 @@ namespace Game.NomadWorkshop.Foundation
 
         private void DrawBuildPanel()
         {
-            Rect outer = FoundationHudLayout.GetInformationPanelRect(
-                Screen.width,
-                Screen.height);
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(CanvasWidth, CanvasHeight);
             GUILayout.BeginArea(outer, GUI.skin.box);
             _buildPanelScroll = GUILayout.BeginScrollView(_buildPanelScroll);
-            GUILayout.Label("游牧工坊 · 建造与通路", _titleStyle);
+            GUILayout.Label("设施建造", _titleStyle);
             if (!string.IsNullOrEmpty(_buildFeedback))
                 GUILayout.Label(_buildFeedback, _smallStyle);
             GUILayout.Label(
-                "选择设施、检查占地与交互位，再提交连续 NavMesh 建造事务",
+                "选择设施，留出工作位与通路。",
                 _smallStyle);
             GUILayout.Space(7f);
             GUILayout.Label("建造", _sectionStyle);
             if (GUILayout.Button(
                     _interactionMode == FoundationInteractionMode.Build
-                        ? "退出建造模式（B / 空幽灵时 Esc）"
+                        ? "退出建造（B / 未摆放时 Esc）"
                         : "进入建造模式（B）",
                     GUILayout.Height(30f)))
             {
@@ -877,14 +845,14 @@ namespace Game.NomadWorkshop.Foundation
             bool previousEnabled = GUI.enabled;
             GUI.enabled = previousEnabled &&
                           _interactionMode == FoundationInteractionMode.Build;
-            GUILayout.BeginHorizontal();
             for (var i = 0; i < _buildOptions.Length; i++)
             {
+                if (i % 2 == 0) GUILayout.BeginHorizontal();
                 FoundationBuildOption option = _buildOptions[i];
-                if (GUILayout.Button($"{option.Shortcut}  {option.DisplayName}", GUILayout.Height(30f)))
+                if (GUILayout.Button($"{option.Shortcut}  {option.DisplayName}", GUILayout.Height(34f), GUILayout.Width(165f)))
                     this.ExecuteCommand(new BeginFacilityPlacementCommand(option.DefinitionId));
+                if (i % 2 == 1 || i == _buildOptions.Length - 1) GUILayout.EndHorizontal();
             }
-            GUILayout.EndHorizontal();
             GUI.enabled = previousEnabled;
 
             if (_preview.Active)
@@ -903,7 +871,7 @@ namespace Game.NomadWorkshop.Foundation
                             ? new Color(0.55f, 1f, 0.68f)
                             : new Color(1f, 0.55f, 0.45f);
                 string placementMessage = pending
-                    ? "正在更新 NavMesh"
+                    ? "正在检查通路…"
                     : _preview.HasReachabilityWarning
                         ? $"可建造（可达性警告）：{Describe(_preview.Failure)}；左键仍可确认"
                         : _preview.CanConfirm
@@ -914,10 +882,7 @@ namespace Game.NomadWorkshop.Foundation
                 if (_preview.RealtimeReachabilityEvaluated)
                 {
                     GUILayout.Label(
-                        $"交互位：{_preview.ReachableInteractionSlotCount}/" +
-                        $"{_preview.InteractionSlotCount} 可达 · 实时通路预检 " +
-                        $"{_preview.RealtimeProbeMilliseconds:0.###} ms · " +
-                        $"访问 {_preview.RealtimeVisitedCells}/{_preview.RealtimeProbeCellCount} 采样点",
+                        $"可使用工作位：{_preview.ReachableInteractionSlotCount} / {_preview.InteractionSlotCount}",
                         _smallStyle);
                 }
                 int affectedFacilities = CountPreviewAccessIssues();
@@ -949,12 +914,12 @@ namespace Game.NomadWorkshop.Foundation
                 GUILayout.EndHorizontal();
                 GUILayout.Label("右键逆时针旋转；中键拖动 / 滚轮，或双指拖动 / 捏合控制镜头。", _smallStyle);
                 if (_buildTransactionPhase != FoundationBuildTransactionPhase.Idle)
-                    GUILayout.Label($"NavMesh 事务：{Describe(_buildTransactionPhase)}", _smallStyle);
+                    GUILayout.Label("正在检查摆放后的通路，请稍候。", _smallStyle);
             }
             else if (_interactionMode == FoundationInteractionMode.Build)
             {
                 GUILayout.Label(
-                    "建造诊断已开启：全部设施功能点与停靠位持续显示；数字键选择对应设施。",
+                    "数字键选择设施；彩色标记表示设施的工作位和物品停放区。",
                     _smallStyle);
             }
             else
@@ -981,7 +946,7 @@ namespace Game.NomadWorkshop.Foundation
 
             GUILayout.Space(8f);
             GUILayout.Label(
-                "开发期说明：当前点击确认仍会立即完成设施落位；材料运输、蓝图占位和人力施工将接入下一条执行闭环。",
+                "当前建造为即时摆放，无需等待材料运输。",
                 _smallStyle);
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -989,15 +954,15 @@ namespace Game.NomadWorkshop.Foundation
 
         private void DrawDeveloperPanel()
         {
-            Rect outer = FoundationHudLayout.GetInformationPanelRect(
-                Screen.width,
-                Screen.height);
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(CanvasWidth, CanvasHeight);
             GUILayout.BeginArea(outer, GUI.skin.box);
             _developerPanelScroll = GUILayout.BeginScrollView(_developerPanelScroll);
             GUILayout.Label("游牧工坊 · 开发控制台", _titleStyle);
             GUILayout.Label(
                 "观察模拟真值、方案解释、资源守恒、设施状态与测试 Harness",
                 _smallStyle);
+            if (!string.IsNullOrEmpty(_lastBuildProbeReport))
+                GUILayout.Label(_lastBuildProbeReport, _smallStyle);
             GUILayout.Label(
                 $"第 {_lifeDay} 生活日 · {_lifeMinuteOfDay / 60:00}:" +
                 $"{_lifeMinuteOfDay % 60:00} · 气候年 {_climateYear}",
@@ -1197,14 +1162,6 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Space(7f);
             GUILayout.Label("Harness", _sectionStyle);
             GUILayout.BeginHorizontal();
-            bool timeControlsEnabled = GUI.enabled;
-            GUI.enabled = timeControlsEnabled && !_checkpointBusy;
-            if (GUILayout.Button(_paused ? "继续" : "暂停"))
-                this.ExecuteCommand(new SetFoundationPausedCommand(!_paused));
-            if (GUILayout.Button("0.5×")) this.ExecuteCommand(new SetFoundationSpeedCommand(0.5f));
-            if (GUILayout.Button("1×")) this.ExecuteCommand(new SetFoundationSpeedCommand(1f));
-            if (GUILayout.Button("4×")) this.ExecuteCommand(new SetFoundationSpeedCommand(4f));
-            GUI.enabled = timeControlsEnabled;
             if (GUILayout.Button("复位"))
             {
                 this.ExecuteCommand(new ResetFoundationSliceCommand());
@@ -1300,23 +1257,25 @@ namespace Game.NomadWorkshop.Foundation
         private void EnsureStyles()
         {
             if (_titleStyle != null) return;
+            _hudTheme = new FoundationHudTheme(GUI.skin);
+            Bag.Add(_hudTheme);
             _titleStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 20,
+                fontSize = 19,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.95f, 0.78f, 0.42f) },
+                normal = { textColor = FoundationHudTheme.Brass },
             };
             _sectionStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 15,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.45f, 0.88f, 0.88f) },
+                normal = { textColor = FoundationHudTheme.Teal },
             };
             _smallStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 11,
+                fontSize = 12,
                 wordWrap = true,
-                normal = { textColor = new Color(0.74f, 0.78f, 0.78f) },
+                normal = { textColor = FoundationHudTheme.Muted },
             };
             _compactNameStyle = new GUIStyle(GUI.skin.label)
             {
@@ -1324,14 +1283,6 @@ namespace Game.NomadWorkshop.Foundation
                 fontStyle = FontStyle.Bold,
                 padding = new RectOffset(3, 0, 0, 0),
                 normal = { textColor = new Color(0.94f, 0.96f, 0.94f) },
-            };
-            _compactTaskStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 10,
-                wordWrap = true,
-                clipping = TextClipping.Clip,
-                padding = new RectOffset(3, 0, 0, 0),
-                normal = { textColor = new Color(0.68f, 0.74f, 0.74f) },
             };
             _meterLabelStyle = new GUIStyle(GUI.skin.label)
             {

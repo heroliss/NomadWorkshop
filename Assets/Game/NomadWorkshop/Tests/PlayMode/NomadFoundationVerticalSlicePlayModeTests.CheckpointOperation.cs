@@ -94,6 +94,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 var motors = NativeMotors();
                 var positions = motors.Select(x => x.transform.position).ToArray();
                 Assert.That(_model.CheckpointBusy.Value && _model.IsPaused.Value, Is.True);
+                float speed = _model.SimulationSpeed.Value;
+                Assert.That(_debugView.TogglePauseForTests(), Is.False, "存档 IO 等待期间，常驻暂停按钮也必须禁用。");
+                Assert.That(_debugView.SetPlaybackSpeedForTests(4f), Is.False);
+                Assert.That(_model.SimulationSpeed.Value, Is.EqualTo(speed));
                 for (var frame = 0; frame < 8; frame++) await UniTask.Yield();
                 Assert.That(_model.SimulationTick.Value, Is.EqualTo(tick));
                 for (var i = 0; i < motors.Length; i++)
@@ -103,7 +107,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 Assert.That(_model.IsPaused.Value || _model.CheckpointBusy.Value, Is.False);
                 Assert.That(File.Exists(_checkpointStorage.SlotPath), Is.True);
                 Assert.That(_model.CheckpointFeedback.Value, Does.Contain("已保存"));
-                _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+                Assert.That(_debugView.TogglePauseForTests(), Is.True, "IO 结束后恢复玩家控制。");
+                Assert.That(_model.IsPaused.Value, Is.True);
                 _context.ExecuteCommand(new RunFoundationSoakHarnessCommand(1000, 100));
                 Assert.That(_model.SimulationTick.Value, Is.GreaterThan(tick));
                 bool loaded = await _context.ExecuteCommandAsync(new LoadFoundationCheckpointCommand(PlayerTestSlot));

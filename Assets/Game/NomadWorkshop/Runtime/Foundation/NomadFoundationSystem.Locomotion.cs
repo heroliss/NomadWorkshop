@@ -195,37 +195,55 @@ namespace Game.NomadWorkshop.Foundation
         private void TryYieldSoftResidents(FoundationResidentExecution moving, Vector3 goal)
         {
             foreach (var other in _residents)
+                TryYieldSoftResident(moving, other, goal);
+        }
+
+        // 请求者的两秒重试可能一直错过“完成爱好 → Idle → 再次占位”的短窗口。
+        // 原生闲人在重选行动前回应已经存在的等待；不轮询新目标、不改确定性 Soak 决策序列。
+        private bool TryRespondToWaitingTraffic()
+        {
+            if (!UsesNativeLocomotion) return false;
+            foreach (var moving in _residents)
             {
-                if (other == moving || other.StopVisit != null || other.InteractionSpace is { IsActive: true } ||
-                    other.ActiveHaul != null || other.ActiveWorldItemMove != null || other.ActiveRepairPartUse != null ||
-                    other.Phase is not (FoundationResidentPhase.Relaxing or FoundationResidentPhase.Idle or
-                        FoundationResidentPhase.WaitingForFacility or FoundationResidentPhase.RestingOnGround)) continue;
-                Vector3 position = other.State.ResidentLocalPosition.Value;
-                if (HorizontalDistance(position, moving.State.ResidentLocalPosition.Value) > 0.8f &&
-                    HorizontalDistance(position, goal) > 0.6f) continue;
-                // 固定顺序只用于候选空地搜索，不增设网格预约或消耗居民决策随机流。
-                for (var direction = 0; direction < 8; direction++)
-                {
-                    float angle = (direction + (int)(other.OwnerId % 8UL)) * 45f * Mathf.Deg2Rad;
-                    Vector3 candidate = position + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.85f;
-                    if (HorizontalDistance(candidate, goal) < 0.65f || HasOtherResidentAt(other, candidate) ||
-                        !IsResidentPoseClear(deckLayout.LocalToPose(candidate))) continue;
-                    using var scope = UseResident(other);
-                    if (!TryAssignTravelPath(candidate)) continue;
-                    if (!YieldRouteKeepsBodyClearance(other, other.PathCorners))
-                    {
-                        ClearActivePath();
-                        continue;
-                    }
-                    _resident.LeisureKind = FoundationLeisureKind.None;
-                    _resident.PhaseRemaining = 0f;
-                    SetResidentPhase(FoundationResidentPhase.MovingToLeisure, $"为 {moving.StableId} 让出通路与工作位");
-                    // 请求者先等出身体净空；让位者仍需与其他行走者互相避让。
-                    _resident.YieldingForResidentId = moving.StableId;
-                    ConfigureNativeMotion(_resident);
-                    break;
-                }
+                if (moving.PathCorners.Length == 0 || moving.NativeStallSeconds < 1f) continue;
+                if (TryYieldSoftResident(moving, _resident, moving.PathCorners[moving.PathCorners.Length - 1]))
+                    return true;
             }
+            return false;
+        }
+
+        private bool TryYieldSoftResident(FoundationResidentExecution moving, FoundationResidentExecution other, Vector3 goal)
+        {
+            if (other == moving || other.StopVisit != null || other.InteractionSpace is { IsActive: true } ||
+                other.ActiveHaul != null || other.ActiveWorldItemMove != null || other.ActiveRepairPartUse != null ||
+                other.Phase is not (FoundationResidentPhase.Relaxing or FoundationResidentPhase.Idle or
+                    FoundationResidentPhase.WaitingForFacility or FoundationResidentPhase.RestingOnGround)) return false;
+            Vector3 position = other.State.ResidentLocalPosition.Value;
+            if (HorizontalDistance(position, moving.State.ResidentLocalPosition.Value) > 0.8f &&
+                HorizontalDistance(position, goal) > 0.6f) return false;
+            // 固定顺序只用于候选空地搜索，不增设网格预约或消耗居民决策随机流。
+            for (var direction = 0; direction < 8; direction++)
+            {
+                float angle = (direction + (int)(other.OwnerId % 8UL)) * 45f * Mathf.Deg2Rad;
+                Vector3 candidate = position + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.85f;
+                if (HorizontalDistance(candidate, goal) < 0.65f || HasOtherResidentAt(other, candidate) ||
+                    !IsResidentPoseClear(deckLayout.LocalToPose(candidate))) continue;
+                using var scope = UseResident(other);
+                if (!TryAssignTravelPath(candidate)) continue;
+                if (!YieldRouteKeepsBodyClearance(other, other.PathCorners))
+                {
+                    ClearActivePath();
+                    continue;
+                }
+                _resident.LeisureKind = FoundationLeisureKind.None;
+                _resident.PhaseRemaining = 0f;
+                SetResidentPhase(FoundationResidentPhase.MovingToLeisure, $"为 {moving.StableId} 让出通路与工作位");
+                // 请求者先等出身体净空；让位者仍需与其他行走者互相避让。
+                _resident.YieldingForResidentId = moving.StableId;
+                ConfigureNativeMotion(_resident);
+                return true;
+            }
+            return false;
         }
 
         private void TryYieldMovingResident(FoundationResidentExecution requester)

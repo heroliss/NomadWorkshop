@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using Cysharp.Threading.Tasks;
 using Game.NomadWorkshop.Foundation;
 using Game.NomadWorkshop.Simulation;
@@ -221,7 +222,112 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         public IEnumerator NativeCohort_FiniteRoundtripAndRecall_Seed1729() => RunNativeRoundtrip(1729);
 
         [UnityTest]
+        public IEnumerator NativeCohort_NarrowHobbyApproach_SoftResidentWalksAsideForDriver()
+        {
+            _system.ConfigureResidentCountForTests(3);
+            yield return ResetAndBuildSoakScenario(17311);
+            yield return BuildFacility("driver-station", 3800, 3400);
+            var saved = CaptureStopCheckpoint();
+            foreach (var resident in saved.Residents) resident.ThirstPermille = 200;
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(saved));
+            _worldView.enabled = false;
+            _system.ConfigureNativeLocomotionForTests(true);
+            yield return null;
+            // 来自返程失败帧的三个脚底。只构造物理位置，不模拟一次成功到达或伪造资源交接。
+            Vector3[] positions = { new(1.464f, .015f, .720f), new(2.800f, .015f, -.880f), new(1.840f, .015f, .580f) };
+            var motors = NativeMotors().OrderBy(x => x.name).ToArray();
+            for (int i = 0; i < motors.Length; i++) Assert.That(motors[i].Warp(positions[i]), Is.True);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(NomadFoundationSystem).GetMethod("ReadNativeLocomotionFrame", flags).Invoke(_system, null);
+            for (int i = 0; i < motors.Length; i++)
+                Assert.That(Vector3.Distance(motors[i].transform.position, positions[i]), Is.LessThan(.03f), "失败现场脚底必须实际重建。");
+            var executions = (IList)typeof(NomadFoundationSystem).GetField("_residents", flags).GetValue(_system);
+            _context.ExecuteCommand(new SetFoundationSpeedCommand(4f));
+            _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Destination));
+            // 设置目的地会唤醒全员，因此在它之后固定闲人；让位仍必须走正式执行器。
+            for (int i = 1; i < executions.Count; i++)
+                executions[i].GetType().GetField("DecisionRetryRemaining", flags).SetValue(executions[i], 1000f);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            bool observedYield = false;
+            float minimumSeparation = float.PositiveInfinity;
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (_model.JourneyPositionMicrometers.Value == 0 && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                var resident = ReadCohort().Residents[2];
+                observedYield |= resident.CurrentTask.CurrentValue.Contains("让出通路");
+                minimumSeparation = Mathf.Min(minimumSeparation,
+                    Vector3.Distance(motors[0].transform.position, motors[2].transform.position));
+            }
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Assert.That(observedYield, Is.True, CohortDiagnostic() + " | " + NativeBodyDiagnostic(motors));
+            Assert.That(_model.JourneyPositionMicrometers.Value, Is.GreaterThan(0), "驾驶员必须实际穿过窄口并到岗。" + CohortDiagnostic());
+            Assert.That(minimumSeparation, Is.GreaterThanOrEqualTo(.32f));
+        }
+
+        [UnityTest]
         public IEnumerator NativeCohort_FiniteRoundtripAndRecall_Seed17311() => RunNativeRoundtrip(17311);
+
+        [UnityTest]
+        public IEnumerator NativeCohort_FinishedHobbyAnswersWaitingDriver_BeforeRebookingItsSlot()
+        {
+            _system.ConfigureResidentCountForTests(3);
+            yield return ResetAndBuildSoakScenario(17311);
+            yield return BuildFacility("driver-station", 3800, 3400);
+            var saved = CaptureStopCheckpoint();
+            foreach (var resident in saved.Residents)
+            {
+                resident.ThirstPermille = 200;
+                resident.EntertainmentPermille = 30;
+            }
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(saved));
+            _worldView.enabled = false;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var executions = (IList)typeof(NomadFoundationSystem).GetField("_residents", flags).GetValue(_system);
+            void SetExecution(int index, string field, float value) =>
+                executions[index].GetType().GetField(field, flags).SetValue(executions[index], value);
+            SetExecution(0, "DecisionRetryRemaining", 1000f);
+            SetExecution(1, "DecisionRetryRemaining", 1000f);
+            // 前置行动通过真实决策/租约/到岗建立；仅这段布置使用确定性角点快进。
+            for (int i = 0; i < 300 && ReadCohort().Residents[2].ResidentPhase.CurrentValue != FoundationResidentPhase.EnjoyingHobby; i++)
+                StepCohort(100);
+            Assert.That(ReadCohort().Residents[2].ResidentPhase.CurrentValue, Is.EqualTo(FoundationResidentPhase.EnjoyingHobby));
+            _system.ConfigureNativeLocomotionForTests(true);
+            yield return null;
+            var motors = NativeMotors().OrderBy(x => x.name).ToArray();
+            Vector3[] positions = { new(1.464f, .015f, .720f), new(2.800f, .015f, -.880f), new(1.840f, .015f, .580f) };
+            for (int i = 0; i < motors.Length; i++) Assert.That(motors[i].Warp(positions[i]), Is.True);
+            typeof(NomadFoundationSystem).GetMethod("ReadNativeLocomotionFrame", flags).Invoke(_system, null);
+            _context.ExecuteCommand(new SetFoundationSpeedCommand(4f));
+            _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Destination));
+            SetExecution(1, "DecisionRetryRemaining", 1000f);
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            float deadline = Time.realtimeSinceStartup + 5f;
+            while (ReadCohort().Residents[0].MovementStallMilliseconds.CurrentValue < 1100 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Assert.That(ReadCohort().Residents[0].ResidentPhase.CurrentValue, Is.EqualTo(FoundationResidentPhase.MovingToDriver));
+            Assert.That(ReadCohort().Residents[0].MovementStallMilliseconds.CurrentValue, Is.GreaterThanOrEqualTo(1100));
+            Assert.That(ReadCohort().Residents[2].ResidentPhase.CurrentValue, Is.EqualTo(FoundationResidentPhase.EnjoyingHobby));
+            // 覆盖请求者刚轮询完、占位者紧接着完成工作的交错；不等待随机帧率碰巧命中 Idle。
+            SetExecution(0, "NativeRetrySeconds", 2f);
+            SetExecution(2, "PhaseRemaining", .01f);
+            SetExecution(2, "DecisionRetryRemaining", 0f);
+            int hobbies = ReadCohort().Residents[2].CompletedHobbyCount.CurrentValue;
+            long tick = _model.SimulationTick.Value;
+            _context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            bool yielded = false;
+            deadline = Time.realtimeSinceStartup + 3f;
+            while (!yielded && _model.SimulationTick.Value - tick < 1500 && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+                yielded = ReadCohort().Residents[2].CurrentTask.CurrentValue.Contains("让出通路");
+            }
+            Assert.That(yielded, Is.True, "完成爱好后必须先回应近处已经等待的居民，不能重新占位直到下次轮询。" + CohortDiagnostic());
+            Assert.That(ReadCohort().Residents[2].CompletedHobbyCount.CurrentValue, Is.EqualTo(hobbies + 1));
+            yield return WaitNativeCondition(() => _model.JourneyPositionMicrometers.Value > 0, 5f, "让位后实际到驾驶台");
+            _context.ExecuteCommand(new SetFoundationPausedCommand(true));
+        }
 
         private IEnumerator RunNativeRoundtrip(int seed)
         {
@@ -292,10 +398,20 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             System.Action observation = null)
         {
             float deadline = Time.realtimeSinceStartup + wallSeconds;
+            var phaseHistory = new System.Collections.Generic.Queue<string>();
+            string previousPhases = null;
             while (!condition() && Time.realtimeSinceStartup < deadline)
             {
                 yield return null;
                 var read = ReadCohort();
+                string phases = string.Join("/", read.Residents.Select(x => x.ResidentPhase.CurrentValue));
+                if (phases != previousPhases)
+                {
+                    previousPhases = phases;
+                    phaseHistory.Enqueue($"tick={_model.SimulationTick.Value} {phases} " + string.Join(";", read.Residents.Select(x =>
+                        $"{x.StableId}@{x.ResidentLocalPosition.CurrentValue:F3},stall={x.MovementStallMilliseconds.CurrentValue}")));
+                    if (phaseHistory.Count > 48) phaseHistory.Dequeue();
+                }
                 if (!read.Residents.All(x => x.ResidentHealth.CurrentValue > 0f))
                     Assert.Fail(stage + ": " + CohortDiagnostic());
                 var motors = NativeMotors();
@@ -311,7 +427,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                         NativeBodyDiagnostic(motors));
                 }
                 if (read.Residents.Max(x => x.MovementStallMilliseconds.CurrentValue) >= 15000L)
-                    Assert.Fail(stage + "：逐人移动不能被其他人的进展掩盖。" + CohortDiagnostic() + " | " + NativeBodyDiagnostic(motors));
+                    Assert.Fail(stage + "：逐人移动不能被其他人的进展掩盖。" + CohortDiagnostic() + " | " + NativeBodyDiagnostic(motors) +
+                        "\n最近的真实帧阶段：\n" + string.Join("\n", phaseHistory));
                 int total = CalculateProjectedWaterTotal() + _model.StopWaterMilliliters.Value + _model.StopWasteMilliliters.Value +
                     read.Residents.Skip(1).Sum(x => x.BodyWaterMilliliters.CurrentValue + x.BladderWasteMilliliters.CurrentValue);
                 Assert.That(total, Is.EqualTo(80000), stage + "：每帧审计世界水量。");
