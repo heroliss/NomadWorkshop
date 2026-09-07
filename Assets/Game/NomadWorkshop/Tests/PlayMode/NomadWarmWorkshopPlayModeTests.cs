@@ -210,7 +210,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Transform[] transforms = Deck.GetComponentsInChildren<Transform>(true);
             Transform wheel = transforms.First(t => t.name.Contains("_Wheel_") && t.GetComponent<Renderer>() == null);
             Transform shoe = transforms.First(t => t.name.EndsWith("_Shoe_00", StringComparison.Ordinal));
-            Transform rock = transforms.First(t => t.name == "Desert outcrop_0");
+            FoundationEnvironmentVisual environment = Deck.GetComponentInChildren<FoundationEnvironmentVisual>();
+            Transform rock = environment != null ? environment.SceneryGroups[0] : transforms.First(t => t.name == "Desert outcrop_0");
+            Renderer[] scrolling = environment != null ? environment.ScrollingSurfaces.Select(s => s.Renderer).ToArray() : Array.Empty<Renderer>();
+            Vector4[] initialUvs = scrolling.Select(EnvironmentUv).ToArray();
             Vector3 deckPosition = Deck.position;
             Quaternion initialWheel = wheel.rotation;
             Vector3 initialShoe = shoe.position;
@@ -224,6 +227,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(Quaternion.Angle(wheel.rotation, initialWheel), Is.GreaterThan(1f));
             Assert.That(Vector3.Distance(shoe.position, initialShoe), Is.GreaterThan(.02f));
             Assert.That(Vector3.Distance(rock.position, initialRock), Is.GreaterThan(.1f));
+            Vector4[] savedUvs = scrolling.Select(EnvironmentUv).ToArray();
+            if (scrolling.Length > 0) Assert.That(savedUvs.SequenceEqual(initialUvs), Is.False, "真实旅程必须同时滚动地表/车辙。");
             Assert.That(Deck.position, Is.EqualTo(deckPosition), "表现不得移动导航所在的逻辑甲板。");
             var checkpoint = _context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
             Quaternion savedWheel = wheel.rotation;
@@ -243,6 +248,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(wheel.rotation, Is.EqualTo(savedWheel));
             Assert.That(shoe.position, Is.EqualTo(savedShoe));
             Assert.That(rock.position, Is.EqualTo(savedRock));
+            Assert.That(scrolling.Select(EnvironmentUv), Is.EqualTo(savedUvs), "暂停不能继续滚动纹理。");
             Assert.That(dust.Select(p => p.time), Is.EqualTo(particleTimes));
             long savedPosition = _read.JourneyPositionMicrometers.CurrentValue;
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
@@ -254,6 +260,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(Quaternion.Angle(wheel.rotation, savedWheel), Is.LessThan(.001f));
             Assert.That(Vector3.Distance(shoe.position, savedShoe), Is.LessThan(.0001f));
             Assert.That(Vector3.Distance(rock.position, savedRock), Is.LessThan(.0001f));
+            Assert.That(scrolling.Select(EnvironmentUv), Is.EqualTo(savedUvs), "恢复必须还原同一地表与车辙相位。");
             Assert.That(dust.Sum(p => p.particleCount), Is.Zero, "恢复时不能把旧路段的扬尘带到新状态。");
             _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.None));
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
@@ -272,6 +279,11 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 yield return new WaitForFixedUpdate();
             Assert.That(_read.JourneyPositionMicrometers.CurrentValue - from, Is.GreaterThanOrEqualTo(minimumDelta),
                 "真实居民必须实际到驾驶位后才出现行驶反馈：" + _read.DepartureFeedback.CurrentValue);
+        }
+
+        private static Vector4 EnvironmentUv(Renderer renderer)
+        {
+            var block = new MaterialPropertyBlock(); renderer.GetPropertyBlock(block); return block.GetVector("_BaseMap_ST");
         }
 
         private IEnumerator WaitForFilledCanInMotion()

@@ -353,7 +353,7 @@ MonoBehaviour:
   reflectionProbe: {fileID: 1791895533}
   screenUi: {fileID: 963999922}
   vehicleVisualPrefab: {fileID: 5748504906556980738, guid: f763cc141f7c26e42868208a88bdb4fc, type: 3}
-  environmentVisualPrefab: {fileID: 1030598556807106459, guid: 2fa0f2f1db4379b45ab59bba743c85a9, type: 3}
+  environmentVisualPrefab: {fileID: 4308421762387776824, guid: 21092c3009e14f64c9d073cac1fec08b, type: 3}
   waystationVisualPrefab: {fileID: 4698855629650623304, guid: 2b0cfb13e3278c045836769e3a47f89a, type: 3}
   residentVisualPrefab: {fileID: 7370436065333556048, guid: d5fbe45240023b34195a9bbf8dad7380, type: 3}
   residentVisualBindings:

@@ -18,14 +18,11 @@ namespace Game.NomadWorkshop.Foundation
         private const float MaximumDustLifetime = 1.2f;
         private static readonly float LoopLength = 4f * TrackHalfStraight + 2f * Mathf.PI * TrackRadius;
         private readonly Transform _vehicle;
-        private readonly Transform _environment;
+        private readonly FoundationEnvironmentPresentation _environment;
         private readonly List<Wheel> _wheels = new();
         private readonly List<Shoe> _shoes = new();
         private readonly List<Vector3> _podCenters = new();
-        private readonly List<Scenery> _scenery = new();
-        private readonly List<Renderer> _ground = new();
         private readonly List<ParticleSystem> _dust = new();
-        private readonly MaterialPropertyBlock _surface = new();
         private readonly Material _dustMaterial;
         private readonly Texture2D _dustTexture;
         private long _previousPosition;
@@ -50,18 +47,10 @@ namespace Game.NomadWorkshop.Foundation
             { Part = part; PodCenter = center; Distance = distance; RotationBasis = basis; }
         }
 
-        private readonly struct Scenery
-        {
-            internal readonly Transform Part;
-            internal readonly Vector3 Position;
-            internal Scenery(Transform part, Vector3 position) { Part = part; Position = position; }
-        }
-
         /// <summary>绑定由 Blender 配方导出的轴与履带片；缺件立即拒绝，避免静默展示半套行驶效果。</summary>
         public FoundationJourneyPresentation(Transform vehicle, Transform environment)
         {
             _vehicle = vehicle;
-            _environment = environment;
             foreach (Transform part in vehicle.GetComponentsInChildren<Transform>(true))
             {
                 if (part.GetComponent<Renderer>() != null) continue;
@@ -86,12 +75,7 @@ namespace Game.NomadWorkshop.Foundation
             }
             if (_podCenters.Count != 4 || _wheels.Count != 12 || _shoes.Count != 4 * ShoesPerPod)
                 throw new InvalidOperationException($"行驶样板需要 12 轮轴 / {4*ShoesPerPod} 履带片，实际 {_wheels.Count} / {_shoes.Count}。");
-            foreach (Transform part in environment.GetComponentsInChildren<Transform>(true))
-                if (part.GetComponent<Renderer>() == null && part.name.StartsWith("Desert outcrop_", StringComparison.Ordinal))
-                    _scenery.Add(new Scenery(part, environment.InverseTransformPoint(part.position)));
-            foreach (Renderer renderer in environment.GetComponentsInChildren<Renderer>())
-                if (renderer.sharedMaterial != null && renderer.sharedMaterial.name == "NW1_Ground")
-                    _ground.Add(renderer);
+            _environment = new FoundationEnvironmentPresentation(environment);
 
             _dustTexture = new Texture2D(32, 32, TextureFormat.RGBA32, false) { name = "工坊扬尘柔边", wrapMode = TextureWrapMode.Clamp };
             var pixels = new Color[32 * 32];
@@ -137,14 +121,7 @@ namespace Game.NomadWorkshop.Foundation
                     shoe.Part.SetPositionAndRotation(_vehicle.TransformPoint(shoe.PodCenter + offset),
                         _vehicle.rotation * Quaternion.AngleAxis(angle, Vector3.right) * shoe.RotationBasis);
                 }
-                foreach (Scenery scenery in _scenery)
-                {
-                    Vector3 position = scenery.Position;
-                    position.z = (float)PositiveModulo(position.z - distance + 30d, 60d) - 30f;
-                    scenery.Part.position = _environment.TransformPoint(position);
-                }
-                _surface.SetVector("_BaseMap_ST", new Vector4(1, 1, 0, (float)PositiveModulo(distance / 4d, 1d)));
-                foreach (Renderer renderer in _ground) renderer.SetPropertyBlock(_surface);
+                _environment.Render(positionMicrometers);
             }
             bool reset = !_hasState || simulationTick < _previousTick;
             // 长帧只保留仍可能存活的扬尘历史，不追赶无限粒子步，也不重复乘游戏倍率。
@@ -241,6 +218,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (_disposed) return;
             _disposed = true;
+            _environment.Dispose();
             foreach (ParticleSystem dust in _dust) if (dust != null) UnityEngine.Object.Destroy(dust.gameObject);
             if (_dustMaterial != null) UnityEngine.Object.Destroy(_dustMaterial);
             if (_dustTexture != null) UnityEngine.Object.Destroy(_dustTexture);
