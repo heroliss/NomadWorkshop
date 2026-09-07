@@ -24,6 +24,24 @@ Codex 的 MCP 配置指向 `D:/unity-mcp-server/src/index.js`。下面是调用�
 
 改 `.cs` 后 `AssetDatabase.Refresh()`（或编辑器自发重编译）进域重载，期间 MCP 可能超时 / 断连——正常，不是失败，别重试同一个写操作。重连后按 §1 重新 select。进 Play / 截图 / 读状态不触发编译，不会断。
 
+### 宿主 MCP 通道关闭时的显式恢复
+
+2026-09-06 实测出现过宿主连续返回 `Transport closed`，但 Unity 已完成编译、原服务仍可连接的情况。
+若当前客户端无法重新连接，可使用项目 [Tools/UnityMcpRecovery.mjs](../Tools/UnityMcpRecovery.mjs)：
+
+```text
+node Tools/UnityMcpRecovery.mjs <现有官方 MCP Server 根目录> <request.json> <response.json>
+```
+
+请求包含 `projectPath`、`port` 和 `calls` 数组；每项使用已发现的 `unity_*` 工具名及完整 `arguments`，所有调用显式携带同一个端口。
+工具通过现有服务依赖中的官方 MCP SDK 建立新的 stdio 连接，仍走 `tools/call`、服务端 Agent 身份和 Unity 队列；不直连 HTTP bridge，不修改个人配置或第三方代码。
+先核对实例清单和选择结果中的项目路径与端口，再顺序调用。每个原始结果立即落盘，不自动重试写入；异常关闭后结束本次 CLI，避免 SDK 请求计时器让辅助进程悬挂。
+
+恢复时先发 `unity_editor_state` 与 `unity_get_compilation_errors`。确认原操作实际结果、非 Play/非编译状态以及场景保存情况后，才继续尚未执行的步骤。
+本次已通过此通道完成新脚本创建、Editor 菜单导入、场景保存、Play/Stop、Game 截图及 Test Runner 的发现/派发/完整结果读取。
+`completed` 只表示 MCP 调用序列完成；菜单中的异常仍需检查 Console 和领域报告，测试仍按 §5 核对完整身份与计数，截图仍须实际查看。
+如果恢复连接也持续失败，保留请求与响应并停止依赖该连接的操作；不能把离线文件检查当作 Unity 验证通过。
+
 ### EditorWindow 截图与操作边界
 
 `unity_screenshot_editor_window` 可按标题或类型截取 Inspector、Console 和框架自定义 EditorWindow；它使用
@@ -52,6 +70,31 @@ EditorWindow 截图不等于通用交互：可表达的菜单、查询、滚动�
 `testNames/categories/assemblies/groupNames`；MCP schema 虽暴露 `filter` 便利别名，Unity 端并未解析它，可能静默退化成全量运行，
 因此不要使用。任务终态 `succeeded + total=0` 只能说明 Runner 没找到用例，不能算验证通过；它通常意味着 mode 或筛选器写错。
 
+### 精确 fixture 的机器证据
+
+`Tools/UnityTestEvidence.psm1` 收口测试范围核对，不启动 Unity 或另建 Runner。把 MCP 文本中的 `{success,data}` JSON 保存为 `discovery.json`（不含外层 `content` 包装），再生成计划：
+
+```powershell
+Import-Module ./Tools/UnityTestEvidence.psm1 -Force
+$discovery = Get-Content -Raw ./Logs/AIValidation/<本轮>/discovery.json | ConvertFrom-Json
+$plan = New-UnityMcpTestPlan -Discovery $discovery -Mode EditMode -Fixture '<完整 fixture 类型名>'
+$plan | ConvertTo-Json -Depth 10
+```
+
+发现必须未截断且包含完整叶用例；模块按精确类型名前缀选择，不把点号、加号或参数字符串当成正则。预检 READY 后，把返回的 `runnerParameters` 原样交给 `unity_testing_run_tests`，记录 dispatch 返回的 job id，并保存计划与 dispatch。这个入口目前针对完整、可运行的单个 fixture；Ignore / Explicit 用例应先明确处置，不静默跳过。
+
+结束后调用 `unity_testing_get_job`，同时设置 `includeDetails:true`、`includeFailedOnly:false`，将原始结果保存为 `result.json`：
+
+```powershell
+$job = Get-Content -Raw ./Logs/AIValidation/<本轮>/result.json | ConvertFrom-Json
+$dispatch = Get-Content -Raw ./Logs/AIValidation/<本轮>/dispatch.json | ConvertFrom-Json
+Test-UnityMcpTestEvidence -Plan $plan -Job $job -JobId $dispatch.data.jobId
+```
+
+`Passed` 表示每个预期身份恰好执行一次且通过；完整证据中的失败 / 跳过返回 `Failed`，范围漂移、错误 job、零测试、明细缺失或汇总矛盾则抛错。保存整套原始证据到独立目录，不覆盖上一轮，便于区分产品、筛选器和基础设施问题。离线反例用 `Tools/Tests/UnityTestEvidence.Tests.ps1` 验证。
+
+当前安装的 `MCPTestRunnerCommands.SaveToSessionState` 只保存汇总，不保存 `AllResults`。域重载后旧 job 仍可能显示 `succeeded`，但明细已经为空。应在得到终态后、继续改代码 / 刷新前保存完整结果；已丢失时先查本轮文件，不能声称精确范围已验证，也不能未经判断再次启动原操作。2026-09 旅途实验已在真实 EditMode / PlayMode job 上使用该流程，详见[实验记录](nomad-workshop-journey-ownership-experiment.md)。
+
 ### Test Runner 无弹窗预检（EditMode / PlayMode 都必须先做）
 
 交互式 Editor 有脏场景时，当前 Unity Test Framework 会在 EditMode / PlayMode 分支之前无条件执行 `SaveModifiedSceneTask`，其实现调用 `EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()` 并打开原生保存弹窗。该弹窗阻塞 Unity 主线程，连 MCP 工具发现与队列查询都可能一起卡住；**弹窗出现后不能指望 Unity MCP 点击它**，只能人工或经操作系统 UI 自动化处理。
@@ -66,6 +109,10 @@ menuPath: SSFramework/诊断/AI 自动化/PlayMode 测试预检（保存脏场�
 菜单和 `PreparePlayModeTests()` 的名称是为兼容已有 MCP、CI 与文档保留的历史 Interface，不代表它只适用于 PlayMode。项目侧 `FrameworkAutomationPreflight` 会保存所有“已加载 + 脏 + 已有资产路径”的场景，并打印稳定标记 `[SSFramework.Automation] READY`；若 Editor 正忙、仍在 PlayMode、存在未命名脏场景或保存失败，则打印 `BLOCKED` 并 fail-fast，**不会打开新弹窗，也不会丢弃改动**。只有看到菜单调用成功且 Editor 编译空闲后，才调用 `unity_testing_run_tests`。
 
 `READY / BLOCKED` 直写 Unity Console，不依赖当前项目的 `Log.Sinks`；即使测试或业务暂时清空了框架日志接收器，机器协议仍可观察。菜单工具返回 success 只说明命令被调用，仍须读取该标记判断预检结果。
+
+**退出 Play 后日志采集停在旧消息：** 2026-09-06 的持桶楼梯取证中，`unity_console_log` 连续返回最后一条 Play 日志，改变 count 也没有更新；但 Unity 自身的 `Editor.log` 已记录本次预检的 READY。当前 MCP Package 的 Console 工具读取自己的事件缓冲区，不是直接查询 Unity Console；`MCPConsoleCommands.EnsureListening()` 还以 `_isListening` 阻止重复订阅。因此缓冲区不前进时，不能据此认定菜单没执行或没有错误，也不要反复发送写操作来“试醒”日志。确切事件失效原因尚未通过独立复现锁定。
+
+后备取证先核对所选端口/项目和 Editor 非 Play、非编译状态，再保存该次 MCP 响应；读取当前 Unity 实例的 `Editor.log`（Windows 通常为 `%LOCALAPPDATA%/Unity/Editor/Editor.log`），同时记录文件修改时间、采集时间和本次菜单调用之后的新日志段。只有该段实际出现 READY 且没有 BLOCKED/异常，才继续已授权的测试；旧文件中曾出现过 READY 不够。编译结论仍取 `unity_get_compilation_errors` 的独立 CompilationPipeline 缓冲。实际对照证据位于 `Logs/AIValidation/nomad-warm-art/foundation-regression-03/preflight-editor-log-fallback.json`。这只补日志观察渠道，不绕过预检，也不改写第三方 Package 或个人配置。
 
 这不是全局自动保存 Hook：人工点击 Play / Test Runner 仍保留 Unity 原有确认语义，只有自动化显式选择预检才会落盘。若弹窗已经出现，先由用户明确选择 Save / Don't Save / Cancel，再清理已确认的僵尸 job，并从预检重新开始；不要重复提交已经排队的测试命令。
 
