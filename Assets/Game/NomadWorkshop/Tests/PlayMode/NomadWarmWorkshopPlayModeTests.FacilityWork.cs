@@ -192,13 +192,18 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             var conditionProperties = new MaterialPropertyBlock();
             tank.ConditionIndicator.GetPropertyBlock(conditionProperties);
             Assert.That(conditionProperties.GetColor("_EmissionColor").r, Is.GreaterThan(1f));
-            Renderer paint = tank.GetComponentsInChildren<MeshRenderer>().First(r => r.sharedMaterial.name == "NW1_Teal");
-            var paintProperties = new MaterialPropertyBlock();
-            paint.GetPropertyBlock(paintProperties);
-            Color paintColor = paintProperties.HasColor("_BaseColor")
-                ? paintProperties.GetColor("_BaseColor") : paint.sharedMaterial.GetColor("_BaseColor");
-            Assert.That(Vector4.Distance(paintColor, paint.sharedMaterial.GetColor("_BaseColor")), Is.LessThan(.25f),
-                "故障应点亮局部警示灯，不能再把整台水箱染成红色。");
+            // 同一约束覆盖分材质和图集模型；告警不能依赖某版漆面材质的名称。
+            var body = tank.GetComponentsInChildren<MeshRenderer>().Where(r => r != tank.ConditionIndicator).ToArray();
+            Assert.That(body.Length, Is.GreaterThan(0));
+            foreach (Renderer paint in body)
+            {
+                var paintProperties = new MaterialPropertyBlock();
+                paint.GetPropertyBlock(paintProperties);
+                Color paintColor = paintProperties.HasColor("_BaseColor")
+                    ? paintProperties.GetColor("_BaseColor") : paint.sharedMaterial.GetColor("_BaseColor");
+                Assert.That(Vector4.Distance(paintColor, paint.sharedMaterial.GetColor("_BaseColor")), Is.LessThan(.25f),
+                    "故障应点亮局部警示灯，不能改变机体颜色：" + paint.name);
+            }
             Assert.That(_read.Residents.Sum(r => r.CompletedWaterTankRepairCount.CurrentValue), Is.EqualTo(repairs));
             Vector3 paused = tank.ServiceDoor.position;
             for (int i = 0; i < 8; i++) yield return null;

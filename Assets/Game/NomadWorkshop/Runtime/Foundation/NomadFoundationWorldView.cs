@@ -864,18 +864,25 @@ namespace Game.NomadWorkshop.Foundation
             bool pouring = supported && facility.WorkRig.TryGetWaterInlet(work, out inlet);
             float envelope = pouring ? FoundationFacilityArtRig.WorkEnvelope(work.Progress) : 0f;
             float lift = 0f;
+            float forwardReach = 0f;
             if (pouring)
             {
                 Vector3 mouthAtFullTilt = visual.CarryAnchor.localPosition +
                     Quaternion.AngleAxis(WaterCanPourDegrees, Vector3.right) *
                     (FoundationWaterCanVisualFactory.OpeningPosition - Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
-                float inletHeight = visual.Root.InverseTransformPoint(inlet.position).y;
+                Vector3 localInlet = visual.Root.InverseTransformPoint(inlet.position);
+                float inletHeight = localInlet.y;
                 lift = Mathf.Max(visual.StandingShoulderHeight - .06f - visual.CarryAnchor.localPosition.y,
                     inletHeight + .12f - mouthAtFullTilt.y);
+                forwardReach = Mathf.Clamp(localInlet.z - mouthAtFullTilt.z, 0f, .08f);
+                // 高位入口需要把臂长留给抬升；肩部附近逐步收回前伸，不按设施类型分支。
+                forwardReach *= 1f - Mathf.InverseLerp(visual.StandingShoulderHeight - .30f,
+                    visual.StandingShoulderHeight - .10f, inletHeight);
             }
-            // 先保留侧向壳体净空，再近身抬起；站姿肩部会后移，额外前伸容易耗尽弯肘余量。
+            // 保留侧向壳体净空，向操作口前伸少量；限幅保持弯肘余量。
+            // 设施站位与入口必须处于可达范围，不能靠无限拉长手臂补偿远处入口。
             Vector3 grip = visual.CarryAnchor.localPosition + new Vector3(
-                Mathf.Sign(visual.CarryAnchor.localPosition.x) * .02f, lift, 0f) * envelope;
+                Mathf.Sign(visual.CarryAnchor.localPosition.x) * .02f, lift, forwardReach) * envelope;
             Quaternion rotation = Quaternion.AngleAxis(WaterCanPourDegrees * envelope, Vector3.right);
             _waterCanVisual.localRotation = rotation;
             _waterCanVisual.localPosition = grip - rotation * (Vector3.up * FoundationWaterCanVisualFactory.GripHeight);

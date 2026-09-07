@@ -335,8 +335,8 @@ MonoBehaviour:
   _targetContext: {fileID: 0}
   deckLayout: {fileID: 11400000, guid: a04490fff9b17d442b8dac5c83b91bb8, type: 2}
   facilityDefinitions:
-  - {fileID: 11400000, guid: 7658e360dd65666498f2548ab0eab43c, type: 2}
-  - {fileID: 11400000, guid: a1670bbf619339840874a71324e39dd3, type: 2}
+  - {fileID: 11400000, guid: 56372d9811f286341ba940ce0c56cefa, type: 2}
+  - {fileID: 11400000, guid: d6dbc695b0d09544a905da9ac06a2147, type: 2}
   - {fileID: 11400000, guid: ddd145b9c35e8cd4dba1c28eb1e4b644, type: 2}
   - {fileID: 11400000, guid: 1e64cd6237f16a345a44534d2c1e15be, type: 2}
   - {fileID: 11400000, guid: 5e2010b87e73021429f38c28f771880d, type: 2}
@@ -612,8 +612,8 @@ MonoBehaviour:
   initialResidentCount: 3
   deckLayout: {fileID: 11400000, guid: a04490fff9b17d442b8dac5c83b91bb8, type: 2}
   facilityDefinitions:
-  - {fileID: 11400000, guid: 7658e360dd65666498f2548ab0eab43c, type: 2}
-  - {fileID: 11400000, guid: a1670bbf619339840874a71324e39dd3, type: 2}
+  - {fileID: 11400000, guid: 56372d9811f286341ba940ce0c56cefa, type: 2}
+  - {fileID: 11400000, guid: d6dbc695b0d09544a905da9ac06a2147, type: 2}
   - {fileID: 11400000, guid: ddd145b9c35e8cd4dba1c28eb1e4b644, type: 2}
   - {fileID: 11400000, guid: 1e64cd6237f16a345a44534d2c1e15be, type: 2}
   - {fileID: 11400000, guid: 5e2010b87e73021429f38c28f771880d, type: 2}

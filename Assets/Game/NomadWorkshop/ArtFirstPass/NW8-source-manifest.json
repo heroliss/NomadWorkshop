@@ -1,0 +1,386 @@
+{
+  "version": "0.1.1",
+  "status": "passed-export",
+  "blenderVersion": "5.2.1 LTS",
+  "atlasSize": 2048,
+  "assets": [
+    {
+      "name": "NW8_WaterTank",
+      "source": {
+        "meshCount": 6,
+        "triangles": 12524,
+        "degenerateTriangles": 0,
+        "vertices": 6424,
+        "uvComplete": true,
+        "boundsBlender": [
+          1.7200000882148743,
+          1.1192809343338013,
+          1.5084933042526245
+        ],
+        "minimumBlender": [
+          -0.8600000739097595,
+          -0.5900000333786011,
+          0.004999995231628418
+        ],
+        "maximumBlender": [
+          0.8600000143051147,
+          0.5292809009552002,
+          1.513493299484253
+        ],
+        "pivots": {
+          "NW8_WaterTank": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW8_WaterTank_AxisForward": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "NW8_WaterTank_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW8_WaterTank_AxisUp": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "NW8_WaterTank_Placement_MaintenanceTray": [
+            0.5400000214576721,
+            0.03500000014901161,
+            1.2799999713897705
+          ],
+          "NW8_WaterTank_Work_ConditionIndicator": [
+            -0.5899999737739563,
+            0.15000000596046448,
+            1.3799999952316284
+          ],
+          "NW8_WaterTank_Work_FillLid": [
+            -0.25999999046325684,
+            -0.2800000011920929,
+            1.409999966621399
+          ],
+          "NW8_WaterTank_Work_Inlet": [
+            -0.25999999046325684,
+            -0.4000000059604645,
+            1.4049999713897705
+          ],
+          "NW8_WaterTank_Work_Outlet": [
+            -0.5,
+            -0.5799999833106995,
+            1.1699999570846558
+          ],
+          "NW8_WaterTank_Work_ServiceDoor": [
+            0.5400000214576721,
+            0.4230000078678131,
+            0.7300000190734863
+          ],
+          "NW8_WaterTank_Work_Valve": [
+            -0.47999998927116394,
+            -0.5099999904632568,
+            0.6399999856948853
+          ]
+        },
+        "parts": [
+          "NW8_WaterTank",
+          "NW8_WaterTank_AxisForward",
+          "NW8_WaterTank_AxisRight",
+          "NW8_WaterTank_AxisUp",
+          "NW8_WaterTank_Placement_MaintenanceTray",
+          "NW8_WaterTank_Work_ConditionIndicator",
+          "NW8_WaterTank_Work_FillLid",
+          "NW8_WaterTank_Work_Inlet",
+          "NW8_WaterTank_Work_Outlet",
+          "NW8_WaterTank_Work_ServiceDoor",
+          "NW8_WaterTank_Work_Valve"
+        ]
+      },
+      "roundTrip": {
+        "meshCount": 6,
+        "triangles": 12524,
+        "degenerateTriangles": 0,
+        "vertices": 6424,
+        "uvComplete": true,
+        "boundsBlender": [
+          1.7200000882148743,
+          1.119280993938446,
+          1.508493381086737
+        ],
+        "minimumBlender": [
+          -0.8600000739097595,
+          -0.5899999141693115,
+          0.004999918397516012
+        ],
+        "maximumBlender": [
+          0.8600000143051147,
+          0.5292810797691345,
+          1.513493299484253
+        ],
+        "pivots": {
+          "NW8_WaterTank_AxisUp": [
+            0.0,
+            1.6292068494294654e-07,
+            1.0
+          ],
+          "NW8_WaterTank_Work_ServiceDoor": [
+            0.5400000214576721,
+            0.42300012707710266,
+            0.7299999594688416
+          ],
+          "NW8_WaterTank_Placement_MaintenanceTray": [
+            0.5400000214576721,
+            0.035000208765268326,
+            1.2799999713897705
+          ],
+          "NW8_WaterTank_Work_ConditionIndicator": [
+            -0.5899999737739563,
+            0.15000022947788239,
+            1.3799999952316284
+          ],
+          "NW8_WaterTank_Work_FillLid": [
+            -0.25999999046325684,
+            -0.2799997627735138,
+            1.409999966621399
+          ],
+          "NW8_WaterTank_Work_Valve": [
+            -0.47999998927116394,
+            -0.5099998712539673,
+            0.64000004529953
+          ],
+          "NW8_WaterTank_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW8_WaterTank_Work_Outlet": [
+            -0.5,
+            -0.5799998044967651,
+            1.1700000762939453
+          ],
+          "NW8_WaterTank_Work_Inlet": [
+            -0.25999999046325684,
+            -0.3999997675418854,
+            1.40500009059906
+          ],
+          "NW8_WaterTank_AxisForward": [
+            0.0,
+            1.0,
+            -1.6292068494294654e-07
+          ],
+          "NW8_WaterTank": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "parts": [
+          "NW8_WaterTank_AxisUp.001",
+          "NW8_WaterTank_Work_ServiceDoor.001",
+          "NW8_WaterTank_Placement_MaintenanceTray.001",
+          "NW8_WaterTank_Work_ConditionIndicator.001",
+          "NW8_WaterTank_Work_FillLid.001",
+          "NW8_WaterTank_Work_Valve.001",
+          "NW8_WaterTank_AxisRight.001",
+          "NW8_WaterTank_Work_Outlet.001",
+          "NW8_WaterTank_Work_Inlet.001",
+          "NW8_WaterTank_AxisForward.001",
+          "NW8_WaterTank.001"
+        ]
+      }
+    },
+    {
+      "name": "NW8_Dispenser",
+      "source": {
+        "meshCount": 3,
+        "triangles": 7404,
+        "degenerateTriangles": 0,
+        "vertices": 3792,
+        "uvComplete": true,
+        "boundsBlender": [
+          0.7699999809265137,
+          0.7210000157356262,
+          1.1507045924663544
+        ],
+        "minimumBlender": [
+          -0.38499999046325684,
+          -0.39100000262260437,
+          0.010000020265579224
+        ],
+        "maximumBlender": [
+          0.38499999046325684,
+          0.33000001311302185,
+          1.1607046127319336
+        ],
+        "pivots": {
+          "NW8_Dispenser": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW8_Dispenser_AxisForward": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "NW8_Dispenser_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW8_Dispenser_AxisUp": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "NW8_Dispenser_Work_FillLid": [
+            0.0,
+            0.30000001192092896,
+            1.0449999570846558
+          ],
+          "NW8_Dispenser_Work_Inlet": [
+            0.0,
+            -0.1599999964237213,
+            1.0499999523162842
+          ],
+          "NW8_Dispenser_Work_Valve": [
+            0.20000000298023224,
+            -0.11999999731779099,
+            0.7799999713897705
+          ]
+        },
+        "parts": [
+          "NW8_Dispenser",
+          "NW8_Dispenser_AxisForward",
+          "NW8_Dispenser_AxisRight",
+          "NW8_Dispenser_AxisUp",
+          "NW8_Dispenser_Work_FillLid",
+          "NW8_Dispenser_Work_Inlet",
+          "NW8_Dispenser_Work_Valve"
+        ]
+      },
+      "roundTrip": {
+        "meshCount": 3,
+        "triangles": 7404,
+        "degenerateTriangles": 0,
+        "vertices": 3792,
+        "uvComplete": true,
+        "boundsBlender": [
+          0.7699999809265137,
+          0.7210001945495605,
+          1.1507047656923532
+        ],
+        "minimumBlender": [
+          -0.38499999046325684,
+          -0.39100000262260437,
+          0.009999966248869896
+        ],
+        "maximumBlender": [
+          0.38499999046325684,
+          0.3300001919269562,
+          1.1607047319412231
+        ],
+        "pivots": {
+          "NW8_Dispenser_AxisForward": [
+            0.0,
+            1.0,
+            -1.6292068494294654e-07
+          ],
+          "NW8_Dispenser_Work_Valve": [
+            0.20000000298023224,
+            -0.11999987065792084,
+            0.7799999713897705
+          ],
+          "NW8_Dispenser_AxisUp": [
+            0.0,
+            1.6292068494294654e-07,
+            1.0
+          ],
+          "NW8_Dispenser_Work_Inlet": [
+            0.0,
+            -0.15999983251094818,
+            1.0499999523162842
+          ],
+          "NW8_Dispenser": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW8_Dispenser_Work_FillLid": [
+            0.0,
+            0.3000001907348633,
+            1.0449999570846558
+          ],
+          "NW8_Dispenser_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        "parts": [
+          "NW8_Dispenser_AxisForward.001",
+          "NW8_Dispenser_Work_Valve.001",
+          "NW8_Dispenser_AxisUp.001",
+          "NW8_Dispenser_Work_Inlet.001",
+          "NW8_Dispenser.001",
+          "NW8_Dispenser_Work_FillLid.001",
+          "NW8_Dispenser_AxisRight.001"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "blender_nomad_water_facilities.py",
+      "sha256": "bc182e8881ffec631112e5553f3029fe52c13f9f28cab051d7c41ec48c0f6bf1"
+    },
+    {
+      "file": "blender_nomad_vehicle_forms.py",
+      "sha256": "64a813aaa4a6f96b28f6df01453d2d0825d6d06a23bfcfeeeccd90f6d19b17db"
+    },
+    {
+      "file": "blender_nomad_form_study.py",
+      "sha256": "46e918bb14f4fde5d4ace6089f6cf7f44627cfa29318b8e50516be35f0d62a60"
+    },
+    {
+      "file": "blender_nomad_art_set.py",
+      "sha256": "ae09cbf9573493a013daeb64322f5336c53ef36ebe28a243c7f5b5220850c137"
+    },
+    {
+      "file": "blender_nomad_deck_cockpit.py",
+      "sha256": "c88be92d3cba5c5d1b63468fe8e86fb39da07de5284ebb033846bf685424890b"
+    },
+    {
+      "file": "blender_nomad_canopy.py",
+      "sha256": "8e8afb836ba1dc431858bd7013a440cb699c0fd8f60e1dee3f77c10c50a7814c"
+    }
+  ],
+  "files": [
+    {
+      "file": "NW8_Dispenser.fbx",
+      "sha256": "587a9dc262093fe1134ed2c2e91cff75d6fcdd02cae384b3e1519e5cd83a4335"
+    },
+    {
+      "file": "NW8_WaterFacilities_Color.png",
+      "sha256": "0150e1db6d18c21f21296a6352aa21a2d5678976ce722f1ae172fba2527bea9a"
+    },
+    {
+      "file": "NW8_WaterFacilities_Normal.png",
+      "sha256": "bfa065dab332d2fde8f436492dd416fc25fb1a4605adb82f8e5a06276d14aa17"
+    },
+    {
+      "file": "NW8_WaterFacilities_Surface.png",
+      "sha256": "af8fac3820fc9bec8a9545d59cb227da54eb197f595c9a5879e7c9bf4af8084a"
+    },
+    {
+      "file": "NW8_WaterTank.fbx",
+      "sha256": "ed4df11850c4744a42fc398ab24f153284cdd9c0d6ad5705c4326dfda2a8d5fd"
+    },
+    {
+      "file": "water-facilities-preview.png",
+      "sha256": "51d7631726ebcde614b0afd8d68857039c3552d24335fc6eec18bb3621b92258"
+    }
+  ]
+}

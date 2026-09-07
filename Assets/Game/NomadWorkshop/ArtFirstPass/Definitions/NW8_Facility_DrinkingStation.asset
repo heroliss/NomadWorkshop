@@ -1,0 +1,58 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 275295110a46b4b4e858cbc62c6dbbdf, type: 3}
+  m_Name: NW8_Facility_DrinkingStation
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFacilityDefinition
+  generatedSpaceSignature: 7b677b00871f4212323ee051a36bf84abf3774a3a653971663904d9d2e8cebeb
+  legacySpaceSignature: ab2452ba25eac7f5b16d5597496f2999fc5df9bd4595c23ecaeb0e5607b0948b
+  id: drinking-station
+  displayName: "\u996E\u6C34\u7AD9"
+  function: 1
+  buildable: 1
+  footprintParts:
+  - localCenterMeters: {x: 0, y: 0}
+    sizeMeters: {x: 0.85, y: 0.72}
+    localYawDegrees: 0
+  interactionGroups:
+  - groupId: drink-and-deliver
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: left
+      localPositionMeters: {x: -0.56, y: -0.64}
+      localYawDegrees: 0
+    - slotId: center
+      localPositionMeters: {x: -0.48000002, y: -0.64}
+      localYawDegrees: 0
+    - slotId: right
+      localPositionMeters: {x: -0.4, y: -0.64}
+      localYawDegrees: 0
+  - groupId: water-can-access
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: side
+      localPositionMeters: {x: 1.22, y: -0.17}
+      localYawDegrees: -90.00001
+  placementRegions:
+  - regionId: water-can-parking
+    localCenterMeters: {x: 0.72, y: 0}
+    sizeMeters: {x: 0.42, y: 0.32}
+    localYawDegrees: 0
+    supportHeightMeters: 0
+    edgeInsetMeters: 0.02
+    acceptedCategories:
+    - water-can
+  placeAtStart: 1
+  startPositionMeters: {x: -1.7, y: 1}
+  startYawDegrees: 0
+  prefab: {fileID: 9212417734777026434, guid: 7fb5ac08ed6607f459c33d1d9fac7bd3, type: 3}
+  prototypeSize: {x: 0.78, y: 0.9, z: 0.65}
+  prototypeColor: {r: 0.12, g: 0.72, b: 0.86, a: 1}
