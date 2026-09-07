@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Game.Framework.Common;
+using Game.Framework.UI;
 using Game.Framework.View;
 using Game.NomadWorkshop.Simulation;
 using R3;
@@ -27,6 +28,10 @@ namespace Game.NomadWorkshop.Foundation
             Array.Empty<NomadWorldItemDefinition>();
         [SerializeField, Tooltip("车辆甲板的表现空间；设施、居民、网格和镜头焦点都使用它的局部坐标。")]
         private Transform deckRoot;
+        private Transform _stopVisualRoot;
+        private Transform _stopWorldItemRoot;
+        private string _carriedWasteBucketFacilityId = string.Empty;
+        private readonly Dictionary<string, WasteBucketVisual> _wasteBucketVisuals = new(StringComparer.Ordinal);
         [SerializeField, Tooltip("Foundation 世界相机。View 只操作表现镜头，不改玩法状态。")]
         private Camera worldCamera;
         [SerializeField, Tooltip("灰盒主方向光；替换正式灯光方案后可继续由表现层拥有。")]
@@ -39,6 +44,28 @@ namespace Game.NomadWorkshop.Foundation
         private ReflectionProbe reflectionProbe;
         [SerializeField, Tooltip("当前场景的 HUD View；用于按真实可见矩形阻止 UI 下方的建造与镜头输入。隔离测试可留空并使用同布局的保守回退。")]
         private NomadFoundationDebugView screenUi;
+
+        [Header("可选美术样板")]
+        [SerializeField, Tooltip("可选甲板/车架表现 Prefab；不带玩法 Collider，不改变共享布局。")]
+        private GameObject vehicleVisualPrefab;
+        [SerializeField, Tooltip("可选荒漠地景，只包含 Renderer，不参与导航与建造。")]
+        private GameObject environmentVisualPrefab;
+        [SerializeField, Tooltip("可选驿站外观，由实际停靠状态控制可见性。")]
+        private GameObject waystationVisualPrefab;
+        [SerializeField, Tooltip("可选 Humanoid 模型。与 Controller 同时配置后取代胶囊表现。")]
+        private GameObject residentVisualPrefab;
+        [SerializeField, Tooltip("可选：按居民稳定 id 固定外观。没有对应项时使用默认模型；不按列表顺序或随机数选择。")]
+        private ResidentVisualBinding[] residentVisualBindings = Array.Empty<ResidentVisualBinding>();
+        [SerializeField, Tooltip("共享五语义动作 Controller；持物需要启用该 Controller 的 IK Pass。")]
+        private RuntimeAnimatorController residentAnimationController;
+        private bool _animationPaused;
+        private float _animationMultiplier = 1f;
+        private FoundationBuildTransactionPhase _animationBuildPhase;
+        private FoundationReadModel _journeyReadModel;
+        private FoundationJourneyPresentation _journeyPresentation;
+        private Color ClearWeatherKeyColor => vehicleVisualPrefab != null
+            ? new Color(1f, .96f, .88f) : new Color(1f, .89f, .72f);
+        private float ClearWeatherKeyIntensity => vehicleVisualPrefab != null ? 1.3f : 1.6f;
 
         [Header("图形基线")]
         [SerializeField, Tooltip("进入场景后是否为实时 Reflection Probe 捕获一次车辆周围环境。只捕获一次，不会每帧更新；低端平台可关闭。")]
@@ -79,11 +106,45 @@ namespace Game.NomadWorkshop.Foundation
         private Transform _gridRoot;
         private Transform _ghostRoot;
         private Transform _interactionPreviewRoot;
-        private Transform _residentRoot;
-        private Transform _residentBody;
-        private Transform _residentCarryAnchor;
+        private readonly Dictionary<string, ResidentVisual> _residentVisuals = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, GameObject> _residentPrefabs = new(StringComparer.Ordinal);
+        private string _waterCanCarrierId = string.Empty;
+        private string _wasteBucketCarrierId = string.Empty;
+
+        [Serializable]
+        private sealed class ResidentVisualBinding
+        {
+            [Tooltip("居民的 StableId，例如 resident-01。")]
+            public string residentId;
+            [Tooltip("该居民的普通 Humanoid 包装 Prefab；外观仅归表现层所有。")]
+            public GameObject prefab;
+        }
+
+        private sealed class ResidentVisual
+        {
+            internal string StableId;
+            internal Transform Root;
+            internal Transform Body;
+            internal Transform CarryAnchor;
+            internal Material Material;
+            internal ResidentHumanoidPresentation Humanoid;
+            internal FoundationResidentCarryIK CarryIK;
+            internal FoundationResidentPhase Phase;
+            internal FoundationFacilityWorkState FacilityWork;
+            internal bool HasCarriedItem;
+            internal Vector3 PreviousPosition;
+            internal float AnimationMoveSpeed;
+            internal float StandingShoulderHeight;
+        }
+
+        private Transform FindResidentRoot(string id) =>
+            _residentVisuals.TryGetValue(id ?? string.Empty, out var visual) ? visual.Root : null;
         private Transform _waterCanVisual;
+        private Transform _waterCanPalmTarget;
+        private Transform _waterCanBody;
         private Transform _waterCanFillVisual;
+        private Transform _waterCanCap;
+        private const float WaterCanPourDegrees = 100f;
         private FoundationWaterCanLocation _waterCanLocation;
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
         private FoundationItemPlacementState _waterCanPlacement;
@@ -149,6 +210,13 @@ namespace Game.NomadWorkshop.Foundation
             BuildGrayboxWorld();
 
             FoundationReadModel readModel = this.ExecuteCommand(new GetFoundationReadModelCommand());
+            _journeyReadModel = readModel;
+            Bag.Subscribe(readModel.StopAccessOpen, visible => _stopVisualRoot.gameObject.SetActive(visible));
+            Bag.Subscribe(readModel.CarriedWasteBucketFacilityId, id =>
+            {
+                _carriedWasteBucketFacilityId = id;
+                UpdateWasteBucketLocations();
+            });
             _buildOptions = this.ExecuteCommand(new GetFoundationBuildOptionsCommand());
             Bag.Subscribe(readModel.InteractionMode, OnInteractionModeChanged);
             Bag.Subscribe(readModel.PlacementPreview, OnPreviewChanged);
@@ -164,7 +232,11 @@ namespace Game.NomadWorkshop.Foundation
                 UpdatePlacementGridVisibility();
             });
             Bag.Subscribe(readModel.FacilityRevision, _ =>
-                RebuildFacilities(this.ExecuteCommand(new GetFoundationFacilitiesCommand())));
+            {
+                RebuildFacilities(this.ExecuteCommand(new GetFoundationFacilitiesCommand()));
+                // 建造与检查点恢复都会重建空间；旧路段的短寿命特效不跨这条边界保留。
+                _journeyPresentation?.ClearTransientEffects();
+            });
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
                 UpdateFacilityAccess(
                     this.ExecuteCommand(new GetFoundationFacilityAccessCommand())));
@@ -184,17 +256,45 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
                 RebuildWorldItems(
                     this.ExecuteCommand(new GetFoundationWorldItemPlacementsCommand())));
-            Bag.Subscribe(readModel.ResidentCarriedWorldItem, RebuildCarriedWorldItem);
-            Bag.Subscribe(readModel.ResidentLocalPosition, position =>
-            {
-                if (_residentRoot != null) _residentRoot.localPosition = position;
-            });
-            Bag.Subscribe(readModel.ResidentLocalYawDegrees, yaw =>
-            {
-                if (_residentRoot != null)
-                    _residentRoot.localRotation = Quaternion.Euler(0f, yaw, 0f);
-            });
-            Bag.Subscribe(readModel.ResidentPhase, UpdateResidentBodyPose);
+            // 直接使用后端中立绑定引擎，为世界 GameObject 行持有独立订阅；不为 3D 表现依赖 UGUI。
+            ReactiveListBinding.Bind(Bag, readModel.Residents,
+                (resident, rowBag) =>
+                {
+                    ResidentVisual visual = BuildResidentVisual(resident);
+                    rowBag.Add(Disposable.Create(() =>
+                    {
+                        _runtimeMaterials.Remove(visual.Material);
+                        if (visual.Material != null) Destroy(visual.Material);
+                    }));
+                    rowBag.Subscribe(resident.ResidentLocalPosition, position => visual.Root.localPosition = position);
+                    rowBag.Subscribe(resident.ResidentLocalYawDegrees, yaw => visual.Root.localRotation = Quaternion.Euler(0f, yaw, 0f));
+                    rowBag.Subscribe(resident.ResidentPhase, phase => UpdateResidentBodyPose(visual, phase));
+                    rowBag.Subscribe(resident.FacilityWork, work => visual.FacilityWork = work);
+                    rowBag.Subscribe(resident.ResidentCarriedWorldItem, carried => RebuildCarriedWorldItem(visual, carried));
+                    return visual;
+                },
+                (index, visual) => { visual.Root.SetSiblingIndex(index); UpdateWaterCanVisual(); UpdateWasteBucketLocations(); },
+                visual =>
+                {
+                    _residentVisuals.Remove(visual.StableId);
+                    if (visual.Root != null)
+                    {
+                        // 水罐和污物桶由世界拥有；移除居民行不能连带销毁挂在其手中的共享物体。
+                        if (_waterCanVisual != null && _waterCanVisual.IsChildOf(visual.Root))
+                            _waterCanVisual.SetParent(deckRoot, false);
+                        foreach (var bucket in _wasteBucketVisuals.Values)
+                            if (bucket.Root != null && bucket.Root.IsChildOf(visual.Root))
+                                bucket.Root.SetParent(bucket.FacilityRoot, false);
+                        visual.Root.SetParent(null, false);
+                        Destroy(visual.Root.gameObject);
+                    }
+                },
+                (index, visual) => visual.Root.SetSiblingIndex(index));
+            Bag.Subscribe(readModel.IsPaused, value => _animationPaused = value);
+            Bag.Subscribe(readModel.SimulationSpeed, value => _animationMultiplier = value);
+            Bag.Subscribe(readModel.BuildTransactionPhase, value => _animationBuildPhase = value);
+            Bag.Subscribe(readModel.WaterCanCarrierId, id => { _waterCanCarrierId = id; UpdateWaterCanVisual(); });
+            Bag.Subscribe(readModel.WasteBucketCarrierId, id => { _wasteBucketCarrierId = id; UpdateWasteBucketLocations(); });
             Bag.Subscribe(readModel.WaterCanLocation, location =>
             {
                 _waterCanLocation = location;
@@ -231,6 +331,13 @@ namespace Game.NomadWorkshop.Foundation
 
         private void Update()
         {
+            UpdateResidentAnimations();
+            UpdateFacilityWorkVisuals();
+            if (_journeyPresentation != null)
+                _journeyPresentation.Render(
+                    _journeyReadModel.JourneyPositionMicrometers.CurrentValue,
+                    _journeyReadModel.SimulationTick.CurrentValue,
+                    _journeyReadModel.JourneyStatus.CurrentValue == NomadJourneyStatus.Moving);
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
@@ -385,6 +492,16 @@ namespace Game.NomadWorkshop.Foundation
                 throw new MissingReferenceException("NomadFoundationWorldView 缺少 Deck Root。 ");
             if (worldCamera == null)
                 throw new MissingReferenceException("NomadFoundationWorldView 缺少 World Camera。 ");
+            _residentPrefabs.Clear();
+            foreach (ResidentVisualBinding binding in residentVisualBindings)
+            {
+                if (binding == null || string.IsNullOrWhiteSpace(binding.residentId) || binding.prefab == null)
+                    throw new MissingReferenceException("居民外观绑定必须提供稳定 id 和模型 Prefab。");
+                if (!_residentPrefabs.TryAdd(binding.residentId, binding.prefab))
+                    throw new InvalidOperationException($"居民外观 id '{binding.residentId}' 重复。");
+            }
+            if (_residentPrefabs.Count > 0 && residentAnimationController == null)
+                throw new MissingReferenceException("居民外观绑定需要共享动作 Controller。");
         }
 
         private void BuildDefinitionMap()
@@ -397,7 +514,9 @@ namespace Game.NomadWorkshop.Foundation
                     throw new MissingReferenceException($"WorldView 设施定义第 {i} 项为空。 ");
                 if (!_definitions.TryAdd(definition.Id, definition))
                     throw new InvalidOperationException($"WorldView 设施 id '{definition.Id}' 重复。 ");
-
+                if (definition.Prefab != null)
+                    foreach (var rig in definition.Prefab.GetComponentsInChildren<FoundationFacilityArtRig>(true))
+                        rig.ValidateAgainst(definition);
             }
 
             _worldItemDefinitions.Clear();
@@ -420,7 +539,7 @@ namespace Game.NomadWorkshop.Foundation
                 worldCamera,
                 deckRoot,
                 deckLayout.DeckCenterLocal,
-                new Vector3(11f, 13f, -12f));
+                vehicleVisualPrefab != null ? new Vector3(9f, 15f, 11f) : new Vector3(11f, 13f, -12f));
             worldCamera.fieldOfView = 42f;
             worldCamera.clearFlags = skyboxMaterial != null
                 ? CameraClearFlags.Skybox
@@ -433,7 +552,14 @@ namespace Game.NomadWorkshop.Foundation
             // 隔离测试不必装配图形资产，因此仍保留纯色 + Flat Ambient 的可预测回退。
             if (skyboxMaterial != null)
             {
-                RenderSettings.ambientMode = AmbientMode.Skybox;
+                RenderSettings.ambientMode = vehicleVisualPrefab != null ? AmbientMode.Trilight : AmbientMode.Skybox;
+                if (vehicleVisualPrefab != null)
+                {
+                    // 动态生成的居民没有烘焙探针；明确提供天空、地平线与沙地反光，保留帽檐下的面部。
+                    RenderSettings.ambientSkyColor = new Color(.66f, .69f, .73f);
+                    RenderSettings.ambientEquatorColor = new Color(.65f, .60f, .52f);
+                    RenderSettings.ambientGroundColor = new Color(.50f, .46f, .38f);
+                }
                 RenderSettings.ambientIntensity = 1.02f;
                 RenderSettings.skybox = skyboxMaterial;
                 RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
@@ -451,9 +577,10 @@ namespace Game.NomadWorkshop.Foundation
             if (keyLight != null)
             {
                 keyLight.type = LightType.Directional;
-                keyLight.color = new Color(1f, 0.89f, 0.72f);
-                keyLight.intensity = 1.6f;
+                keyLight.color = ClearWeatherKeyColor;
+                keyLight.intensity = ClearWeatherKeyIntensity;
                 keyLight.shadows = LightShadows.Soft;
+                keyLight.shadowStrength = vehicleVisualPrefab != null ? .78f : 1f;
                 keyLight.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
                 RenderSettings.sun = keyLight;
             }
@@ -461,7 +588,7 @@ namespace Game.NomadWorkshop.Foundation
             if (fillLight != null)
             {
                 fillLight.type = LightType.Directional;
-                fillLight.color = new Color(0.52f, 0.68f, 1f);
+                fillLight.color = vehicleVisualPrefab != null ? new Color(.79f, .84f, .85f) : new Color(0.52f, 0.68f, 1f);
                 fillLight.intensity = 0.52f;
                 fillLight.shadows = LightShadows.None;
                 fillLight.transform.rotation = Quaternion.Euler(42f, 145f, 0f);
@@ -512,15 +639,52 @@ namespace Game.NomadWorkshop.Foundation
                 new Color(0.12f, 0.78f, 1f, 0.34f));
             CreateSandstormVisual();
 
-            CreatePrimitive(
-                PrimitiveType.Cube,
-                "Deck",
-                deckRoot,
-                deckLayout.DeckCenterLocal + Vector3.down * 0.22f,
-                deckLayout.DeckSize,
-                deckMaterial);
+            Transform vehicleRoot = null;
+            if (vehicleVisualPrefab != null)
+            {
+                GameObject vehicle = Instantiate(vehicleVisualPrefab, deckRoot, false);
+                vehicle.name = "移动工坊 · 可替换车架表现";
+                vehicle.transform.localPosition = deckLayout.DeckCenterLocal;
+                vehicleRoot = vehicle.transform;
+            }
+            else
+            {
+                CreatePrimitive(
+                    PrimitiveType.Cube,
+                    "Deck",
+                    deckRoot,
+                    deckLayout.DeckCenterLocal + Vector3.down * 0.22f,
+                    deckLayout.DeckSize,
+                    deckMaterial);
+            }
 
             Vector3 center = deckLayout.DeckCenterLocal;
+            _stopVisualRoot = new GameObject("干河驿站 · 取水区").transform;
+            _stopVisualRoot.SetParent(deckRoot, false);
+            _stopWorldItemRoot = new GameObject("驿站物资").transform;
+            _stopWorldItemRoot.SetParent(_stopVisualRoot, false);
+            Vector3 waterPoint = center + new Vector3(deckLayout.DeckSize.x * 0.5f + 3f, 0f, 0f);
+            if (waystationVisualPrefab != null)
+            {
+                GameObject station = Instantiate(waystationVisualPrefab, _stopVisualRoot, false);
+                station.transform.localPosition = waterPoint;
+            }
+            else
+            {
+            CreatePrimitive(PrimitiveType.Cube, "停靠通路", _stopVisualRoot,
+                waterPoint - Vector3.right + Vector3.down * 0.11f, new Vector3(6f, 0.2f, 4f),
+                CreateLitMaterial("M_StopApron", new Color(0.49f, 0.4f, 0.24f)));
+            CreatePrimitive(PrimitiveType.Cube, "有限水源", _stopVisualRoot,
+                waterPoint + new Vector3(0f, 0.55f, 0.9f), new Vector3(1.2f, 1.1f, 0.7f),
+                CreateLitMaterial("M_StopWater", new Color(0.12f, 0.57f, 0.72f)));
+            CreatePrimitive(PrimitiveType.Cube, "污物接收罐", _stopVisualRoot,
+                waterPoint + new Vector3(0f, 0.5f, -1.6f), new Vector3(1.1f, 1f, 0.6f),
+                CreateLitMaterial("M_StopWaste", new Color(0.57f, 0.32f, 0.13f)));
+            CreatePrimitive(PrimitiveType.Cube, "备件台", _stopVisualRoot,
+                waterPoint + new Vector3(1.2f, 0.35f, 1.35f), new Vector3(1.1f, 0.7f, 0.55f),
+                CreateLitMaterial("M_StopSupply", new Color(0.28f, 0.36f, 0.32f)));
+            }
+            _stopVisualRoot.gameObject.SetActive(false);
             _placementGrid = new FoundationPlacementGridVisual(
                 deckRoot,
                 deckLayout.CreateBounds(),
@@ -530,7 +694,17 @@ namespace Game.NomadWorkshop.Foundation
                 deckLayout.DefaultSnapSettings.PositionStepMillimeters);
             _placementGrid.SetVisible(false);
 
-            CreatePrimitive(
+            if (environmentVisualPrefab != null)
+            {
+                GameObject environment = Instantiate(environmentVisualPrefab, deckRoot, false);
+                environment.transform.localPosition = center;
+                if (vehicleRoot != null)
+                {
+                    _journeyPresentation = new FoundationJourneyPresentation(vehicleRoot, environment.transform);
+                    Bag.Add(_journeyPresentation);
+                }
+            }
+            else CreatePrimitive(
                 PrimitiveType.Cube,
                 "Wasteland Ground",
                 deckRoot,
@@ -546,40 +720,234 @@ namespace Game.NomadWorkshop.Foundation
             _ghostRoot.SetParent(deckRoot, false);
             _interactionPreviewRoot = new GameObject("Placement Interaction Slots").transform;
             _interactionPreviewRoot.SetParent(deckRoot, false);
-            _residentRoot = new GameObject("Resident 01").transform;
-            _residentRoot.SetParent(deckRoot, false);
-            BuildResidentVisual(_residentRoot);
             BuildWaterCanVisual();
         }
 
-        private void BuildResidentVisual(Transform root)
+        private ResidentVisual BuildResidentVisual(FoundationResidentReadModel resident)
         {
-            Material body = CreateLitMaterial("M_Resident", new Color(0.78f, 0.56f, 0.28f));
-            _residentBody = CreatePrimitive(
+            string suffix = resident.StableId.Substring(resident.StableId.LastIndexOf('-') + 1);
+            var root = new GameObject($"Resident {suffix}").transform;
+            root.SetParent(deckRoot, false);
+            var visual = new ResidentVisual { StableId = resident.StableId, Root = root };
+            Color color = (resident.OwnerId % 3UL) switch
+            { 0UL => new Color(0.35f, 0.68f, 0.85f), 1UL => new Color(0.78f, 0.56f, 0.28f),
+                _ => new Color(0.48f, 0.78f, 0.45f) };
+            Material body = CreateLitMaterial($"M_{resident.StableId}", color);
+            visual.Material = body;
+            visual.Body = CreatePrimitive(
                 PrimitiveType.Capsule,
                 "Body",
                 root,
                 new Vector3(0f, 0.55f, 0f),
                 new Vector3(0.42f, 0.55f, 0.42f),
                 body).transform;
-            _residentCarryAnchor = new GameObject("Right Hand Carry Anchor").transform;
-            _residentCarryAnchor.SetParent(root, false);
+            visual.CarryAnchor = new GameObject("Right Hand Carry Anchor").transform;
+            visual.CarryAnchor.SetParent(root, false);
             // 灰盒居民还没有骨骼；先让表现消费稳定手部锚点，正式 Humanoid/IK 只替换锚点驱动。
-            _residentCarryAnchor.localPosition = new Vector3(0.34f, 0.68f, 0.12f);
-            _residentCarryAnchor.localRotation = Quaternion.Euler(0f, 0f, -8f);
+            visual.CarryAnchor.localPosition = new Vector3(0.34f, 0.68f, 0.12f);
+            visual.CarryAnchor.localRotation = Quaternion.Euler(0f, 0f, -8f);
+            // 表现可随读档重建，选择依据始终是存续的居民身份；不得消耗玩法随机流。
+            GameObject residentPrefab = _residentPrefabs.TryGetValue(resident.StableId, out GameObject boundPrefab)
+                ? boundPrefab : residentVisualPrefab;
+            if (residentPrefab != null && residentAnimationController != null)
+            {
+                ResidentHumanoidPresentation humanoid = root.gameObject.AddComponent<ResidentHumanoidPresentation>();
+                if (!humanoid.TryInitialize(residentPrefab, residentAnimationController))
+                    throw new InvalidOperationException("美术样板居民缺少有效 Humanoid 或五个语义动作状态。");
+                visual.Humanoid = humanoid;
+                visual.Body.gameObject.SetActive(false);
+                visual.CarryAnchor.localPosition = FoundationWaterCanVisualFactory.GetGripPosition(humanoid);
+                visual.StandingShoulderHeight = root.InverseTransformPoint(
+                    humanoid.Animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position).y;
+                visual.CarryAnchor.localRotation = Quaternion.identity;
+                visual.CarryIK = humanoid.Animator.gameObject.AddComponent<FoundationResidentCarryIK>();
+                visual.CarryIK.Configure(humanoid.Animator, root);
+                ApplyWorkwearIdentity(humanoid.VisualRoot, resident.OwnerId);
+            }
+            _residentVisuals.Add(resident.StableId, visual);
+            return visual;
         }
 
-        private void UpdateResidentBodyPose(FoundationResidentPhase phase)
+        private static void UpdateResidentBodyPose(ResidentVisual visual, FoundationResidentPhase phase)
         {
-            if (_residentBody == null) return;
+            visual.Phase = phase;
+            if (visual.Humanoid != null) return;
+            if (visual.Body == null) return;
             bool lying = phase is FoundationResidentPhase.RestingOnGround or
                 FoundationResidentPhase.Dead;
-            _residentBody.localPosition = lying
+            visual.Body.localPosition = lying
                 ? new Vector3(0f, 0.42f, 0f)
                 : new Vector3(0f, 0.55f, 0f);
-            _residentBody.localRotation = lying
+            visual.Body.localRotation = lying
                 ? Quaternion.Euler(0f, 0f, 90f)
                 : Quaternion.identity;
+        }
+
+        /// <summary>
+        /// 只根据已提交的身体位移与业务阶段更新表现；被碰撞挡住时不持续原地走路。
+        /// 暂停/建造导航事务立即冻结，不由动画触发到岗或物品交接。
+        /// </summary>
+        private void UpdateResidentAnimations()
+        {
+            bool frozen = _animationPaused || _animationBuildPhase != FoundationBuildTransactionPhase.Idle;
+            foreach (ResidentVisual visual in _residentVisuals.Values)
+            {
+                if (visual.Humanoid == null) continue;
+                Vector3 position = visual.Root.localPosition;
+                float distance = Vector3.Distance(position, visual.PreviousPosition);
+                visual.PreviousPosition = position;
+                // 读档和首次挂接的位置跳变不应变成一个极高速步态。
+                float actualSpeed = distance < 2f && Time.deltaTime > 0f ? distance / Time.deltaTime : 0f;
+                // 到岗快照意味着身体已经停在工作位，不能继续用走路速度的平滑尾巴覆盖工作动作。
+                visual.AnimationMoveSpeed = frozen || visual.FacilityWork.Active ? 0f : Mathf.Lerp(
+                    visual.AnimationMoveSpeed, actualSpeed, 1f - Mathf.Exp(-12f * Time.deltaTime));
+                ResidentAnimationSemantic semantic = visual.AnimationMoveSpeed > 0.08f
+                    ? ResidentAnimationSemantic.Move
+                    : visual.Phase switch
+                    {
+                        FoundationResidentPhase.PickingUpWorldItem or
+                        FoundationResidentPhase.PickingUpRepairPart or
+                        FoundationResidentPhase.PickingUpStopSpare => ResidentAnimationSemantic.Pickup,
+                        FoundationResidentPhase.RepairingFacility => ResidentAnimationSemantic.Work,
+                        FoundationResidentPhase.PickingUpWater or FoundationResidentPhase.DeliveringWater or
+                        FoundationResidentPhase.DeliveringStopWater => ResidentAnimationSemantic.Idle,
+                        FoundationResidentPhase.RestingOnGround or
+                        FoundationResidentPhase.UsingToilet => ResidentAnimationSemantic.Rest,
+                        _ => ResidentAnimationSemantic.Idle,
+                    };
+                bool dead = visual.Phase == FoundationResidentPhase.Dead;
+                visual.Humanoid.VisualRoot.localRotation = dead
+                    ? Quaternion.Euler(0f, 0f, 90f) : Quaternion.identity;
+                visual.Humanoid.VisualRoot.localPosition = dead ? Vector3.up * 0.35f : Vector3.zero;
+                // 冻结期间保留原来的状态与混合进度，恢复后再按真实阶段选择动作。
+                if (!frozen && !dead) visual.Humanoid.SetSemantic(semantic);
+                float playback = semantic == ResidentAnimationSemantic.Move
+                    ? Mathf.Clamp(visual.AnimationMoveSpeed / 1.35f, 0.15f, 16f)
+                    : _animationMultiplier;
+                visual.Humanoid.SetPlaybackSpeed(frozen || dead ? 0f : playback);
+                bool carrying = visual.HasCarriedItem ||
+                    (_waterCanLocation == FoundationWaterCanLocation.Resident && _waterCanCarrierId == visual.StableId) ||
+                    (!string.IsNullOrEmpty(_carriedWasteBucketFacilityId) && _wasteBucketCarrierId == visual.StableId);
+                bool hasWaterCan = _waterCanLocation == FoundationWaterCanLocation.Resident &&
+                    _waterCanCarrierId == visual.StableId;
+                if (hasWaterCan) ApplyWaterCanWorkPose(visual);
+                float groundReach = 0f, contactWeight = 0f;
+                bool handling = !dead && ApplyWaterCanContactPose(visual, out groundReach, out contactWeight);
+                visual.CarryIK.SetGroundReach(handling ? groundReach : 0f);
+                if (handling) visual.CarryIK.SetWaterCanGrip(_waterCanPalmTarget, _waterCanBody, contactWeight);
+                else if (hasWaterCan && !dead) visual.CarryIK.SetWaterCanGrip(_waterCanPalmTarget, _waterCanBody);
+                else visual.CarryIK.SetRightGrip(carrying && !dead ? visual.CarryAnchor : null);
+            }
+        }
+
+        private void ApplyWaterCanWorkPose(ResidentVisual visual)
+        {
+            FoundationFacilityWorkState work = visual.FacilityWork;
+            FacilityVisual facility = null;
+            bool supported = work.Active && _facilityVisuals.TryGetValue(work.FacilityInstanceId, out facility) &&
+                facility.WorkRig != null;
+            Transform inlet = null;
+            bool pouring = supported && facility.WorkRig.TryGetWaterInlet(work, out inlet);
+            float envelope = pouring ? FoundationFacilityArtRig.WorkEnvelope(work.Progress) : 0f;
+            float lift = 0f;
+            if (pouring)
+            {
+                Vector3 mouthAtFullTilt = visual.CarryAnchor.localPosition +
+                    Quaternion.AngleAxis(WaterCanPourDegrees, Vector3.right) *
+                    (FoundationWaterCanVisualFactory.OpeningPosition - Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
+                float inletHeight = visual.Root.InverseTransformPoint(inlet.position).y;
+                lift = Mathf.Max(visual.StandingShoulderHeight - .06f - visual.CarryAnchor.localPosition.y,
+                    inletHeight + .12f - mouthAtFullTilt.y);
+            }
+            // 先保留侧向壳体净空，再近身抬起；站姿肩部会后移，额外前伸容易耗尽弯肘余量。
+            Vector3 grip = visual.CarryAnchor.localPosition + new Vector3(
+                Mathf.Sign(visual.CarryAnchor.localPosition.x) * .02f, lift, 0f) * envelope;
+            Quaternion rotation = Quaternion.AngleAxis(WaterCanPourDegrees * envelope, Vector3.right);
+            _waterCanVisual.localRotation = rotation;
+            _waterCanVisual.localPosition = grip - rotation * (Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
+            _waterCanCap.gameObject.SetActive(!supported ||
+                (work.Phase != FoundationResidentPhase.PickingUpWater && !pouring));
+        }
+
+        private bool ApplyWaterCanContactPose(ResidentVisual visual, out float groundReach, out float contactWeight)
+        {
+            groundReach = contactWeight = 0f;
+            FoundationFacilityWorkState work = visual.FacilityWork;
+            FoundationItemPlacementState placement = work.ItemContactPlacement;
+            if (!work.Active || !placement.Active || work.Phase is not (
+                    FoundationResidentPhase.PickingUpWaterCan or FoundationResidentPhase.LiftingWaterCan or
+                    FoundationResidentPhase.PlacingWaterCan or FoundationResidentPhase.ReleasingWaterCan)) return false;
+            Vector3 grounded = deckRoot.TransformPoint(deckLayout.PoseToLocal(placement.WorldPose,
+                placement.SupportHeightMillimeters / 1000f));
+            Quaternion groundedRotation = deckRoot.rotation * Quaternion.Euler(0f, (float)placement.WorldPose.YawDegrees, 0f);
+            Vector3 carried = visual.Root.TransformPoint(visual.CarryAnchor.localPosition -
+                Vector3.up * FoundationWaterCanVisualFactory.GripHeight);
+            float movement = Mathf.SmoothStep(0f, 1f, work.Progress);
+            float lift = 0f;
+            switch (work.Phase)
+            {
+                case FoundationResidentPhase.PickingUpWaterCan:
+                    groundReach = Mathf.SmoothStep(0f, 1f, work.Progress / .65f);
+                    contactWeight = Mathf.SmoothStep(0f, 1f, (work.Progress - .5f) / .25f);
+                    break;
+                case FoundationResidentPhase.LiftingWaterCan:
+                    groundReach = 1f - movement;
+                    contactWeight = 1f;
+                    lift = movement;
+                    break;
+                case FoundationResidentPhase.PlacingWaterCan:
+                    groundReach = movement;
+                    contactWeight = 1f;
+                    lift = 1f - movement;
+                    break;
+                case FoundationResidentPhase.ReleasingWaterCan:
+                    groundReach = 1f - movement;
+                    contactWeight = 1f - Mathf.SmoothStep(0f, 1f, work.Progress / .3f);
+                    break;
+            }
+            // 沿当前物品相对身体的外侧绕过膝盖；不同区域朝向不能共用固定的前推方向。
+            Vector3 position = Vector3.Lerp(grounded, carried, lift);
+            Vector3 outward = Vector3.ProjectOnPlane(position - visual.Root.position, visual.Root.up).normalized;
+            Vector3 clearanceArc = (outward + visual.Root.up) *
+                (FoundationWaterCanVisualFactory.BodyHalfWidth * Mathf.Sin(Mathf.PI * lift));
+            _waterCanVisual.SetPositionAndRotation(position + clearanceArc,
+                Quaternion.Slerp(groundedRotation, visual.Root.rotation, lift));
+            _waterCanCap.gameObject.SetActive(true);
+            return true;
+        }
+
+        private void UpdateFacilityWorkVisuals()
+        {
+            foreach (var facility in _facilityVisuals.Values)
+                if (facility.WorkRig != null) facility.WorkRig.ResetWorkPose();
+            foreach (var resident in _residentVisuals.Values)
+            {
+                FoundationFacilityWorkState work = resident.FacilityWork;
+                if (!work.Active || !_facilityVisuals.TryGetValue(work.FacilityInstanceId, out var facility) ||
+                    facility.WorkRig == null) continue;
+                Transform can = _waterCanLocation == FoundationWaterCanLocation.Resident &&
+                    _waterCanCarrierId == resident.StableId ? _waterCanVisual : null;
+                facility.WorkRig.Apply(work, can);
+            }
+        }
+
+        private static void ApplyWorkwearIdentity(Transform root, ulong ownerId)
+        {
+            Color color = (ownerId % 3UL) switch
+            {
+                1UL => new Color(.13f, .28f, .25f),
+                2UL => new Color(.48f, .27f, .10f),
+                _ => new Color(.36f, .16f, .10f)
+            };
+            var block = new MaterialPropertyBlock();
+            block.SetColor("_BaseColor", color);
+            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] materials = renderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++)
+                    if (materials[i] != null && materials[i].name == "NW1_Workshirt")
+                        renderer.SetPropertyBlock(block, i);
+            }
         }
 
         private void BuildWaterCanVisual()
@@ -591,51 +959,11 @@ namespace Game.NomadWorkshop.Foundation
                 0.42f,
                 0.34f);
             Material water = CreateLitMaterial("M_WaterCanFilled", new Color(0.1f, 0.72f, 1f));
-            _waterCanVisual = new GameObject("Water Can 01 [physical carrier]").transform;
-            _waterCanVisual.SetParent(deckRoot, false);
-            CreatePrimitive(
-                PrimitiveType.Cube,
-                "Can Body",
-                _waterCanVisual,
-                new Vector3(0f, 0.2f, 0f),
-                new Vector3(0.34f, 0.4f, 0.24f),
-                shell);
-            CreatePrimitive(
-                PrimitiveType.Cube,
-                "Handle Left",
-                _waterCanVisual,
-                new Vector3(-0.11f, 0.47f, 0f),
-                new Vector3(0.055f, 0.18f, 0.055f),
-                hardware);
-            CreatePrimitive(
-                PrimitiveType.Cube,
-                "Handle Right",
-                _waterCanVisual,
-                new Vector3(0.11f, 0.47f, 0f),
-                new Vector3(0.055f, 0.18f, 0.055f),
-                hardware);
-            CreatePrimitive(
-                PrimitiveType.Cube,
-                "Handle Top",
-                _waterCanVisual,
-                new Vector3(0f, 0.56f, 0f),
-                new Vector3(0.27f, 0.055f, 0.055f),
-                hardware);
-            CreatePrimitive(
-                PrimitiveType.Cylinder,
-                "Sealed Cap",
-                _waterCanVisual,
-                new Vector3(0.12f, 0.43f, 0f),
-                new Vector3(0.07f, 0.045f, 0.07f),
-                hardware);
-            _waterCanFillVisual = CreatePrimitive(
-                PrimitiveType.Cube,
-                "Contains Water",
-                _waterCanVisual,
-                new Vector3(0f, 0.2f, -0.126f),
-                new Vector3(0.22f, 0.22f, 0.015f),
-                water).transform;
-            _waterCanFillVisual.gameObject.SetActive(false);
+            _waterCanVisual = FoundationWaterCanVisualFactory.Create(deckRoot, shell, hardware, water,
+                out _waterCanFillVisual);
+            _waterCanPalmTarget = _waterCanVisual.Find(FoundationWaterCanVisualFactory.PalmTargetName);
+            _waterCanBody = _waterCanVisual.Find("Can Body");
+            _waterCanCap = _waterCanVisual.Find("Sealed Cap");
             UpdateWaterCanVisual();
         }
 
@@ -643,6 +971,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (_worldItemRoot == null) return;
             DestroyChildren(_worldItemRoot);
+            DestroyChildren(_stopWorldItemRoot);
             if (items == null) return;
 
             for (var i = 0; i < items.Count; i++)
@@ -657,7 +986,8 @@ namespace Game.NomadWorkshop.Foundation
 
                 var root = new GameObject(
                     $"{definition.DisplayName} [{item.ItemId}]").transform;
-                root.SetParent(_worldItemRoot, false);
+                root.SetParent(item.OwnerEntityId == NomadFoundationSystem.StopSupplyOwnerId
+                    ? _stopWorldItemRoot : _worldItemRoot, false);
                 root.localPosition = deckLayout.PoseToLocal(
                     item.WorldPose,
                     item.SupportHeightMillimeters / 1000f);
@@ -669,10 +999,11 @@ namespace Game.NomadWorkshop.Foundation
             }
         }
 
-        private void RebuildCarriedWorldItem(FoundationCarriedWorldItemState carried)
+        private void RebuildCarriedWorldItem(ResidentVisual visual, FoundationCarriedWorldItemState carried)
         {
-            if (_residentCarryAnchor == null) return;
-            DestroyChildren(_residentCarryAnchor);
+            visual.HasCarriedItem = carried.Active;
+            if (visual.CarryAnchor == null) return;
+            DestroyChildren(visual.CarryAnchor);
             if (!carried.Active || !_worldItemDefinitions.TryGetValue(
                     carried.DefinitionId,
                     out NomadWorldItemDefinition definition) ||
@@ -681,7 +1012,7 @@ namespace Game.NomadWorkshop.Foundation
 
             var root = new GameObject(
                 $"{definition.DisplayName} [{carried.ItemId}] (carried)").transform;
-            root.SetParent(_residentCarryAnchor, false);
+            root.SetParent(visual.CarryAnchor, false);
             BuildWorldItemPrototype(root, definition);
         }
 
@@ -801,6 +1132,10 @@ namespace Game.NomadWorkshop.Foundation
             if (_facilityRoot == null) return;
             _facilityStates = new FoundationFacilityState[facilities.Count];
             for (var i = 0; i < facilities.Count; i++) _facilityStates[i] = facilities[i];
+            // 正在携带的桶已挂到居民，重建设施时也必须释放它，避免留下第二个容器表现。
+            foreach (var bucket in _wasteBucketVisuals.Values)
+                if (bucket.Root != null && !bucket.Root.IsChildOf(_facilityRoot)) Destroy(bucket.Root.gameObject);
+            _wasteBucketVisuals.Clear();
             _facilityVisuals.Clear();
             DestroyChildren(_facilityRoot);
             for (var i = 0; i < facilities.Count; i++)
@@ -815,6 +1150,11 @@ namespace Game.NomadWorkshop.Foundation
                 root.localPosition = deckLayout.PoseToLocal(pose, 0.02f);
                 root.localRotation = Quaternion.Euler(0f, (float)pose.YawDegrees, 0f);
                 Renderer[] bodyRenderers = _grayboxFactory.Build(root, definition);
+                if (definition.Function == NomadFacilityFunction.Toilet)
+                {
+                    Transform bucket = root.Find("Detachable Waste Bucket");
+                    _wasteBucketVisuals.Add(state.InstanceId, new WasteBucketVisual(bucket, root));
+                }
                 var interactionRoot = new GameObject("Interaction Slots (build mode)")
                     .transform;
                 interactionRoot.SetParent(root, false);
@@ -847,10 +1187,37 @@ namespace Game.NomadWorkshop.Foundation
                         placementRegionRoot,
                         bodyRenderers,
                         slotRenderers.ToArray(),
-                        groupVisuals.ToArray()));
+                        groupVisuals.ToArray(),
+                        definition.Prefab != null));
             }
             ApplyFacilityAccessVisuals();
             UpdateWaterCanVisual();
+            UpdateWasteBucketLocations();
+        }
+
+        private void UpdateWasteBucketLocations()
+        {
+            foreach (var entry in _wasteBucketVisuals)
+            {
+                WasteBucketVisual bucket = entry.Value;
+                if (bucket.Root == null) continue;
+                Transform carrier = FindResidentRoot(_wasteBucketCarrierId);
+                bool carried = entry.Key == _carriedWasteBucketFacilityId && carrier != null;
+                bucket.Root.SetParent(carried ? carrier : bucket.FacilityRoot, false);
+                bucket.Root.localPosition = carried ? new Vector3(0.42f, 0.24f, 0f) : bucket.InstalledPosition;
+                if (carried && _residentVisuals.TryGetValue(_wasteBucketCarrierId, out ResidentVisual visual) && visual.Humanoid != null)
+                    bucket.Root.localPosition = visual.CarryAnchor.localPosition - Vector3.up * .44f;
+                bucket.Root.localRotation = Quaternion.identity;
+            }
+        }
+
+        private sealed class WasteBucketVisual
+        {
+            internal WasteBucketVisual(Transform root, Transform facilityRoot)
+            { Root = root; FacilityRoot = facilityRoot; InstalledPosition = root.localPosition; }
+            internal Transform Root { get; }
+            internal Transform FacilityRoot { get; }
+            internal Vector3 InstalledPosition { get; }
         }
 
         private void UpdateFacilityAccess(
@@ -917,9 +1284,10 @@ namespace Game.NomadWorkshop.Foundation
                 _sandstormParticles.velocityOverLifetime;
             velocity.enabled = true;
             velocity.space = ParticleSystemSimulationSpace.Local;
-            velocity.x = new ParticleSystem.MinMaxCurve(-7.5f);
+            // Unity 要求三轴速度使用相同曲线模式；固定轴也用上下界相同的 TwoConstants。
+            velocity.x = new ParticleSystem.MinMaxCurve(-7.5f, -7.5f);
             velocity.y = new ParticleSystem.MinMaxCurve(-0.35f, 0.1f);
-            velocity.z = new ParticleSystem.MinMaxCurve(-2.4f);
+            velocity.z = new ParticleSystem.MinMaxCurve(-2.4f, -2.4f);
 
             ParticleSystemRenderer renderer = dust.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Stretch;
@@ -961,10 +1329,10 @@ namespace Game.NomadWorkshop.Foundation
                 if (keyLight != null)
                 {
                     keyLight.color = Color.Lerp(
-                        new Color(1f, 0.89f, 0.72f),
+                        ClearWeatherKeyColor,
                         new Color(0.95f, 0.55f, 0.24f),
                         intensity);
-                    keyLight.intensity = Mathf.Lerp(1.6f, 1.12f, intensity);
+                    keyLight.intensity = Mathf.Lerp(ClearWeatherKeyIntensity, 1.12f, intensity);
                 }
                 if (fillLight != null) fillLight.intensity = Mathf.Lerp(0.52f, 0.32f, intensity);
                 return;
@@ -976,8 +1344,8 @@ namespace Game.NomadWorkshop.Foundation
             RenderSettings.ambientIntensity = skyboxMaterial != null ? 1.02f : 1f;
             if (keyLight != null)
             {
-                keyLight.color = new Color(1f, 0.89f, 0.72f);
-                keyLight.intensity = 1.6f;
+                keyLight.color = ClearWeatherKeyColor;
+                keyLight.intensity = ClearWeatherKeyIntensity;
             }
             if (fillLight != null) fillLight.intensity = 0.52f;
         }
@@ -1000,9 +1368,13 @@ namespace Game.NomadWorkshop.Foundation
                 bool hasCondition = _facilityConditions.TryGetValue(
                     item.Key,
                     out FoundationFacilityConditionState condition);
-                bool showFaultTint = hasCondition && !condition.IsOperational;
+                bool hasLocalIndicator = visual.WorkRig != null && visual.WorkRig.ConditionIndicator != null;
+                if (visual.WorkRig != null)
+                    visual.WorkRig.ApplyCondition(hasCondition && !condition.IsOperational,
+                        hasCondition && condition.Warning == FacilityConditionWarning.Critical);
+                bool showFaultTint = !hasLocalIndicator && hasCondition && !condition.IsOperational;
                 bool showDustTint = hasCondition && condition.DustPermille > 0;
-                bool showCriticalTint = hasCondition &&
+                bool showCriticalTint = !hasLocalIndicator && hasCondition &&
                                         condition.Warning == FacilityConditionWarning.Critical;
                 bool showStatusTint = showAccessTint || showFaultTint ||
                                       showDustTint || showCriticalTint;
@@ -1018,19 +1390,19 @@ namespace Game.NomadWorkshop.Foundation
                 else if (showFaultTint)
                 {
                     tint = new Color(0.86f, 0.12f, 0.055f, 1f);
-                    tintStrength = 0.68f;
+                    tintStrength = visual.HasAuthoredArt ? .12f : .68f;
                 }
                 else if (showCriticalTint)
                 {
                     tint = new Color(0.88f, 0.38f, 0.08f, 1f);
-                    tintStrength = 0.3f;
+                    tintStrength = visual.HasAuthoredArt ? .08f : .3f;
                 }
                 else
                 {
                     tint = new Color(0.55f, 0.34f, 0.17f, 1f);
                     tintStrength = Mathf.Lerp(
-                        0.06f,
-                        0.38f,
+                        visual.HasAuthoredArt ? .025f : .06f,
+                        visual.HasAuthoredArt ? .16f : .38f,
                         condition.DustPermille / 1000f);
                 }
                 for (var rendererIndex = 0;
@@ -1039,6 +1411,9 @@ namespace Game.NomadWorkshop.Foundation
                 {
                     Renderer renderer = visual.BodyRenderers[rendererIndex];
                     if (renderer == null) continue;
+                    // 水流与警示灯有独立材质投影；外壳积尘不能覆盖它们的颜色。
+                    if (renderer is LineRenderer || hasLocalIndicator && renderer == visual.WorkRig.ConditionIndicator)
+                        continue;
                     if (!showStatusTint)
                     {
                         renderer.SetPropertyBlock(null);
@@ -1136,12 +1511,17 @@ namespace Game.NomadWorkshop.Foundation
         private void UpdateWaterCanVisual()
         {
             if (_waterCanVisual == null || deckRoot == null) return;
+            _waterCanCap.gameObject.SetActive(true);
             if (_waterCanLocation == FoundationWaterCanLocation.Resident)
             {
-                _waterCanVisual.gameObject.SetActive(_residentRoot != null);
-                if (_residentRoot == null) return;
-                _waterCanVisual.SetParent(_residentRoot, false);
+                Transform carrier = FindResidentRoot(_waterCanCarrierId);
+                _waterCanVisual.gameObject.SetActive(carrier != null);
+                if (carrier == null) return;
+                _waterCanVisual.SetParent(carrier, false);
                 _waterCanVisual.localPosition = new Vector3(0.42f, 0.32f, 0f);
+                if (_residentVisuals.TryGetValue(_waterCanCarrierId, out ResidentVisual visual) &&
+                    visual.Humanoid != null)
+                    _waterCanVisual.localPosition = visual.CarryAnchor.localPosition - Vector3.up * 0.56f;
                 _waterCanVisual.localRotation = Quaternion.identity;
                 return;
             }
@@ -1573,13 +1953,16 @@ namespace Game.NomadWorkshop.Foundation
                 Transform placementRegionRoot,
                 Renderer[] bodyRenderers,
                 Renderer[][] slotRenderers,
-                InteractionGroupVisual[] interactionGroups)
+                InteractionGroupVisual[] interactionGroups,
+                bool hasAuthoredArt)
             {
                 State = state;
                 Root = root;
                 InteractionRoot = interactionRoot;
                 PlacementRegionRoot = placementRegionRoot;
                 BodyRenderers = bodyRenderers ?? Array.Empty<Renderer>();
+                WorkRig = root.GetComponentInChildren<FoundationFacilityArtRig>();
+                HasAuthoredArt = hasAuthoredArt;
                 SlotRenderers = slotRenderers ?? Array.Empty<Renderer[]>();
                 InteractionGroups = interactionGroups ??
                                     Array.Empty<InteractionGroupVisual>();
@@ -1590,6 +1973,8 @@ namespace Game.NomadWorkshop.Foundation
             public Transform InteractionRoot { get; }
             public Transform PlacementRegionRoot { get; }
             public Renderer[] BodyRenderers { get; }
+            public FoundationFacilityArtRig WorkRig { get; }
+            public bool HasAuthoredArt { get; }
             public Renderer[][] SlotRenderers { get; }
             public InteractionGroupVisual[] InteractionGroups { get; }
         }
@@ -1627,6 +2012,7 @@ namespace Game.NomadWorkshop.Foundation
 
         protected override void OnDestroy()
         {
+            if (_stopVisualRoot != null) Destroy(_stopVisualRoot.gameObject);
             _placementGrid?.Dispose();
             _placementGrid = null;
             _grayboxFactory?.Dispose();

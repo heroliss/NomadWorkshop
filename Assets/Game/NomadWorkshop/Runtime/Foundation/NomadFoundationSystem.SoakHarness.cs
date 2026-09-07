@@ -21,39 +21,42 @@ namespace Game.NomadWorkshop.Foundation
             FoundationSoakStopReason rejection = ValidateSoakRequest(
                 durationMilliseconds,
                 stepMilliseconds,
-                observableStallLimitMilliseconds,
-                out int requestedStepCount);
+                observableStallLimitMilliseconds);
             if (rejection != FoundationSoakStopReason.None)
                 return CreateRejectedSoakResult(
                     rejection,
                     durationMilliseconds,
                     stepMilliseconds);
 
+            using var movementScope = new SynchronousLocomotionScope(this);
             var accumulator = new FoundationSoakAccumulator(
                 this,
                 durationMilliseconds,
                 stepMilliseconds);
             long remaining = durationMilliseconds;
+            long pendingInputMilliseconds = 0L;
             FoundationSoakStopReason stopReason = FoundationSoakStopReason.DurationReached;
-            for (var index = 0; index < requestedStepCount && remaining > 0L; index++)
+            // stepMilliseconds 表达输入分块，实际业务与逐步审计始终为固定 10 ms。
+            // 同一分块中也检查死亡 / 停滞，避免粗分块越过应当停止的物理终态。
+            while (remaining > 0L)
             {
-                int deltaMilliseconds = (int)Math.Min(stepMilliseconds, remaining);
-                _simulationClock.AdvanceMilliseconds(deltaMilliseconds);
-                AdvanceSimulation(deltaMilliseconds);
-                remaining -= deltaMilliseconds;
-                accumulator.Observe(this, deltaMilliseconds);
+                long inputMilliseconds = Math.Min(stepMilliseconds, remaining);
+                remaining -= inputMilliseconds;
+                pendingInputMilliseconds += inputMilliseconds;
+                while (pendingInputMilliseconds >= SimulationStepMilliseconds)
+                {
+                    _simulationClock.AdvanceHarnessStep();
+                    AdvanceSimulation(SimulationStepMilliseconds);
+                    pendingInputMilliseconds -= SimulationStepMilliseconds;
+                    accumulator.Observe(this, SimulationStepMilliseconds);
 
-                if (!_residentWellbeing.IsAlive)
-                {
-                    stopReason = FoundationSoakStopReason.ResidentDied;
-                    break;
-                }
-                if (observableStallLimitMilliseconds > 0L &&
-                    accumulator.CurrentObservableStallMilliseconds >=
-                    observableStallLimitMilliseconds)
-                {
-                    stopReason = FoundationSoakStopReason.ObservableProgressStalled;
-                    break;
+                    if (!CaptureCohortStats().AllAlive)
+                        return accumulator.Complete(this, FoundationSoakStopReason.ResidentDied);
+                    if (observableStallLimitMilliseconds > 0L &&
+                        accumulator.CurrentObservableStallMilliseconds >=
+                        observableStallLimitMilliseconds)
+                        return accumulator.Complete(
+                            this, FoundationSoakStopReason.ObservableProgressStalled);
                 }
             }
 
@@ -70,13 +73,13 @@ namespace Game.NomadWorkshop.Foundation
                 return false;
             if (!_model.IsPaused.Value)
             {
-                _model.LastBlocker.Value =
+                _resident.State.LastBlocker.Value =
                     "HarnessRequiresPause · 切换 Seed 会重建当前世界，请先暂停";
                 return false;
             }
             if (_model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle)
             {
-                _model.LastBlocker.Value =
+                _resident.State.LastBlocker.Value =
                     "BuildTransactionActive · 等待建造导航事务结束后再切换 Seed";
                 return false;
             }
@@ -90,12 +93,12 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationSoakStopReason ValidateSoakRequest(
             long durationMilliseconds,
             int stepMilliseconds,
-            long observableStallLimitMilliseconds,
-            out int requestedStepCount)
+            long observableStallLimitMilliseconds)
         {
-            requestedStepCount = 0;
-            if (!_initialized || _model == null || _residentWaterCycle == null)
+            if (!_initialized || _model == null || _resident.WaterCycle == null)
                 return FoundationSoakStopReason.NotReady;
+            if (_checkpointOperation != null)
+                return FoundationSoakStopReason.CheckpointOperationActive;
             if (!_model.IsPaused.Value)
                 return FoundationSoakStopReason.RequiresPause;
             if (_model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle)
@@ -103,14 +106,15 @@ namespace Game.NomadWorkshop.Foundation
             if (durationMilliseconds <= 0L ||
                 stepMilliseconds < MinimumSoakStepMilliseconds ||
                 stepMilliseconds > MaximumSoakStepMilliseconds ||
+                durationMilliseconds % SimulationStepMilliseconds != 0L ||
                 observableStallLimitMilliseconds < 0L ||
-                durationMilliseconds > long.MaxValue - _simulationClock.SimulationTick)
+                durationMilliseconds > long.MaxValue - _simulationClock.SimulationTick -
+                                       _simulationClock.PendingMilliseconds)
                 return FoundationSoakStopReason.InvalidRequest;
 
-            long stepCount = (durationMilliseconds - 1L) / stepMilliseconds + 1L;
+            long stepCount = durationMilliseconds / SimulationStepMilliseconds;
             if (stepCount > MaximumSoakStepCount)
                 return FoundationSoakStopReason.StepBudgetExceeded;
-            requestedStepCount = (int)stepCount;
             return FoundationSoakStopReason.None;
         }
 
@@ -120,8 +124,8 @@ namespace Game.NomadWorkshop.Foundation
             int stepMilliseconds)
         {
             long tick = _simulationClock?.SimulationTick ?? 0L;
-            bool alive = _residentWellbeing?.IsAlive ?? false;
-            long water = _model == null ? 0L : CalculateConservedWaterMilliliters();
+            bool alive = _resident?.Wellbeing?.IsAlive ?? false;
+            long water = _resident == null ? 0L : CalculateConservedWaterMilliliters();
             return new FoundationSoakRunResult(
                 reason,
                 worldSeed,
@@ -132,12 +136,12 @@ namespace Game.NomadWorkshop.Foundation
                 tick,
                 FindFirstFacilityFaultTick(),
                 alive,
-                _model?.ResidentHealth.Value ?? 0f,
-                _model?.ResidentThirst.Value ?? 0f,
-                _model?.ResidentEntertainment.Value ?? 0f,
-                _model?.ResidentMood.Value ?? 0f,
-                _model?.ResidentFatigue.Value ?? 0f,
-                _model?.ResidentStress.Value ?? 0f,
+                _resident?.State.ResidentHealth.Value ?? 0f,
+                _resident?.State.ResidentThirst.Value ?? 0f,
+                _resident?.State.ResidentEntertainment.Value ?? 0f,
+                _resident?.State.ResidentMood.Value ?? 0f,
+                _resident?.State.ResidentFatigue.Value ?? 0f,
+                _resident?.State.ResidentStress.Value ?? 0f,
                 water,
                 water,
                 0L,
@@ -149,19 +153,49 @@ namespace Game.NomadWorkshop.Foundation
                 0,
                 0L,
                 0L,
-                _model?.CurrentTask.Value,
-                _model?.LastBlocker.Value);
+                _resident?.State.CurrentTask.Value,
+                _resident?.State.LastBlocker.Value);
         }
 
         private long CalculateConservedWaterMilliliters()
         {
             if (_model == null) return 0L;
-            return (long)_model.VehicleWaterMilliliters.Value +
-                   _model.WaterCanWaterMilliliters.Value +
-                   _model.DrinkingStationWaterMilliliters.Value +
-                   _model.BodyWaterMilliliters.Value +
-                   _model.BladderWasteMilliliters.Value +
-                   _model.ToiletHoldingWasteMilliliters.Value;
+            long total = (long)_model.VehicleWaterMilliliters.Value + _model.WaterCanWaterMilliliters.Value +
+                _model.DrinkingStationWaterMilliliters.Value + _model.ToiletHoldingWasteMilliliters.Value +
+                _model.StopWaterMilliliters.Value + _model.StopWasteMilliliters.Value;
+            foreach (var resident in _residents)
+                total += (long)resident.State.BodyWaterMilliliters.Value + resident.State.BladderWasteMilliliters.Value;
+            return total;
+        }
+
+        private CohortStats CaptureCohortStats()
+        {
+            var stats = new CohortStats { AllAlive = _residents.Count > 0, Health = 1f, Entertainment = 1f, Mood = 1f };
+            foreach (var resident in _residents)
+            {
+                var state = resident.State;
+                stats.AllAlive &= resident.Wellbeing is { IsAlive: true };
+                stats.Health = Math.Min(stats.Health, state.ResidentHealth.Value);
+                stats.Thirst = Math.Max(stats.Thirst, state.ResidentThirst.Value);
+                stats.Entertainment = Math.Min(stats.Entertainment, state.ResidentEntertainment.Value);
+                stats.Mood = Math.Min(stats.Mood, state.ResidentMood.Value);
+                stats.Fatigue = Math.Max(stats.Fatigue, state.ResidentFatigue.Value);
+                stats.Stress = Math.Max(stats.Stress, state.ResidentStress.Value);
+                stats.Drinks += state.CompletedDrinkCount.Value;
+                stats.ToiletUses += state.CompletedToiletUseCount.Value;
+                stats.Daydreams += state.CompletedDaydreamCount.Value;
+                stats.Wanders += state.CompletedWanderCount.Value;
+                stats.GroundRests += state.CompletedGroundRestCount.Value;
+                stats.Hobbies += state.CompletedHobbyCount.Value;
+            }
+            return stats;
+        }
+
+        private struct CohortStats
+        {
+            internal bool AllAlive;
+            internal float Health, Thirst, Entertainment, Mood, Fatigue, Stress;
+            internal int Drinks, ToiletUses, Daydreams, Wanders, GroundRests, Hobbies;
         }
 
         private long FindFirstFacilityFaultTick()
@@ -181,44 +215,88 @@ namespace Game.NomadWorkshop.Foundation
         private long ComputeObservableActionSignature()
         {
             long hash = 17L;
-            hash = Fold(hash, (int)_residentPhase);
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(
-                _model.ResidentLocalPosition.Value.x));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(
-                _model.ResidentLocalPosition.Value.z));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.ActionProgress.Value));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.RemainingPathMeters.Value));
-            hash = Fold(hash, _model.CompletedDrinkCount.Value);
-            hash = Fold(hash, _model.CompletedToiletUseCount.Value);
-            hash = Fold(hash, _model.CompletedLeisureCount.Value);
-            hash = Fold(hash, _model.CompletedGroundRestCount.Value);
-            hash = Fold(hash, _model.CompletedHobbyCount.Value);
-            hash = Fold(hash, _model.CompletedWaterTankRepairCount.Value);
+            // 驾驶时居民留在岗位，车辆行进本身也是业务进展；不能把“人没移动”误判成卡死。
+            hash = Fold(hash, _model.JourneyPositionMicrometers.Value);
+            hash = Fold(hash, _model.JourneyFuelPicoliters.Value);
+            hash = Fold(hash, (int)_model.JourneyDestination.Value);
+            hash = Fold(hash, (int)_model.JourneyStatus.Value);
+            hash = Fold(hash, _model.StopWaterMilliliters.Value);
+            hash = Fold(hash, _model.StopWaterRequested.Value ? 1 : 0);
+            hash = Fold(hash, _model.StopWasteMilliliters.Value);
+            hash = Fold(hash, _stopWater.Capacity);
+            hash = Fold(hash, _stopWaste.Capacity);
+            hash = Fold(hash, _model.StopWasteRequested.Value ? 1 : 0);
+            hash = Fold(hash, _model.StopSpareRequested.Value ? 1 : 0);
+            hash = Fold(hash, StableStringHash(_model.CarriedWasteBucketFacilityId.Value));
+            hash = Fold(hash, StableStringHash(_waterCanCarrierId));
+            hash = Fold(hash, StableStringHash(_model.WasteBucketCarrierId.Value));
+            foreach (var resident in _residents)
+            {
+                hash = Fold(hash, StableStringHash(resident.StableId));
+                hash = Fold(hash, (long)resident.OwnerId);
+                hash = Fold(hash, (int)resident.Phase);
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(
+                    resident.State.ResidentLocalPosition.Value.x));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(
+                    resident.State.ResidentLocalPosition.Value.z));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.ActionProgress.Value));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.RemainingPathMeters.Value));
+                hash = Fold(hash, resident.State.CompletedDrinkCount.Value);
+                hash = Fold(hash, resident.State.CompletedToiletUseCount.Value);
+                hash = Fold(hash, resident.State.CompletedLeisureCount.Value);
+                hash = Fold(hash, resident.State.CompletedGroundRestCount.Value);
+                hash = Fold(hash, resident.State.CompletedHobbyCount.Value);
+                hash = Fold(hash, resident.State.CompletedWaterTankRepairCount.Value);
+                hash = Fold(hash, resident.State.ResidentCarriedWorldItem.Value.Active ? 1 : 0);
+                hash = Fold(hash, StableStringHash(resident.State.CurrentTask.Value));
+            }
             hash = Fold(hash, (int)_model.CurrentWeather.Value);
             hash = Fold(hash, _model.SandstormIntensityPermille.Value);
             hash = Fold(hash, (int)_model.WaterCanLocation.Value);
-            hash = Fold(hash, _model.ResidentCarriedWorldItem.Value.Active ? 1 : 0);
-            return Fold(hash, StableStringHash(_model.CurrentTask.Value));
+            return hash;
         }
 
         private long ComputeTrajectorySampleHash()
         {
             long hash = ComputeObservableActionSignature();
             hash = Fold(hash, _simulationClock.SimulationTick);
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.ResidentHealth.Value));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.ResidentThirst.Value));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(
-                _model.ResidentEntertainment.Value));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.ResidentMood.Value));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.ResidentFatigue.Value));
-            hash = Fold(hash, BitConverter.SingleToInt32Bits(_model.ResidentStress.Value));
+            foreach (var resident in _residents)
+            {
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.ResidentHealth.Value));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.ResidentThirst.Value));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(
+                    resident.State.ResidentEntertainment.Value));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.ResidentMood.Value));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.ResidentFatigue.Value));
+                hash = Fold(hash, BitConverter.SingleToInt32Bits(resident.State.ResidentStress.Value));
+                hash = Fold(hash, resident.State.BodyWaterMilliliters.Value);
+                hash = Fold(hash, resident.State.BladderWasteMilliliters.Value);
+                hash = Fold(hash, StableStringHash(resident.State.ResidentCarriedWorldItem.Value.ItemId));
+            }
             hash = Fold(hash, _model.VehicleWaterMilliliters.Value);
             hash = Fold(hash, _model.WaterCanWaterMilliliters.Value);
             hash = Fold(hash, _model.DrinkingStationWaterMilliliters.Value);
-            hash = Fold(hash, _model.BodyWaterMilliliters.Value);
-            hash = Fold(hash, _model.BladderWasteMilliliters.Value);
             hash = Fold(hash, _model.ToiletHoldingWasteMilliliters.Value);
+            // 投影按稳定库存 id 排序；总量相同但分布在不同厕所的世界应得到不同轨迹诊断。
+            foreach (FoundationFacilityInventoryState inventory in _facilityInventoryProjection)
+            {
+                hash = Fold(hash, StableStringHash(inventory.InventoryId));
+                hash = Fold(hash, StableStringHash(inventory.ResourceId));
+                hash = Fold(hash, (int)inventory.Measure);
+                hash = Fold(hash, inventory.Capacity);
+                hash = Fold(hash, inventory.Amount);
+            }
             hash = Fold(hash, FindFirstFacilityFaultTick());
+            // 件数相同不代表相同物资；有限补给必须留下来源、稳定身份与精确落位证据。
+            foreach (var item in _worldItemPlacementLedger.CreateCheckpointSnapshot())
+            {
+                hash = Fold(hash, StableStringHash(item.ItemId));
+                hash = Fold(hash, StableStringHash(item.Footprint.DefinitionId));
+                hash = Fold(hash, StableStringHash(item.Region.RegionId));
+                hash = Fold(hash, item.LocalPose.LocalXMillimeters);
+                hash = Fold(hash, item.LocalPose.LocalZMillimeters);
+                hash = Fold(hash, item.LocalPose.LocalYawDeciDegrees);
+            }
             return hash;
         }
 
@@ -273,39 +351,41 @@ namespace Game.NomadWorkshop.Foundation
                 long requestedDurationMilliseconds,
                 int stepMilliseconds)
             {
+                CohortStats cohort = system.CaptureCohortStats();
                 _requestedDurationMilliseconds = requestedDurationMilliseconds;
                 _stepMilliseconds = stepMilliseconds;
                 _startTick = system._simulationClock.SimulationTick;
                 _initialWater = system.CalculateConservedWaterMilliliters();
-                _initialDrinks = system._model.CompletedDrinkCount.Value;
-                _initialToiletUses = system._model.CompletedToiletUseCount.Value;
-                _initialDaydreams = system._model.CompletedDaydreamCount.Value;
-                _initialWanders = system._model.CompletedWanderCount.Value;
-                _initialGroundRests = system._model.CompletedGroundRestCount.Value;
-                _initialHobbies = system._model.CompletedHobbyCount.Value;
+                _initialDrinks = cohort.Drinks;
+                _initialToiletUses = cohort.ToiletUses;
+                _initialDaydreams = cohort.Daydreams;
+                _initialWanders = cohort.Wanders;
+                _initialGroundRests = cohort.GroundRests;
+                _initialHobbies = cohort.Hobbies;
                 _previousActionSignature = system.ComputeObservableActionSignature();
                 _firstFaultTick = system.FindFirstFacilityFaultTick();
-                _minimumHealth = system._model.ResidentHealth.Value;
-                _maximumThirst = system._model.ResidentThirst.Value;
-                _minimumEntertainment = system._model.ResidentEntertainment.Value;
-                _minimumMood = system._model.ResidentMood.Value;
-                _maximumFatigue = system._model.ResidentFatigue.Value;
-                _maximumStress = system._model.ResidentStress.Value;
+                _minimumHealth = cohort.Health;
+                _maximumThirst = cohort.Thirst;
+                _minimumEntertainment = cohort.Entertainment;
+                _minimumMood = cohort.Mood;
+                _maximumFatigue = cohort.Fatigue;
+                _maximumStress = cohort.Stress;
             }
 
             public long CurrentObservableStallMilliseconds => _currentObservableStall;
 
             public void Observe(NomadFoundationSystem system, int deltaMilliseconds)
             {
+                CohortStats cohort = system.CaptureCohortStats();
                 _stepCount++;
-                _minimumHealth = Math.Min(_minimumHealth, system._model.ResidentHealth.Value);
-                _maximumThirst = Math.Max(_maximumThirst, system._model.ResidentThirst.Value);
+                _minimumHealth = Math.Min(_minimumHealth, cohort.Health);
+                _maximumThirst = Math.Max(_maximumThirst, cohort.Thirst);
                 _minimumEntertainment = Math.Min(
                     _minimumEntertainment,
-                    system._model.ResidentEntertainment.Value);
-                _minimumMood = Math.Min(_minimumMood, system._model.ResidentMood.Value);
-                _maximumFatigue = Math.Max(_maximumFatigue, system._model.ResidentFatigue.Value);
-                _maximumStress = Math.Max(_maximumStress, system._model.ResidentStress.Value);
+                    cohort.Entertainment);
+                _minimumMood = Math.Min(_minimumMood, cohort.Mood);
+                _maximumFatigue = Math.Max(_maximumFatigue, cohort.Fatigue);
+                _maximumStress = Math.Max(_maximumStress, cohort.Stress);
 
                 long water = system.CalculateConservedWaterMilliliters();
                 long deviation = Math.Abs(water - _initialWater);
@@ -337,6 +417,7 @@ namespace Game.NomadWorkshop.Foundation
                 NomadFoundationSystem system,
                 FoundationSoakStopReason stopReason)
             {
+                CohortStats cohort = system.CaptureCohortStats();
                 return new FoundationSoakRunResult(
                     stopReason,
                     system.worldSeed,
@@ -346,7 +427,7 @@ namespace Game.NomadWorkshop.Foundation
                     _startTick,
                     system._simulationClock.SimulationTick,
                     _firstFaultTick,
-                    system._residentWellbeing.IsAlive,
+                    cohort.AllAlive,
                     _minimumHealth,
                     _maximumThirst,
                     _minimumEntertainment,
@@ -356,16 +437,16 @@ namespace Game.NomadWorkshop.Foundation
                     _initialWater,
                     system.CalculateConservedWaterMilliliters(),
                     _maximumWaterDeviation,
-                    system._model.CompletedDrinkCount.Value - _initialDrinks,
-                    system._model.CompletedToiletUseCount.Value - _initialToiletUses,
-                    system._model.CompletedDaydreamCount.Value - _initialDaydreams,
-                    system._model.CompletedWanderCount.Value - _initialWanders,
-                    system._model.CompletedGroundRestCount.Value - _initialGroundRests,
-                    system._model.CompletedHobbyCount.Value - _initialHobbies,
+                    cohort.Drinks - _initialDrinks,
+                    cohort.ToiletUses - _initialToiletUses,
+                    cohort.Daydreams - _initialDaydreams,
+                    cohort.Wanders - _initialWanders,
+                    cohort.GroundRests - _initialGroundRests,
+                    cohort.Hobbies - _initialHobbies,
                     _longestObservableStall,
                     _trajectoryChecksum,
-                    system._model.CurrentTask.Value,
-                    system._model.LastBlocker.Value);
+                    system._resident.State.CurrentTask.Value,
+                    system._resident.State.LastBlocker.Value);
             }
         }
     }

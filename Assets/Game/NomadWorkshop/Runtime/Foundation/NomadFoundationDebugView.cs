@@ -1,8 +1,12 @@
 using System;
+using Cysharp.Threading.Tasks;
 using Game.Framework.Common;
+using Game.Framework.Logging;
 using Game.Framework.View;
+using Game.NomadWorkshop.Persistence;
 using Game.NomadWorkshop.Simulation;
 using R3;
+using ObservableCollections;
 using UnityEngine;
 
 namespace Game.NomadWorkshop.Foundation
@@ -16,7 +20,28 @@ namespace Game.NomadWorkshop.Foundation
     {
         private FoundationBuildOption[] _buildOptions = Array.Empty<FoundationBuildOption>();
         private bool _ready;
+        private long _journeyPositionMicrometers;
+        private long _journeyFuelPicoliters;
+        private NomadJourneyEndpoint _journeyDestination;
+        private NomadJourneyStatus _journeyStatus;
+        private int _stopWaterMilliliters;
+        private bool _stopWaterRequested;
+        private bool _stopWaterActive;
+        private int _stopWasteMilliliters;
+        private int _stopWasteCapacityMilliliters;
+        private bool _stopWasteRequested;
+        private bool _stopWasteActive;
+        private int _stopSpareCount;
+        private bool _stopSpareRequested;
+        private bool _stopSpareActive;
+        private string _carriedWasteBucketId = string.Empty;
+        private int _carriedWasteMilliliters;
+        private string _stopWorkFeedback = string.Empty;
+        private Vector2 _journeyScroll;
+        private bool _stopAccessOpen;
         private bool _paused;
+        private bool _checkpointBusy;
+        private string _checkpointFeedback = string.Empty;
         private float _speed;
         private long _simulationTick;
         private long _lifeDay;
@@ -82,7 +107,15 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationSoakRunResult _lastSoakResult;
         private float _actionProgress;
         private string _currentTask = string.Empty;
+        private IReadOnlyObservableList<FoundationResidentReadModel> _residents;
+        private Game.Framework.DisposableBag _residentBindings;
+        private int _selectedResidentIndex;
+        private string _departureFeedback = string.Empty;
+        private string SelectedResidentName => _residents == null || _residents.Count == 0
+            ? "居民" : $"居民 {_selectedResidentIndex + 1:00}";
+
         private string _lastBlocker = string.Empty;
+        private string _buildFeedback = string.Empty;
         [SerializeField, HideInInspector]
         private FoundationHudPanel _openPanel;
         private Vector2 _residentPanelScroll;
@@ -101,8 +134,33 @@ namespace Game.NomadWorkshop.Foundation
         {
             base.Awake();
             FoundationReadModel readModel = this.ExecuteCommand(new GetFoundationReadModelCommand());
+            _residents = readModel.Residents;
+            Bag.Add(Disposable.Create(() => _residentBindings?.Dispose()));
+            BindSelectedResident();
+            Bag.Subscribe(readModel.IsReady, ready => { if (ready) BindSelectedResident(); });
+            Bag.Subscribe(readModel.DepartureFeedback, value => _departureFeedback = value);
             _buildOptions = this.ExecuteCommand(new GetFoundationBuildOptionsCommand());
             Bag.Subscribe(readModel.IsReady, value => _ready = value);
+            Bag.Subscribe(readModel.JourneyPositionMicrometers, value => _journeyPositionMicrometers = value);
+            Bag.Subscribe(readModel.CheckpointBusy, value => _checkpointBusy = value);
+            Bag.Subscribe(readModel.CheckpointFeedback, value => _checkpointFeedback = value);
+            Bag.Subscribe(readModel.JourneyFuelPicoliters, value => _journeyFuelPicoliters = value);
+            Bag.Subscribe(readModel.JourneyDestination, value => _journeyDestination = value);
+            Bag.Subscribe(readModel.JourneyStatus, value => _journeyStatus = value);
+            Bag.Subscribe(readModel.StopWaterMilliliters, value => _stopWaterMilliliters = value);
+            Bag.Subscribe(readModel.StopWaterRequested, value => _stopWaterRequested = value);
+            Bag.Subscribe(readModel.StopWaterActive, value => _stopWaterActive = value);
+            Bag.Subscribe(readModel.StopWasteMilliliters, value => _stopWasteMilliliters = value);
+            Bag.Subscribe(readModel.StopWasteCapacityMilliliters, value => _stopWasteCapacityMilliliters = value);
+            Bag.Subscribe(readModel.StopWasteRequested, value => _stopWasteRequested = value);
+            Bag.Subscribe(readModel.StopWasteActive, value => _stopWasteActive = value);
+            Bag.Subscribe(readModel.StopSpareCount, value => _stopSpareCount = value);
+            Bag.Subscribe(readModel.StopSpareRequested, value => _stopSpareRequested = value);
+            Bag.Subscribe(readModel.StopSpareActive, value => _stopSpareActive = value);
+            Bag.Subscribe(readModel.CarriedWasteBucketFacilityId, value => _carriedWasteBucketId = value);
+            Bag.Subscribe(readModel.CarriedWasteMilliliters, value => _carriedWasteMilliliters = value);
+            Bag.Subscribe(readModel.StopWorkFeedback, value => _stopWorkFeedback = value);
+            Bag.Subscribe(readModel.StopAccessOpen, value => _stopAccessOpen = value);
             Bag.Subscribe(readModel.IsPaused, value => _paused = value);
             Bag.Subscribe(readModel.SimulationSpeed, value => _speed = value);
             Bag.Subscribe(readModel.SimulationTick, value => _simulationTick = value);
@@ -135,18 +193,11 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.PositionSnapMillimeters, value => _positionSnapMillimeters = value);
             Bag.Subscribe(readModel.RotationSnapDeciDegrees, value => _rotationSnapDeciDegrees = value);
             Bag.Subscribe(readModel.ShowPlacementGrid, value => _showPlacementGrid = value);
-            Bag.Subscribe(readModel.ResidentPhase, value => _residentPhase = value);
-            Bag.Subscribe(readModel.RemainingPathMeters, value => _remainingPathMeters = value);
-            Bag.Subscribe(readModel.RemainingPathCorners, value => _remainingPathCorners = value);
-            Bag.Subscribe(readModel.ActivePathSummary, value => _activePathSummary = value);
             Bag.Subscribe(readModel.WaterCanLocation, value => _waterCanLocation = value);
             Bag.Subscribe(
                 readModel.WaterCanAnchorFacilityInstanceId,
                 value => _waterCanAnchorFacilityInstanceId = value ?? string.Empty);
             Bag.Subscribe(readModel.WaterCanPlacement, value => _waterCanPlacement = value);
-            Bag.Subscribe(
-                readModel.ResidentCarriedWorldItem,
-                value => _carriedWorldItem = value);
             Bag.Subscribe(readModel.WorldItemPlacementRevision, _ =>
                 _worldItemPlacements = this.ExecuteCommand(
                     new GetFoundationWorldItemPlacementsCommand()));
@@ -156,16 +207,6 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(
                 readModel.WaterCanCapacityMilliliters,
                 value => _waterCanCapacityMilliliters = value);
-            Bag.Subscribe(readModel.LatestActionPlan, value => _latestActionPlan = value);
-            Bag.Subscribe(readModel.ResidentThirst, value => _thirst = value);
-            Bag.Subscribe(readModel.ResidentHealth, value => _health = value);
-            Bag.Subscribe(readModel.ResidentEntertainment, value => _entertainment = value);
-            Bag.Subscribe(readModel.ResidentMood, value => _mood = value);
-            Bag.Subscribe(readModel.ResidentFatigue, value => _fatigue = value);
-            Bag.Subscribe(readModel.ResidentStress, value => _stress = value);
-            Bag.Subscribe(
-                readModel.ResidentWorkEfficiency,
-                value => _workEfficiency = value);
             Bag.Subscribe(
                 readModel.VehicleWaterMilliliters,
                 value => _vehicleWaterMilliliters = value);
@@ -179,41 +220,76 @@ namespace Game.NomadWorkshop.Foundation
                 readModel.DrinkingStationCapacityMilliliters,
                 value => _stationWaterCapacityMilliliters = value);
             Bag.Subscribe(
-                readModel.BodyWaterMilliliters,
-                value => _bodyWaterMilliliters = value);
-            Bag.Subscribe(
-                readModel.BodyWaterCapacityMilliliters,
-                value => _bodyWaterCapacityMilliliters = value);
-            Bag.Subscribe(
-                readModel.BladderWasteMilliliters,
-                value => _bladderWasteMilliliters = value);
-            Bag.Subscribe(
-                readModel.BladderCapacityMilliliters,
-                value => _bladderCapacityMilliliters = value);
-            Bag.Subscribe(
                 readModel.ToiletHoldingWasteMilliliters,
                 value => _toiletHoldingWasteMilliliters = value);
             Bag.Subscribe(
                 readModel.ToiletHoldingCapacityMilliliters,
                 value => _toiletHoldingCapacityMilliliters = value);
-            Bag.Subscribe(readModel.CompletedDrinkCount, value => _completedDrinks = value);
-            Bag.Subscribe(readModel.CompletedToiletUseCount, value => _completedToiletUses = value);
-            Bag.Subscribe(readModel.CompletedLeisureCount, value => _completedLeisure = value);
-            Bag.Subscribe(readModel.CompletedDaydreamCount, value => _completedDaydreams = value);
-            Bag.Subscribe(readModel.CompletedWanderCount, value => _completedWanders = value);
-            Bag.Subscribe(
-                readModel.CompletedGroundRestCount,
+            Bag.Subscribe(readModel.BuildFeedback, value => _buildFeedback = value);
+        }
+
+        private void BindSelectedResident()
+        {
+            _residentBindings?.Dispose();
+            // 选择会反复替换；宿主只登记上面一个“当前绑定”清理入口，避免积累已释放的子 Bag。
+            // 此局部 Bag 只持有 R3 订阅，不解析 Context 能力。
+            _residentBindings = new Game.Framework.DisposableBag();
+            if (_residents == null || _residents.Count == 0) return;
+            _selectedResidentIndex = Mathf.Clamp(_selectedResidentIndex, 0, _residents.Count - 1);
+            FoundationResidentReadModel resident = _residents[_selectedResidentIndex];
+            _residentBindings.Subscribe(
+                resident.ResidentCarriedWorldItem,
+                value => _carriedWorldItem = value);
+            _residentBindings.Subscribe(
+                resident.ResidentWorkEfficiency,
+                value => _workEfficiency = value);
+            _residentBindings.Subscribe(
+                resident.BodyWaterMilliliters,
+                value => _bodyWaterMilliliters = value);
+            _residentBindings.Subscribe(
+                resident.BodyWaterCapacityMilliliters,
+                value => _bodyWaterCapacityMilliliters = value);
+            _residentBindings.Subscribe(
+                resident.BladderWasteMilliliters,
+                value => _bladderWasteMilliliters = value);
+            _residentBindings.Subscribe(
+                resident.BladderCapacityMilliliters,
+                value => _bladderCapacityMilliliters = value);
+            _residentBindings.Subscribe(
+                resident.CompletedGroundRestCount,
                 value => _completedGroundRests = value);
-            Bag.Subscribe(readModel.CompletedHobbyCount, value => _completedHobbies = value);
-            Bag.Subscribe(
-                readModel.CompletedWorldItemMoveCount,
+            _residentBindings.Subscribe(
+                resident.CompletedWorldItemMoveCount,
                 value => _completedWorldItemMoves = value);
-            Bag.Subscribe(
-                readModel.CompletedWaterTankRepairCount,
+            _residentBindings.Subscribe(
+                resident.CompletedWaterTankRepairCount,
                 value => _completedWaterTankRepairs = value);
-            Bag.Subscribe(readModel.ActionProgress, value => _actionProgress = value);
-            Bag.Subscribe(readModel.CurrentTask, value => _currentTask = value);
-            Bag.Subscribe(readModel.LastBlocker, value => _lastBlocker = value);
+            _residentBindings.Subscribe(resident.ResidentPhase, value => _residentPhase = value);
+            _residentBindings.Subscribe(resident.RemainingPathMeters, value => _remainingPathMeters = value);
+            _residentBindings.Subscribe(resident.RemainingPathCorners, value => _remainingPathCorners = value);
+            _residentBindings.Subscribe(resident.ActivePathSummary, value => _activePathSummary = value);
+            _residentBindings.Subscribe(resident.LatestActionPlan, value => _latestActionPlan = value);
+            _residentBindings.Subscribe(resident.ResidentThirst, value => _thirst = value);
+            _residentBindings.Subscribe(resident.ResidentHealth, value => _health = value);
+            _residentBindings.Subscribe(resident.ResidentEntertainment, value => _entertainment = value);
+            _residentBindings.Subscribe(resident.ResidentMood, value => _mood = value);
+            _residentBindings.Subscribe(resident.ResidentFatigue, value => _fatigue = value);
+            _residentBindings.Subscribe(resident.ResidentStress, value => _stress = value);
+            _residentBindings.Subscribe(resident.CompletedDrinkCount, value => _completedDrinks = value);
+            _residentBindings.Subscribe(resident.CompletedToiletUseCount, value => _completedToiletUses = value);
+            _residentBindings.Subscribe(resident.CompletedLeisureCount, value => _completedLeisure = value);
+            _residentBindings.Subscribe(resident.CompletedDaydreamCount, value => _completedDaydreams = value);
+            _residentBindings.Subscribe(resident.CompletedWanderCount, value => _completedWanders = value);
+            _residentBindings.Subscribe(resident.CompletedHobbyCount, value => _completedHobbies = value);
+            _residentBindings.Subscribe(resident.ActionProgress, value => _actionProgress = value);
+            _residentBindings.Subscribe(resident.CurrentTask, value => _currentTask = value);
+            _residentBindings.Subscribe(resident.LastBlocker, value => _lastBlocker = value);
+        }
+
+        private void SelectResident(int index)
+        {
+            _selectedResidentIndex = index;
+            BindSelectedResident();
         }
 
         private void OnGUI()
@@ -232,6 +308,9 @@ namespace Game.NomadWorkshop.Foundation
                     break;
                 case FoundationHudPanel.Developer:
                     DrawDeveloperPanel();
+                    break;
+                case FoundationHudPanel.Journey:
+                    DrawJourneyPanel();
                     break;
             }
 
@@ -264,8 +343,8 @@ namespace Game.NomadWorkshop.Foundation
         }
 
         /// <summary>
-        /// 默认常驻信息只保留一个居民摘要卡，避免开发数据遮住车辆。当前只有一名居民，后续改为集合绑定时
-        /// 这里会成为居民列表的紧凑行，而 System 与读模型仍不需要知道具体 UI 技术。
+        /// 常驻卡观察选中居民；点击名字切换，IMGUI 每帧读取同一只读居民集合。
+        /// 个人订阅跟随选择子 Bag，复位/读档仍绑定该居民的稳定记录。
         /// </summary>
         private void DrawCompactResidentCard()
         {
@@ -280,9 +359,12 @@ namespace Game.NomadWorkshop.Foundation
             Rect avatar = GUILayoutUtility.GetRect(28f, 28f, GUILayout.Width(28f), GUILayout.Height(28f));
             DrawIconBadge(avatar, "人", new Color(0.2f, 0.72f, 0.74f));
             GUILayout.BeginVertical();
-            GUILayout.Label("居民 01", _compactNameStyle, GUILayout.Height(18f));
+            if (GUILayout.Button($"{SelectedResidentName} ▸  ({_selectedResidentIndex + 1}/{_residents?.Count ?? 0})",
+                    _compactNameStyle, GUILayout.Height(18f)) && _residents is { Count: > 0 })
+                SelectResident((_selectedResidentIndex + 1) % _residents.Count);
             GUILayout.Label(
-                $"{Describe(_residentPhase)} · {_currentTask}",
+                $"{(_paused ? "已暂停" : Describe(_residentPhase))}\n" +
+                $"第 {_lifeDay} 天 · {_lifeMinuteOfDay / 60:00}:{_lifeMinuteOfDay % 60:00}",
                 _compactTaskStyle,
                 GUILayout.MinHeight(28f),
                 GUILayout.MaxHeight(32f));
@@ -290,12 +372,11 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.EndHorizontal();
 
             GUILayout.Space(2f);
-            GUILayout.BeginHorizontal();
-            DrawMiniStatus("水", "水分", 1f - _thirst, new Color(0.2f, 0.72f, 0.94f));
-            DrawMiniStatus("健", "健康", _health, new Color(0.4f, 0.86f, 0.48f));
-            DrawMiniStatus("能", "精力", 1f - _fatigue, new Color(0.35f, 0.82f, 0.48f));
-            DrawMiniStatus("心", "心情", _mood, new Color(0.92f, 0.62f, 0.3f));
-            GUILayout.EndHorizontal();
+            Rect statusRow = GUILayoutUtility.GetRect(1f, 25f, GUILayout.ExpandWidth(true));
+            DrawMiniStatus(statusRow, 0, "水", "水分", 1f - _thirst, new Color(0.2f, 0.72f, 0.94f));
+            DrawMiniStatus(statusRow, 1, "健", "健康", _health, new Color(0.4f, 0.86f, 0.48f));
+            DrawMiniStatus(statusRow, 2, "能", "精力", 1f - _fatigue, new Color(0.35f, 0.82f, 0.48f));
+            DrawMiniStatus(statusRow, 3, "心", "心情", _mood, new Color(0.92f, 0.62f, 0.3f));
 
             Rect actionRect = GUILayoutUtility.GetRect(1f, 5f, GUILayout.ExpandWidth(true));
             DrawProgressBar(actionRect, _actionProgress, new Color(0.22f, 0.78f, 0.82f));
@@ -316,6 +397,10 @@ namespace Game.NomadWorkshop.Foundation
                 new Color(0.28f, 0.32f, 0.33f, 0.95f));
             GUILayout.BeginArea(new Rect(outer.x + 4f, outer.y + 4f, outer.width - 8f, outer.height - 8f));
             GUILayout.BeginHorizontal();
+            if (DrawToolbarButton(
+                    new GUIContent("旅程", "选择目的地，查看路程、燃料与驾驶状态。"),
+                    _openPanel == FoundationHudPanel.Journey))
+                TogglePanel(FoundationHudPanel.Journey);
             if (DrawToolbarButton(
                     new GUIContent("居民详情", "查看居民的健康、水分、精力、心情、娱乐、压力与生理状态。"),
                     _openPanel == FoundationHudPanel.Resident))
@@ -380,7 +465,11 @@ namespace Game.NomadWorkshop.Foundation
 
             GUILayout.BeginArea(new Rect(outer.x + 10f, outer.y + 8f, outer.width - 20f, outer.height - 16f));
             _residentPanelScroll = GUILayout.BeginScrollView(_residentPanelScroll);
-            GUILayout.Label("居民 01 · 身心状态", _titleStyle);
+            GUILayout.Label($"{SelectedResidentName} · 身心状态", _titleStyle);
+            GUILayout.BeginHorizontal();
+            for (var i = 0; i < (_residents?.Count ?? 0); i++)
+                if (GUILayout.Button($"居民 {i + 1:00}")) SelectResident(i);
+            GUILayout.EndHorizontal();
             GUILayout.Label(
                 $"{Describe(_residentPhase)} · {_currentTask}",
                 _smallStyle);
@@ -495,22 +584,27 @@ namespace Game.NomadWorkshop.Foundation
         }
 
         private void DrawMiniStatus(
+            Rect row,
+            int column,
             string symbol,
             string label,
             float value,
             Color accent)
         {
-            GUILayout.BeginVertical(GUILayout.MinWidth(80f), GUILayout.ExpandWidth(true));
-            GUILayout.BeginHorizontal();
-            Rect icon = GUILayoutUtility.GetRect(17f, 17f, GUILayout.Width(17f), GUILayout.Height(17f));
+            // 列宽由卡片实际可用宽度决定。嵌套 GUILayout 的标签边距与最小宽度会相加，
+            // 即使四列都声明 ExpandWidth，最后一列仍可能被整个卡片的裁剪区截断。
+            float stride = row.width / 4f;
+            var cell = new Rect(row.x + column * stride, row.y, Mathf.Max(0f, stride - 4f), row.height);
+            var icon = new Rect(cell.x, cell.y, 17f, 17f);
+            var valueRect = new Rect(cell.xMax - 34f, cell.y, 34f, 17f);
             DrawIconBadge(icon, symbol, accent);
-            GUILayout.Label(label, _meterLabelStyle, GUILayout.Width(30f));
-            GUILayout.FlexibleSpace();
-            GUILayout.Label(Mathf.Clamp01(value).ToString("P0"), _meterValueStyle, GUILayout.Width(34f));
-            GUILayout.EndHorizontal();
-            Rect bar = GUILayoutUtility.GetRect(1f, 6f, GUILayout.ExpandWidth(true));
+            GUI.Label(
+                new Rect(icon.xMax + 2f, cell.y, Mathf.Max(0f, valueRect.x - icon.xMax - 2f), 17f),
+                label,
+                _meterLabelStyle);
+            GUI.Label(valueRect, Mathf.Clamp01(value).ToString("P0"), _meterValueStyle);
+            var bar = new Rect(cell.x, cell.y + 19f, cell.width, 6f);
             DrawProgressBar(bar, value, EvaluateStateColor(value, higherIsBetter: true, accent));
-            GUILayout.EndVertical();
         }
 
         private void DrawStatusMeter(
@@ -609,6 +703,116 @@ namespace Game.NomadWorkshop.Foundation
         private static float SafeRatio(int amount, int capacity) =>
             capacity <= 0 ? 0f : Mathf.Clamp01(amount / (float)capacity);
 
+        private void DrawJourneyPanel()
+        {
+            Rect outer = FoundationHudLayout.GetInformationPanelRect(Screen.width, Screen.height);
+            GUILayout.BeginArea(outer, GUI.skin.box);
+            _journeyScroll = GUILayout.BeginScrollView(_journeyScroll);
+            GUILayout.Label("游牧工坊 · 首段旅程", _titleStyle);
+            DrawCheckpointControls();
+            bool journeyEnabled = GUI.enabled;
+            GUI.enabled = journeyEnabled && !_checkpointBusy;
+            if (!string.IsNullOrEmpty(_departureFeedback)) GUILayout.Label(_departureFeedback, _smallStyle);
+            for (var i = 0; i < (_residents?.Count ?? 0); i++)
+            {
+                var resident = _residents[i];
+                GUILayout.Label($"居民 {i + 1:00} · {Describe(resident.ResidentPhase.CurrentValue)} · " +
+                    $"水分 {1f - resident.ResidentThirst.CurrentValue:P0} · 健康 {resident.ResidentHealth.CurrentValue:P0}", _smallStyle);
+                if (resident.MovementStallMilliseconds.CurrentValue >= 1000L)
+                    GUILayout.Label($"移动等待 {resident.MovementStallMilliseconds.CurrentValue / 1000f:0.0} 秒 · " +
+                        resident.LastBlocker.CurrentValue, _smallStyle);
+            }
+            GUILayout.Space(10f);
+            GUILayout.Label("旧营地  ↔  干河驿站", _sectionStyle);
+            GUILayout.Label($"路线长度 2.0 km · 距旧营地 {_journeyPositionMicrometers / 1_000_000_000d:0.00} km",
+                _smallStyle);
+            GUILayout.Label($"燃料 {_journeyFuelPicoliters / 1_000_000_000_000d:0.00} L", _sectionStyle);
+            GUILayout.Label(_journeyStatus switch
+            {
+                NomadJourneyStatus.NoDestination => "已停车 · 请指定目的地",
+                NomadJourneyStatus.AwaitingDriver => "等待驾驶员 · 先完成手头工作与必要休整",
+                NomadJourneyStatus.Moving => "行驶中 · 驾驶员正在驾驶台工作",
+                NomadJourneyStatus.Arrived => "已抵达 · 驾驶员已离岗",
+                NomadJourneyStatus.FuelExhausted => "燃料不足 · 车辆已停车",
+                _ => "旅途已结束",
+            }, _smallStyle);
+            string destinationName = _journeyDestination == NomadJourneyEndpoint.Destination ? "干河驿站" :
+                _journeyDestination == NomadJourneyEndpoint.Origin ? "旧营地" : "未指定";
+            GUILayout.Label($"目的地：{destinationName}", _smallStyle);
+            GUILayout.Space(12f);
+            if (GUILayout.Button("前往干河驿站", GUILayout.Height(32f)))
+                this.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Destination));
+            if (GUILayout.Button("返回旧营地", GUILayout.Height(32f)))
+                this.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Origin));
+            if (GUILayout.Button("取消目标并停车", GUILayout.Height(32f)))
+                this.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.None));
+            GUILayout.Space(10f);
+            GUILayout.Label($"干河驿站水源：{_stopWaterMilliliters / 1000f:0.##} L（有限）", _smallStyle);
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && _stopAccessOpen && !_stopWaterRequested && !_stopWaterActive &&
+                !_stopWasteRequested && !_stopWasteActive && !_stopSpareRequested && !_stopSpareActive && _stopWaterMilliliters > 0;
+            if (GUILayout.Button("派出取水者 · 至多 2 L", GUILayout.Height(32f)))
+                this.ExecuteCommand(new RequestFoundationStopWaterCommand(true));
+            GUI.enabled = wasEnabled && _stopWaterRequested;
+            if (GUILayout.Button("停止取水并召回", GUILayout.Height(32f)))
+                this.ExecuteCommand(new RequestFoundationStopWaterCommand(false));
+            GUI.enabled = wasEnabled;
+            GUILayout.Space(8f);
+            GUILayout.Label($"污物接收罐：{_stopWasteMilliliters / 1000f:0.##} / {_stopWasteCapacityMilliliters / 1000f:0.##} L", _smallStyle);
+            GUI.enabled = wasEnabled && _stopAccessOpen && !_stopWaterRequested && !_stopWaterActive &&
+                !_stopWasteRequested && !_stopWasteActive && !_stopSpareRequested && !_stopSpareActive && _stopWasteMilliliters < _stopWasteCapacityMilliliters;
+            if (GUILayout.Button("清运一座旱厕污物桶", GUILayout.Height(32f)))
+                this.ExecuteCommand(new RequestFoundationStopWasteCommand(true));
+            GUI.enabled = wasEnabled && (_stopWasteRequested || _stopWasteActive);
+            if (GUILayout.Button("停止清运并召回", GUILayout.Height(32f)))
+                this.ExecuteCommand(new RequestFoundationStopWasteCommand(false));
+            GUI.enabled = wasEnabled;
+            if (!string.IsNullOrEmpty(_carriedWasteBucketId))
+                GUILayout.Label($"携带 {_carriedWasteBucketId} 污物桶：{_carriedWasteMilliliters} mL；回装前该旱厕暂停使用", _smallStyle);
+            if (!string.IsNullOrEmpty(_stopWorkFeedback)) GUILayout.Label(_stopWorkFeedback, _smallStyle);
+            GUILayout.Label($"驿站维修包：{_stopSpareCount} 只（有限）", _smallStyle);
+            GUI.enabled = wasEnabled && _stopAccessOpen && !_stopSpareRequested && !_stopSpareActive &&
+                !_stopWaterRequested && !_stopWaterActive && !_stopWasteRequested && !_stopWasteActive && _stopSpareCount > 0;
+            if (GUILayout.Button("取回一只维修包", GUILayout.Height(32f))) this.ExecuteCommand(new RequestFoundationStopSpareCommand(true));
+            GUI.enabled = wasEnabled && (_stopSpareRequested || _stopSpareActive);
+            if (GUILayout.Button("停止补给并召回", GUILayout.Height(32f))) this.ExecuteCommand(new RequestFoundationStopSpareCommand(false));
+            GUI.enabled = wasEnabled;
+            GUILayout.Space(10f);
+            GUILayout.Label("无人到岗时车辆保持停车。驾驶员需要补水、如厕或休息时会停车离岗，恢复后继续旅途。",
+                _smallStyle);
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+            GUI.enabled = journeyEnabled;
+        }
+
+        private void DrawCheckpointControls()
+        {
+            bool enabled = GUI.enabled;
+            GUI.enabled = enabled && _ready && !_checkpointBusy;
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("保存旅程", GUILayout.Height(32f)))
+                this.ExecuteCommandAsync(new SaveFoundationCheckpointCommand(NomadWorkshopStorageKeys.DefaultSlotId))
+                    .Forget(ObserveCheckpointFailure);
+            if (GUILayout.Button("读取旅程", GUILayout.Height(32f)))
+                this.ExecuteCommandAsync<LoadFoundationCheckpointCommand, bool>(
+                    new LoadFoundationCheckpointCommand(NomadWorkshopStorageKeys.DefaultSlotId))
+                    .Forget(ObserveCheckpointFailure);
+            GUILayout.EndHorizontal();
+            GUI.enabled = enabled;
+            GUILayout.Label("手动槽 · 保存会覆盖上次旅程；读取会替换当前旅程。", _smallStyle);
+            if (!string.IsNullOrEmpty(_checkpointFeedback)) GUILayout.Label(_checkpointFeedback, _smallStyle);
+            if (_checkpointBusy && GUILayout.Button("取消等待", GUILayout.Height(28f)))
+                this.ExecuteCommand(new CancelFoundationCheckpointCommand());
+            GUILayout.Space(8f);
+        }
+
+        // System 已提供玩家反馈；View 观察异步失败，取消属于正常交互，不产生未观察异常。
+        private static void ObserveCheckpointFailure(Exception error)
+        {
+            if (error is not OperationCanceledException)
+                Log.Warning($"旅程存读档未完成：{error.Message}", nameof(NomadFoundationDebugView));
+        }
+
         private void DrawBuildPanel()
         {
             Rect outer = FoundationHudLayout.GetInformationPanelRect(
@@ -617,6 +821,8 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.BeginArea(outer, GUI.skin.box);
             _buildPanelScroll = GUILayout.BeginScrollView(_buildPanelScroll);
             GUILayout.Label("游牧工坊 · 建造与通路", _titleStyle);
+            if (!string.IsNullOrEmpty(_buildFeedback))
+                GUILayout.Label(_buildFeedback, _smallStyle);
             GUILayout.Label(
                 "选择设施、检查占地与交互位，再提交连续 NavMesh 建造事务",
                 _smallStyle);
@@ -805,7 +1011,7 @@ namespace Game.NomadWorkshop.Foundation
                 $"膀胱内容物 {FormatVolume(_bladderWasteMilliliters, _bladderCapacityMilliliters)}",
                 _smallStyle);
             GUILayout.Label(
-                $"旱厕暂存桶 {FormatVolume(_toiletHoldingWasteMilliliters, _toiletHoldingCapacityMilliliters)}",
+                $"旱厕污物桶（含携带中）{FormatVolume(_toiletHoldingWasteMilliliters, _toiletHoldingCapacityMilliliters)}",
                 _smallStyle);
             GUILayout.Label(
                 $"唯一防漏水罐：{Describe(_waterCanLocation)} · " +
@@ -860,7 +1066,8 @@ namespace Game.NomadWorkshop.Foundation
             if (GUILayout.Button(new GUIContent(
                     "验证杯具拿放",
                     "只供 Harness：联合预留来源恢复位与目标台面，让居民真实走近、拿起、携带并原子放下。")))
-                this.ExecuteCommand(new TryStartFoundationCupMoveCommand());
+                this.ExecuteCommand(new TryStartFoundationCupMoveCommand(
+                    _residents[_selectedResidentIndex].StableId));
             GUI.enabled = worldItemButtonEnabled;
 
             GUILayout.Space(7f);
@@ -956,11 +1163,14 @@ namespace Game.NomadWorkshop.Foundation
             GUILayout.Space(7f);
             GUILayout.Label("Harness", _sectionStyle);
             GUILayout.BeginHorizontal();
+            bool timeControlsEnabled = GUI.enabled;
+            GUI.enabled = timeControlsEnabled && !_checkpointBusy;
             if (GUILayout.Button(_paused ? "继续" : "暂停"))
                 this.ExecuteCommand(new SetFoundationPausedCommand(!_paused));
             if (GUILayout.Button("0.5×")) this.ExecuteCommand(new SetFoundationSpeedCommand(0.5f));
             if (GUILayout.Button("1×")) this.ExecuteCommand(new SetFoundationSpeedCommand(1f));
             if (GUILayout.Button("4×")) this.ExecuteCommand(new SetFoundationSpeedCommand(4f));
+            GUI.enabled = timeControlsEnabled;
             if (GUILayout.Button("复位"))
             {
                 this.ExecuteCommand(new ResetFoundationSliceCommand());
@@ -968,13 +1178,14 @@ namespace Game.NomadWorkshop.Foundation
             }
             GUILayout.EndHorizontal();
             GUILayout.Label($"Ready={_ready} · Speed={_speed:0.##}×", _smallStyle);
+            if (_checkpointBusy) GUILayout.Label(_checkpointFeedback, _smallStyle);
             bool previousEnabled = GUI.enabled;
             GUI.enabled = previousEnabled &&
                           _paused &&
                           _buildTransactionPhase == FoundationBuildTransactionPhase.Idle;
             if (GUILayout.Button(new GUIContent(
                     "快进 6 个生活小时并审计",
-                    "仅在暂停态运行：按 100 ms 固定步长推进 150,000 模拟毫秒，" +
+                    "仅在暂停态运行：以 100 ms 输入分块、10 ms 业务步推进 150,000 模拟毫秒，" +
                     "检查水量守恒、居民极值、故障时刻与可观察停滞；这不是玩家输入或平衡结论。")))
             {
                 _lastSoakResult = this.ExecuteCommand(
@@ -1230,6 +1441,10 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.PickingUpWater => "取水",
             FoundationResidentPhase.MovingToDrinkingStation => "搬水",
             FoundationResidentPhase.DeliveringWater => "放入饮水站",
+            FoundationResidentPhase.LiftingWaterCan => "抬起水罐",
+            FoundationResidentPhase.MovingToWaterCanParking => "前往水罐停放区",
+            FoundationResidentPhase.PlacingWaterCan => "放下水罐",
+            FoundationResidentPhase.ReleasingWaterCan => "松手并起身",
             FoundationResidentPhase.Drinking => "饮水",
             FoundationResidentPhase.MovingToToilet => "前往旱厕",
             FoundationResidentPhase.UsingToilet => "如厕",
@@ -1246,6 +1461,22 @@ namespace Game.NomadWorkshop.Foundation
             FoundationResidentPhase.PickingUpRepairPart => "拿取维修备件",
             FoundationResidentPhase.MovingToRepairTarget => "携带备件前往故障点",
             FoundationResidentPhase.RepairingFacility => "维修水箱出水阀",
+            FoundationResidentPhase.MovingToDriver => "前往驾驶台",
+            FoundationResidentPhase.Driving => "驾驶车辆",
+            FoundationResidentPhase.MovingToWasteBucket => "前往旱厕污物桶",
+            FoundationResidentPhase.DetachingWasteBucket => "取出污物桶",
+            FoundationResidentPhase.MovingToWasteReceiver => "携桶出车清运",
+            FoundationResidentPhase.EmptyingWasteBucket => "向接收罐倾倒",
+            FoundationResidentPhase.ReturningWasteBucket => "携桶返回车辆",
+            FoundationResidentPhase.InstallingWasteBucket => "装回旱厕污物桶",
+            FoundationResidentPhase.MovingToStopSpare => "前往驿站备件台",
+            FoundationResidentPhase.PickingUpStopSpare => "拿取维修包",
+            FoundationResidentPhase.ReturningStopSpare => "返回车辆维护托盘",
+            FoundationResidentPhase.DeliveringStopSpare => "交付维修包并归车",
+            FoundationResidentPhase.MovingToStopWater => "出车取水",
+            FoundationResidentPhase.FillingAtStop => "在驿站装水",
+            FoundationResidentPhase.ReturningFromStopWater => "带水罐返回车辆",
+            FoundationResidentPhase.DeliveringStopWater => "向车辆水箱注水",
             FoundationResidentPhase.Dead => "死亡",
             FoundationResidentPhase.Blocked => "阻塞",
             _ => phase.ToString(),

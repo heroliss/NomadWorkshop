@@ -56,9 +56,11 @@ DOTS 是数据/Job/Burst 范式，与引用式 OOP 不同。框架的定位是**
 
 下一阶段不再以“给框架增加多少能力”为成功标准，而以一款**可从头玩到尾、体验成立、能够面向真实玩家发行的商业 3D 游戏**为真实消费者。建议先留在同一仓库的 `Assets/Game/<GameName>/`，使用独立业务 asmdef，只经 Framework 公共 API 接入；这样可以最快暴露接线、生命周期、工作流和产品体验问题，又不会提前承担 UPM 发布与多仓同步成本。
 
-当前工作假设是 **Steam / Windows 首发、风格化俯视角实时 3D、付费单机、小人口移动殖民模拟**。《游牧工坊》采用自动居民、目标点行驶、种子宏观地图、车体固定的旅途舞台和单层 2.5D 规则；居民通过可追踪的 Utility AI 在高质量候选中有界随机，人物共用 Humanoid 骨架、通用动作和设施交互锚点。第一版只验证三名居民修复并经营移动工坊、完成一次旅途和车外作业的地基，不制作一比一大陆、车辆转向、局部驾驶寻路，也不把多地貌、关系、势力、战斗和正式内容提前塞入。平台顺序与证据 Gate 见[首款商业 3D 游戏：产品与平台策略](commercial-3d-game-strategy.md)，当前玩法与 Foundation Prototype 范围见[《游牧工坊》产品愿景与第一版地基](nomad-workshop-game-vision.md)。
+当前工作假设是 **Steam / Windows 首发、风格化俯视角实时 3D、付费单机、小人口移动殖民模拟**。《游牧工坊》采用自动居民、目标点行驶、种子宏观地图和车体固定的旅途舞台；当前运行规则为单层连续甲板，用户已将后续成长方向扩展为小甲板起步、局部扩建、多层及围护。居民通过可追踪的 Utility AI 在高质量候选中有界随机，人物共用 Humanoid 骨架、通用动作和设施交互锚点。第一版先验证三名居民修复并经营移动工坊、完成一次旅途和车外作业的地基，不制作一比一大陆、车辆转向、局部驾驶寻路，也不把多地貌、关系、势力、战斗和正式内容提前塞入。平台顺序与证据 Gate 见[首款商业 3D 游戏：产品与平台策略](commercial-3d-game-strategy.md)，玩法范围见[产品愿景](nomad-workshop-game-vision.md)，新空间方案见[可扩建甲板设计](nomad-workshop-expandable-decks-design.md)。
 
-首个[《游牧工坊》最小垂直切片地基](../Assets/Game/NomadWorkshop/README.md)已推进到 v0.39：正式场景以 SSFramework 的 Mono Context / Model / System / View + Command 分层接入，跑通连续建造与 NavMesh、mL 水循环、正向身心状态、Utility AI、世界物品原子拿放、统一 Tick、确定性沙尘、车辆水箱故障、实体备件维修、检查点恢复和有界长时审计；共享 URP 3D Renderer、HDR / PBR 灰盒、Humanoid 与可替换程序表现也已有自动和视觉证据。它仍未进入 Gate 1：当前只有一名正式居民、一个简单天气和故障、一次性初始备件，没有旅途 / 车外作业、蓝图施工、玩家存档界面、正式内容与美术，也尚未证明体验好玩或可发行。
+首个[《游牧工坊》最小垂直切片地基](../Assets/Game/NomadWorkshop/README.md)已推进到 v0.50：正式场景以 SSFramework 的 Mono Context / Model / System / View + Command 分层接入，跑通连续建造与 NavMesh、水循环、身心状态、Utility AI、世界物品拿放、统一 Tick、沙尘故障、实体维修与检查点恢复；现已增加有限路线、居民实际驾驶、需求离岗停车、厕所实例库存、有限取水 / 清运 / 备件 / 召回与 v9 存档。正式三名居民已共用同一世界，个人库存与租约分别归属，召回检查全员，HUD 可选择居民。它仍未进入 Gate 1：只有一个简单天气和故障、三份有限维修包，手动玩家存读档已接线，仍缺蓝图施工、正式内容与美术，也尚未证明体验好玩或可发行。
+
+2026-09-05 重审后，以一次完整旅程为主线持续完善基础版本。固定步、居民执行所有权和[正式驾驶接线](nomad-workshop-driving-integration.md) 已完成验证，厕所实例库存、有限取水、污物清运与实体备件补给已接线。[三居民接线](nomad-workshop-three-residents.md)已完成实际三人调度、全员召回、多居民检查点与增量 View 绑定，原生 Agent、停靠/暂停与让位也已接线，测试与正式 1× 证据分别记录；玩家保存/读取/取消、身体约束与续玩工程验收已完成，Foundation PlayMode 100/100；下一轮由实际试玩决定节奏、内容与扩展方向。每轮同时验证 SSFramework 与 AI 工作流，以探索新边界的小任务推进。现状与唯一近期队列见 [Foundation](nomad-workshop-foundation-vertical-slice.md)，证据与取舍见[设计重审](nomad-workshop-design-review-2026-09.md)。
 
 实战发现按证据分流：
 

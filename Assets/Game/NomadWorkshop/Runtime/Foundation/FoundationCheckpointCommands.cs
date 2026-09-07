@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Game.Framework.Command;
@@ -37,16 +38,34 @@ namespace Game.NomadWorkshop.Foundation
             ICommandContext ctx,
             CancellationToken cancellationToken)
         {
-            NomadWorkshopSaveData checkpoint =
-                ctx.GetSystem<NomadFoundationSystem>().CaptureCheckpoint();
-            await ctx.ExecuteCommandAsync(
-                new SaveNomadWorkshopProgressCommand(_slotId, checkpoint),
-                cancellationToken);
+            var system = ctx.GetSystem<NomadFoundationSystem>();
+            using var operation = system.BeginCheckpointOperation(true, cancellationToken, ctx.CancellationToken);
+            string feedback = "保存未完成。";
+            try
+            {
+                system.RequireCheckpointOperation(operation);
+                NomadWorkshopSaveData checkpoint = system.CaptureCheckpoint();
+                await ctx.ExecuteCommandAsync(new SaveNomadWorkshopProgressCommand(_slotId, checkpoint), operation.Token);
+                system.RequireCheckpointOperation(operation);
+                feedback = "旅程已保存到手动槽。";
+            }
+            catch (OperationCanceledException)
+            {
+                feedback = "已取消保存等待；已经写入的存档可能保留。";
+                throw;
+            }
+            catch (Exception error)
+            {
+                feedback = $"保存失败：{error.Message}";
+                throw;
+            }
+            finally { system.EndCheckpointOperation(operation, feedback); }
         }
     }
 
     /// <summary>
-    /// 从统一存储槽读取、验证并恢复 Foundation。返回 false 只表示槽位不存在；损坏或不兼容会明确抛出。
+    /// 从统一存储槽读取、验证并恢复 Foundation。false 表示没有可用数据（含缺档和主备均损坏），
+    /// 保留当前世界；业务校验/不兼容异常仍传播，取消保持 OperationCanceledException。
     /// </summary>
     public readonly struct LoadFoundationCheckpointCommand : IAsyncCommand<bool>
     {
@@ -58,14 +77,42 @@ namespace Game.NomadWorkshop.Foundation
             ICommandContext ctx,
             CancellationToken cancellationToken)
         {
-            NomadWorkshopSaveData checkpoint = await ctx.ExecuteCommandAsync<
-                LoadNomadWorkshopProgressCommand,
-                NomadWorkshopSaveData>(
-                new LoadNomadWorkshopProgressCommand(_slotId),
-                cancellationToken);
-            if (checkpoint == null) return false;
-            ctx.GetSystem<NomadFoundationSystem>().RestoreCheckpoint(checkpoint);
-            return true;
+            var system = ctx.GetSystem<NomadFoundationSystem>();
+            using var operation = system.BeginCheckpointOperation(false, cancellationToken, ctx.CancellationToken);
+            string feedback = "读取未完成。";
+            try
+            {
+                NomadWorkshopSaveData checkpoint = await ctx.ExecuteCommandAsync<
+                    LoadNomadWorkshopProgressCommand, NomadWorkshopSaveData>(
+                    new LoadNomadWorkshopProgressCommand(_slotId), operation.Token);
+                system.RequireCheckpointOperation(operation);
+                if (checkpoint == null)
+                {
+                    feedback = "没有可用的旅程存档（尚未保存或文件无法读取）；当前旅程已保留。";
+                    return false;
+                }
+                system.RestoreCheckpoint(checkpoint, operation);
+                system.RequireCheckpointOperation(operation);
+                feedback = "旅程已读取，居民将从保存的业务状态重新安排工作。";
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                feedback = "已取消读取，当前旅程已保留。";
+                throw;
+            }
+            catch (Exception error)
+            {
+                feedback = $"读取失败：{error.Message}";
+                throw;
+            }
+            finally { system.EndCheckpointOperation(operation, feedback); }
         }
+    }
+
+    /// <summary>取消当前存读档等待；迟到的读取不能再覆盖世界。</summary>
+    public readonly struct CancelFoundationCheckpointCommand : ICommand
+    {
+        public void Execute(ICommandContext ctx) => ctx.GetSystem<NomadFoundationSystem>().CancelCheckpointOperation();
     }
 }

@@ -9,6 +9,7 @@ namespace Game.NomadWorkshop.Foundation
         Resident,
         Build,
         Developer,
+        Journey,
     }
 
     /// <summary>

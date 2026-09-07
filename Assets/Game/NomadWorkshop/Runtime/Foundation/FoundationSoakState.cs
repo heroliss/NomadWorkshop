@@ -14,6 +14,7 @@ namespace Game.NomadWorkshop.Foundation
         BuildTransactionActive,
         InvalidRequest,
         StepBudgetExceeded,
+        CheckpointOperationActive,
     }
 
     /// <summary>
@@ -23,7 +24,9 @@ namespace Game.NomadWorkshop.Foundation
     public readonly struct FoundationSoakRunResult
     {
         public const string StableExperimentId = "nomad-foundation-soak";
-        public const string HarnessVersion = "0.1.0";
+        public const string HarnessVersion = "0.10.0";
+        /// <summary>本报告只来自同步角点快进，不代表 PlayerLoop 的原生避让已验证。</summary>
+        public string MovementMode => "deterministic-corners";
 
         internal FoundationSoakRunResult(
             FoundationSoakStopReason stopReason,
@@ -89,7 +92,9 @@ namespace Game.NomadWorkshop.Foundation
         public FoundationSoakStopReason StopReason { get; }
         public int WorldSeed { get; }
         public long RequestedDurationMilliseconds { get; }
+        /// <summary>输入分块大小；用于检验不同调用节奏，不改变内部固定业务步。</summary>
         public int StepMilliseconds { get; }
+        /// <summary>实际执行且审计的业务步数；终态发生后不会继续补满当前输入分块。</summary>
         public int StepCount { get; }
         public long StartSimulationTick { get; }
         public long EndSimulationTick { get; }
@@ -128,9 +133,9 @@ namespace Game.NomadWorkshop.Foundation
             string fault = FirstFacilityFaultSimulationTick < 0L
                 ? "无故障"
                 : $"首故障@{FirstFacilityFaultSimulationTick}ms";
-            return $"{StableExperimentId}@{HarnessVersion} · seed={WorldSeed} · " +
+            return $"{StableExperimentId}@{HarnessVersion} · move={MovementMode} · seed={WorldSeed} · " +
                    $"{StopReason} · {ElapsedSimulationMilliseconds}/{RequestedDurationMilliseconds}ms · " +
-                   $"step={StepMilliseconds}ms×{StepCount} · alive={ResidentAlive} · " +
+                   $"input={StepMilliseconds}ms · steps={StepCount} · alive={ResidentAlive} · " +
                    $"waterΔmax={MaximumAbsoluteWaterDeviationMilliliters}mL · {fault} · " +
                    $"drink={CompletedDrinkDelta}, toilet={CompletedToiletUseDelta}, " +
                    $"daydream={CompletedDaydreamDelta}, wander={CompletedWanderDelta}, " +

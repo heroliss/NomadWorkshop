@@ -121,8 +121,38 @@ namespace Game.NomadWorkshop.Navigation
 
         private readonly Dictionary<string, NavMeshAgent> _agents =
             new(StringComparer.Ordinal);
+        private GameObject _dockedApron;
+
+        /// <summary>
+        /// 配置停靠时的平面登车通路；只改变本 Adapter 拥有的 Collider，不自行烘焙。
+        /// 调用方保证人员已回到甲板后才停用，并在启停后 BuildNow；移动期间不得保留车外捷径。
+        /// </summary>
+        public void SetDockedApron(Vector3 localCenter, Vector3 size, bool accessible)
+        {
+            if (_dockedApron == null)
+            {
+                if (!accessible) return;
+                _dockedApron = new GameObject("Docked Apron · Navigation");
+                _dockedApron.transform.SetParent(NavigationSpace, false);
+                _dockedApron.AddComponent<BoxCollider>();
+            }
+            _dockedApron.transform.localPosition = localCenter + Vector3.down * (size.y * 0.5f);
+            _dockedApron.GetComponent<BoxCollider>().size = size;
+            _dockedApron.SetActive(accessible);
+        }
 
         public bool IsBuilt => surface != null && surface.navMeshData != null;
+
+        /// <summary>正式居民拥有返回的移动对象；它不加入隔离实验的序列化 Agent 目录。</summary>
+        internal DeckResidentMotor CreateResidentMotor(string stableId, Vector3 localPosition, float yaw,
+            float stepHeight = 0f, float bodyRadius = 0f)
+        {
+            ValidateConfiguration();
+            if (!IsBuilt) throw new InvalidOperationException("创建居民移动实例前必须先建立 NavMesh。");
+            var settings = NavMesh.GetSettingsByID(surface.agentTypeID);
+            return new DeckResidentMotor(NavigationSpace, stableId, surface.agentTypeID,
+                settings.agentRadius, settings.agentHeight, localPosition, yaw, stepHeight, bodyRadius);
+        }
         /// <summary>当前 NavMeshSurface 所用 Agent 类型的烘焙半径；实时预览必须复用它而非另写近似值。</summary>
         public float NavigationAgentRadiusMeters
         {
@@ -237,7 +267,7 @@ namespace Game.NomadWorkshop.Navigation
                     space.TransformPoint(localPosition),
                     out NavMeshHit hit,
                     maximumDistance,
-                    NavMesh.AllAreas))
+                    QueryFilter))
             {
                 sampledLocalPosition = default;
                 return false;
@@ -327,7 +357,7 @@ namespace Game.NomadWorkshop.Navigation
             bool calculated = NavMesh.CalculatePath(
                 startHit.position,
                 endHit.position,
-                NavMesh.AllAreas,
+                QueryFilter,
                 path);
             Vector3[] corners = path.corners ?? Array.Empty<Vector3>();
             float length = 0f;
@@ -468,8 +498,15 @@ namespace Game.NomadWorkshop.Navigation
                 worldPosition,
                 out hit,
                 sampleDistance,
-                NavMesh.AllAreas);
+                QueryFilter);
         }
+
+        // 只使用当前 Surface 的 Agent 类型；默认类型的采样可能命中另一种通行能力的导航岛。
+        private NavMeshQueryFilter QueryFilter => new()
+        {
+            agentTypeID = surface.agentTypeID,
+            areaMask = NavMesh.AllAreas,
+        };
 
         private bool TryGetAgent(string agentId, out NavMeshAgent agent)
         {
@@ -514,6 +551,17 @@ namespace Game.NomadWorkshop.Navigation
             for (var i = 1; i < corners.Count; i++)
                 length += Vector3.Distance(corners[i - 1], corners[i]);
             return length;
+        }
+
+        protected override void OnDestroy()
+        {
+            if (_dockedApron != null)
+            {
+                _dockedApron.SetActive(false);
+                if (Application.isPlaying) Destroy(_dockedApron);
+                else DestroyImmediate(_dockedApron);
+            }
+            base.OnDestroy();
         }
     }
 }

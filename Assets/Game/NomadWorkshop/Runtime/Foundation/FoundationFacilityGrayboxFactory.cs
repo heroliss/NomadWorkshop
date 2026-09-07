@@ -22,6 +22,9 @@ namespace Game.NomadWorkshop.Foundation
                 GameObject instance = UnityEngine.Object.Instantiate(definition.Prefab, root);
                 instance.name = definition.Prefab.name;
                 instance.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                // 可拆卸容器有独立的搬运所有权，不能随设施外壳的 Prefab 替换而消失。
+                if (definition.Function == NomadFacilityFunction.Toilet)
+                    BuildWasteBucket(root, definition.PrototypeSize, GetPalette(definition));
                 return root.GetComponentsInChildren<Renderer>();
             }
 
@@ -281,13 +284,11 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BuildDryToilet(Transform root, Vector3 size, Palette palette)
         {
-            Primitive(
-                PrimitiveType.Cube,
-                "Sealed Waste Holding Tank",
-                root,
-                new Vector3(0f, size.y * 0.28f, 0.1f),
-                new Vector3(size.x, size.y * 0.56f, size.z),
-                palette.DarkMetal);
+            for (int side = -1; side <= 1; side += 2)
+                Primitive(PrimitiveType.Cube, "Toilet Supporting Frame", root,
+                    new Vector3(side * size.x * 0.43f, size.y * 0.28f, 0.1f),
+                    new Vector3(size.x * 0.12f, size.y * 0.56f, size.z), palette.DarkMetal);
+            BuildWasteBucket(root, size, palette);
             Primitive(
                 PrimitiveType.Cylinder,
                 "Toilet Pedestal",
@@ -324,6 +325,19 @@ namespace Game.NomadWorkshop.Foundation
                 new Vector3(-size.x * 0.3f, size.y * 0.42f, -size.z * 0.515f),
                 new Vector3(0.075f, 0.18f, 0.025f),
                 palette.Warning);
+        }
+
+        private static void BuildWasteBucket(Transform root, Vector3 size, Palette palette)
+        {
+            var bucket = new GameObject("Detachable Waste Bucket").transform;
+            bucket.SetParent(root, false);
+            bucket.localPosition = new Vector3(0f, 0.02f, -size.z * 0.1f);
+            Primitive(PrimitiveType.Cube, "Sealed Bucket Body", bucket, new Vector3(0f, 0.18f, 0f),
+                new Vector3(0.33f, 0.36f, 0.28f), palette.Warning);
+            Primitive(PrimitiveType.Cube, "Sealed Lid", bucket, new Vector3(0f, 0.38f, 0f),
+                new Vector3(0.35f, 0.04f, 0.3f), palette.DarkMetal);
+            Primitive(PrimitiveType.Cube, "Bucket Handle", bucket, new Vector3(0f, 0.44f, 0f),
+                new Vector3(0.16f, 0.05f, 0.04f), palette.Steel);
         }
 
         private void BuildObservationEasel(Transform root, Vector3 size, Palette palette)

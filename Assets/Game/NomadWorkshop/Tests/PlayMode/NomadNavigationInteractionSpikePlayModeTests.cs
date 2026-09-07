@@ -1,7 +1,9 @@
 using System.Collections;
 using Game.NomadWorkshop.Navigation;
 using NUnit.Framework;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -21,6 +23,11 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _testScene = SceneManager.CreateScene("NomadNavigationInteractionSpikePlayModeTest");
             Assert.That(SceneManager.SetActiveScene(_testScene), Is.True);
             _composition = NomadNavigationSpikeRuntimeFactory.Create(fastMode: true);
+
+            NavMeshSurface surface = _composition.Root.GetComponentInChildren<NavMeshSurface>();
+            foreach (NavMeshAgent agent in _composition.Root.GetComponentsInChildren<NavMeshAgent>(true))
+                Assert.That(agent.agentTypeID, Is.EqualTo(surface.agentTypeID),
+                    $"{agent.name} 必须使用当前 Surface 的 Agent 类型，不能依赖编辑器上次选择的类型。");
 
             const int readyFrameLimit = 180;
             for (var i = 0;

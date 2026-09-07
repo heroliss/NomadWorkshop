@@ -1,0 +1,290 @@
+{
+  "recipeVersion": 1,
+  "generatorSha256": "0c01711e5a506ead9998c952b2f3897ec171ae4c015ded04e7454e93a3e35e2c",
+  "recipeSha256": "2e45f325b7fa5b92198bdec7039f4210224f0de61b6adc896b458c82de9d0941",
+  "blenderVersion": "5.2.1 LTS",
+  "variants": [
+    {
+      "id": "Mechanic",
+      "recipe": {
+        "id": "Mechanic",
+        "body": "Male",
+        "hair": [
+          "Hair_Buzzed"
+        ],
+        "shirtColor": [
+          0.35,
+          0.62,
+          0.57
+        ],
+        "hairColor": [
+          0.06,
+          0.045,
+          0.035
+        ],
+        "scale": 1.0
+      },
+      "fbx": "NW3_Mechanic.fbx",
+      "sha256": "c5257596324588f04dd1e335a864825037389e01e149ebe195c8f5cd072ec8fa",
+      "inputs": [
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\Male_Peasant.fbx",
+          "sha256": "d083f08a910c739b5a337207e4b6112f70c1235cdc3891c314ba26357c5f4965"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Superhero_Male_FullBody.fbx",
+          "sha256": "79344418d754a59730b79d1874752e9592143db34abe8adf138fa9a92a4768e9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Hair_Buzzed.fbx",
+          "sha256": "01c5c2ededd8b164274147ee8713a7a68cf74cd699fad6b969ce5e37c1b7b686"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\T_Peasant_BaseColor.png",
+          "sha256": "a43635628d95571cd62fd4db0cc3a6ea32778b2bc02f242dda224c89d07f1ade"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\T_Peasant_Normal.png",
+          "sha256": "7598fa7b63e46fd4dac29708bf5a81e05eb9a67280f7b13c61e28a9110eeb679"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Ligh.png",
+          "sha256": "419f96dbb8811511e2d515bcdabc085ff2f219ec7b8b4e91050a84cba6888fe9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Normal.png",
+          "sha256": "3645858289beb51643155a924e5148735dd5fe226230532936375c06ba829dec"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Eye_Brown.png",
+          "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+        }
+      ],
+      "meshes": [
+        {
+          "name": "Male_Peasant_Feet",
+          "triangles": 2588
+        },
+        {
+          "name": "Male_Peasant_Body",
+          "triangles": 3736
+        },
+        {
+          "name": "Male_Peasant_Legs",
+          "triangles": 1112
+        },
+        {
+          "name": "Male_Peasant_Arms",
+          "triangles": 4762
+        },
+        {
+          "name": "Eyes",
+          "triangles": 768
+        },
+        {
+          "name": "Eyebrows",
+          "triangles": 984
+        },
+        {
+          "name": "ResidentHead",
+          "triangles": 2928
+        },
+        {
+          "name": "Hair_Buzzed",
+          "triangles": 830
+        }
+      ]
+    },
+    {
+      "id": "Caretaker",
+      "recipe": {
+        "id": "Caretaker",
+        "body": "Female",
+        "hair": [
+          "Hair_Buns"
+        ],
+        "shirtColor": [
+          0.78,
+          0.54,
+          0.29
+        ],
+        "hairColor": [
+          0.11,
+          0.048,
+          0.025
+        ],
+        "scale": 1.0
+      },
+      "fbx": "NW3_Caretaker.fbx",
+      "sha256": "c37f48005e1d6998f4c824e90d388514887649ccd06cdd60c1d7a4f9eae78abc",
+      "inputs": [
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\Female_Peasant.fbx",
+          "sha256": "cb33c493852310400ca3974fe6734fcd4e1da5232b527708a6082a86b90ca5d5"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Superhero_Female_FullBody.fbx",
+          "sha256": "0727e7b236eeea4115531e07aeb2bb7690c1a58155f743bbf54282944fb97ea9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Hair_Buns.fbx",
+          "sha256": "cb45536c0e8c2b715732d9a75a33849239ca5e788c7dee4e17998daa0986fdfc"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\T_Peasant_BaseColor.png",
+          "sha256": "a43635628d95571cd62fd4db0cc3a6ea32778b2bc02f242dda224c89d07f1ade"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\T_Peasant_Normal.png",
+          "sha256": "7598fa7b63e46fd4dac29708bf5a81e05eb9a67280f7b13c61e28a9110eeb679"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Female_Light_BaseColor.png",
+          "sha256": "743f811857db0b950f3ad09a0733dfa4888801ead332313ca25becea14c54f8d"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Female_Normal.png",
+          "sha256": "cf922460b43ccd31e983e34db05514c9d451dd2f9cdd01a843978e797719f859"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Eye_Brown.png",
+          "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+        }
+      ],
+      "meshes": [
+        {
+          "name": "Female_Peasant_Body",
+          "triangles": 2188
+        },
+        {
+          "name": "Female_Peasant_Arms",
+          "triangles": 6848
+        },
+        {
+          "name": "Female_Peasant_Legs",
+          "triangles": 1944
+        },
+        {
+          "name": "Female_Peasant_Feet",
+          "triangles": 2588
+        },
+        {
+          "name": "ResidentHead",
+          "triangles": 3320
+        },
+        {
+          "name": "Eyes",
+          "triangles": 768
+        },
+        {
+          "name": "Eyebrows",
+          "triangles": 1480
+        },
+        {
+          "name": "Hair_Buns",
+          "triangles": 3284
+        }
+      ]
+    },
+    {
+      "id": "Driver",
+      "recipe": {
+        "id": "Driver",
+        "body": "Male",
+        "hair": [
+          "Hair_SimpleParted",
+          "Hair_Beard"
+        ],
+        "shirtColor": [
+          0.48,
+          0.56,
+          0.67
+        ],
+        "hairColor": [
+          0.27,
+          0.25,
+          0.22
+        ],
+        "scale": 1.04
+      },
+      "fbx": "NW3_Driver.fbx",
+      "sha256": "f1a0a4e0c096e991cf65fec3bd235bce032b641ba7f527f09b4196d21bea3199",
+      "inputs": [
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\Male_Peasant.fbx",
+          "sha256": "d083f08a910c739b5a337207e4b6112f70c1235cdc3891c314ba26357c5f4965"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Superhero_Male_FullBody.fbx",
+          "sha256": "79344418d754a59730b79d1874752e9592143db34abe8adf138fa9a92a4768e9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Hair_SimpleParted.fbx",
+          "sha256": "5e98acd3561c814127326fdc78e74f20dfa1c3397760006d17ebaea4c8d7a24d"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\Hair_Beard.fbx",
+          "sha256": "00899e7d2cceebab8c07456ca1c25e54e441eb271bb3427c3d12e371c2ef5189"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\T_Peasant_BaseColor.png",
+          "sha256": "a43635628d95571cd62fd4db0cc3a6ea32778b2bc02f242dda224c89d07f1ade"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusModularOutfits\\T_Peasant_Normal.png",
+          "sha256": "7598fa7b63e46fd4dac29708bf5a81e05eb9a67280f7b13c61e28a9110eeb679"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Ligh.png",
+          "sha256": "419f96dbb8811511e2d515bcdabc085ff2f219ec7b8b4e91050a84cba6888fe9"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Superhero_Male_Normal.png",
+          "sha256": "3645858289beb51643155a924e5148735dd5fe226230532936375c06ba829dec"
+        },
+        {
+          "file": "D:\\SSFramework\\Assets\\Game\\NomadWorkshop\\ThirdParty\\QuaterniusUniversalBaseCharacters\\T_Eye_Brown.png",
+          "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+        }
+      ],
+      "meshes": [
+        {
+          "name": "Male_Peasant_Arms",
+          "triangles": 4762
+        },
+        {
+          "name": "Male_Peasant_Feet",
+          "triangles": 2588
+        },
+        {
+          "name": "Male_Peasant_Legs",
+          "triangles": 1112
+        },
+        {
+          "name": "Male_Peasant_Body",
+          "triangles": 3736
+        },
+        {
+          "name": "ResidentHead",
+          "triangles": 2928
+        },
+        {
+          "name": "Eyebrows",
+          "triangles": 984
+        },
+        {
+          "name": "Eyes",
+          "triangles": 768
+        },
+        {
+          "name": "Hair_SimpleParted",
+          "triangles": 1301
+        },
+        {
+          "name": "Hair_Beard",
+          "triangles": 1034
+        }
+      ]
+    }
+  ]
+}

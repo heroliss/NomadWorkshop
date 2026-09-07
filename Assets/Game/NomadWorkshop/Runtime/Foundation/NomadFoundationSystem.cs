@@ -15,7 +15,8 @@ namespace Game.NomadWorkshop.Foundation
     /// </summary>
     public sealed partial class NomadFoundationSystem : MonoSystemBase
     {
-        private const ulong ResidentOwnerId = 0xF01UL;
+        private const int SimulationStepMilliseconds = 10;
+        private const int MaximumSimulationStepsPerFrame = 100;
         private const float DrinkNeedThreshold = 0.55f;
         private const string BladderOpportunityRandomStreamId =
             "resident-need-opportunity:bladder";
@@ -169,7 +170,7 @@ namespace Game.NomadWorkshop.Foundation
             CargoContainerCapability.LiquidTight | CargoContainerCapability.Sealable;
         [SerializeField, Range(0f, 1f), Tooltip("水罐洁净度；以后会参与水品质与污染风险。")]
         private float waterCanCleanliness = 0.96f;
-        [SerializeField, Min(1), Tooltip("当前共享旱厕暂存桶容量（mL）；满后必须等待未来清运链，不会吞掉排泄物。")]
+        [SerializeField, Min(1), Tooltip("新建每座旱厕的独立暂存桶容量（mL）；满后等待清运或使用其他有容量厕所。")]
         private int toiletHoldingCapacityMilliliters =
             DefaultToiletHoldingCapacityMilliliters;
 
@@ -190,6 +191,7 @@ namespace Game.NomadWorkshop.Foundation
         private readonly List<FoundationFacilityInventoryState> _facilityInventoryProjection = new();
 
         private NomadFoundationModel _model;
+        private FoundationResidentExecution _resident;
         private DeckNavigationUtility _navigation;
         private ContinuousFacilityPlacementLedger _placementLedger;
         private PlacementRegionLedger _worldItemPlacementLedger;
@@ -200,12 +202,6 @@ namespace Game.NomadWorkshop.Foundation
         private DeckPose _previewPose;
         private int _placementBeganFrame;
         private int _nextFacilitySequence;
-        private int _residentActionSequence;
-        private int _leisureSequence;
-        private long _residentDecisionSequence;
-        private long _bladderOpportunitySequence;
-        private long _workActionSequence;
-        private string _lastPublishedDecisionDiagnostic = string.Empty;
         private int _residentClearanceMillimeters;
         private bool _previewResidentOriginResolved;
         private DeckPose _previewResolvedResidentOrigin;
@@ -224,38 +220,16 @@ namespace Game.NomadWorkshop.Foundation
         private ResourceFlowLedger _resourceFlow;
         private ResourceInventory _vehicleWater;
         private ResourceInventory _waterCan;
-        private ResourceInventory _toiletHolding;
-        private ResidentWaterCycle _residentWaterCycle;
         private readonly ResidentActionPlanEvaluator _actionPlanEvaluator = new();
         private readonly ResidentActionPlanPolicy _actionPlanPolicy = new();
         private readonly UtilityDecisionEngine _decisionEngine = new();
         private readonly UtilityDecisionPolicy _residentDecisionPolicy =
             ResidentLeisurePlanFactory.CreateSelectionPolicy();
-        private readonly NomadSimulationClock _simulationClock = new();
-        private HaulTaskLease _activeHaul;
-        private ResidentWaterActionLease _activeResidentAction;
+        private readonly NomadSimulationClock _simulationClock =
+            new(stepMilliseconds: SimulationStepMilliseconds);
         private FoundationWaterCanLocation _waterCanLocation;
         private string _waterCanAnchorFacilityInstanceId = string.Empty;
         private PlacementRegionItem _waterCanPlacement;
-        private string _activeWaterSourceFacilityInstanceId = string.Empty;
-        private string _activeWaterTargetFacilityInstanceId = string.Empty;
-        private bool _waterCanPickupWasAtSource;
-        private bool _drinkAfterActiveHaul;
-        private FoundationResidentPhase _residentPhase;
-        private FoundationResidentMoveIntent _activeMoveIntent;
-        private bool _hasActiveMoveIntent;
-        private Vector3[] _activePathCorners = Array.Empty<Vector3>();
-        private float _activeDockingYawDegrees;
-        private bool _hasActiveDockingYaw;
-        private int _nextPathCornerIndex;
-        private float _routeRetryRemaining;
-        private float _residentDecisionRetryRemaining;
-        private float _phaseDuration;
-        private float _phaseRemaining;
-        private ResidentWellbeing _residentWellbeing;
-        private float _activeWorkEfficiency = 1f;
-        private float _activeLeisureOutcomeScale = 1f;
-        private FoundationLeisureKind _activeLeisureKind;
         private float _dockingNavMeshTolerance;
         private bool _initialized;
 
@@ -275,6 +249,7 @@ namespace Game.NomadWorkshop.Foundation
         private void Update()
         {
             if (!_initialized) return;
+            ReadNativeLocomotionFrame();
             if (_model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle)
             {
                 AdvanceBuildTransaction();
@@ -286,10 +261,19 @@ namespace Game.NomadWorkshop.Foundation
             float clampedSpeed = Mathf.Clamp(_model.SimulationSpeed.Value, 0.25f, 16f);
             if (!Mathf.Approximately(clampedSpeed, _model.SimulationSpeed.Value))
                 _model.SimulationSpeed.Value = clampedSpeed;
-            long deltaMilliseconds = _simulationClock.Advance(
+            _simulationClock.AccumulateFrame(
                 Time.unscaledDeltaTime,
                 clampedSpeed);
-            AdvanceSimulation(deltaMilliseconds);
+            // 每个阶段只消费固定业务步，长帧 / 倍速只增加步数。上限保护 Editor 响应；
+            // 没来得及执行的预算留在时钟中，下帧继续，不静默吞掉生活或旅途时间。
+            for (var step = 0; step < MaximumSimulationStepsPerFrame; step++)
+            {
+                if (!_simulationClock.TryAdvanceStep()) break;
+                AdvanceSimulation(SimulationStepMilliseconds);
+                if (_model.IsPaused.Value ||
+                    _model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle)
+                    break;
+            }
         }
 
         /// <summary>
@@ -298,56 +282,133 @@ namespace Game.NomadWorkshop.Foundation
         /// </summary>
         private void AdvanceSimulation(long deltaMilliseconds)
         {
+            if (deltaMilliseconds < 0L) throw new ArgumentOutOfRangeException(nameof(deltaMilliseconds));
+            if (deltaMilliseconds > 0L)
+            {
+                AdvanceFacilityConditionsTo(_simulationClock.SimulationTick);
+                foreach (var resident in _residents)
+                {
+                    using var scope = UseResident(resident);
+                    AdvanceResident(deltaMilliseconds);
+                }
+            }
+            WriteSimulationProjection();
+        }
+
+        private void AdvanceResident(long deltaMilliseconds)
+        {
             if (deltaMilliseconds < 0L)
                 throw new ArgumentOutOfRangeException(
                     nameof(deltaMilliseconds),
                     "Foundation 模拟步长不能为负数。 ");
             if (deltaMilliseconds == 0L)
             {
-                WriteSimulationProjection();
                 return;
             }
 
-            AdvanceFacilityConditionsTo(_simulationClock.SimulationTick);
-            if (_residentPhase == FoundationResidentPhase.Dead)
+            if (_resident.Phase == FoundationResidentPhase.Dead)
             {
-                WriteSimulationProjection();
                 return;
             }
 
             float deltaTime = deltaMilliseconds / 1000f;
-            ResidentWaterCycleTick physiologyTick = _residentWaterCycle.Advance(
+            ResidentWaterCycleTick physiologyTick = _resident.WaterCycle.Advance(
                 deltaTime,
                 _resourceFlow);
             ObservePhysiologyBackpressure(physiologyTick.Blocker);
-            _residentWellbeing.Advance(
+            _resident.Wellbeing.Advance(
                 deltaTime,
                 ResolveWellbeingActivity(),
                 new ResidentWellbeingDrivers(
-                    _residentWaterCycle.Thirst,
-                    _residentWaterCycle.ExcretionPressure,
-                    _residentPhase is FoundationResidentPhase.Blocked or
+                    _resident.WaterCycle.Thirst,
+                    _resident.WaterCycle.ExcretionPressure,
+                    _resident.Phase is FoundationResidentPhase.Blocked or
                         FoundationResidentPhase.WaitingForRoute),
-                _activeLeisureOutcomeScale);
-            if (!_residentWellbeing.IsAlive)
+                _resident.LeisureOutcomeScale);
+            if (!_resident.Wellbeing.IsAlive)
             {
                 HandleResidentDeath();
-                WriteSimulationProjection();
                 return;
             }
 
-            switch (_residentPhase)
+            // 等待驾驶路线时也要允许需求中断，不能因路径重试而饿着或渴着等待到死亡。
+            if (IsDrivingAction() && MustLeaveDriving())
+                StopDrivingAction("已安全停车，先处理居民需求");
+            AdvanceStopVisitRecall();
+
+            switch (_resident.Phase)
             {
+                case FoundationResidentPhase.MovingToStopSpare:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                        BeginTimedPhase(FoundationResidentPhase.PickingUpStopSpare, pickupSeconds, "拿取驿站预留维修包");
+                    break;
+                case FoundationResidentPhase.PickingUpStopSpare:
+                    if (TickTimer(deltaTime)) CompleteStopSparePickup();
+                    break;
+                case FoundationResidentPhase.ReturningStopSpare:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(FoundationResidentPhase.DeliveringStopSpare, deliverySeconds, "在维护托盘交付备件并结束外勤");
+                    }
+                    break;
+                case FoundationResidentPhase.DeliveringStopSpare:
+                    if (TickTimer(deltaTime)) CompleteStopSpareDelivery();
+                    break;
+                case FoundationResidentPhase.MovingToWasteBucket:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(FoundationResidentPhase.DetachingWasteBucket, pickupSeconds, "从旱厕取出密封污物桶");
+                    }
+                    break;
+                case FoundationResidentPhase.DetachingWasteBucket:
+                    if (TickTimer(deltaTime)) CompleteWasteBucketPickup();
+                    break;
+                case FoundationResidentPhase.MovingToWasteReceiver:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                        BeginTimedPhase(FoundationResidentPhase.EmptyingWasteBucket, deliverySeconds, "在驿站接收口倾倒污物");
+                    break;
+                case FoundationResidentPhase.EmptyingWasteBucket:
+                    if (TickTimer(deltaTime)) CompleteWasteDisposal();
+                    break;
+                case FoundationResidentPhase.ReturningWasteBucket:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(FoundationResidentPhase.InstallingWasteBucket, deliverySeconds, "装回旱厕污物桶");
+                    }
+                    break;
+                case FoundationResidentPhase.InstallingWasteBucket:
+                    if (TickTimer(deltaTime)) CompleteWasteBucketInstallation();
+                    break;
+                case FoundationResidentPhase.MovingToStopWater:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                        BeginTimedPhase(FoundationResidentPhase.FillingAtStop, pickupSeconds, "从有限水源向水罐装水");
+                    break;
+                case FoundationResidentPhase.FillingAtStop:
+                    if (TickTimer(deltaTime)) CompleteStopWaterPickup();
+                    break;
+                case FoundationResidentPhase.ReturningFromStopWater:
+                    if (AdvanceResidentAlongPath(deltaTime))
+                    {
+                        ClearActiveMoveIntent();
+                        BeginTimedPhase(FoundationResidentPhase.DeliveringStopWater, deliverySeconds, "在车辆水箱旁归还水罐与补给");
+                    }
+                    break;
+                case FoundationResidentPhase.DeliveringStopWater:
+                    if (TickTimer(deltaTime)) CompleteStopWaterDelivery();
+                    break;
                 case FoundationResidentPhase.WaitingForRoute:
-                    _routeRetryRemaining -= deltaTime;
-                    if (_routeRetryRemaining <= 0f) TryResumeActiveMove();
+                    _resident.RouteRetryRemaining -= deltaTime;
+                    if (_resident.RouteRetryRemaining <= 0f) TryResumeActiveMove();
                     break;
                 case FoundationResidentPhase.WaitingForFacility:
                 case FoundationResidentPhase.Idle:
-                    _residentDecisionRetryRemaining -= deltaTime;
-                    if (_residentDecisionRetryRemaining <= 0f)
+                    _resident.DecisionRetryRemaining -= deltaTime;
+                    if (_resident.DecisionRetryRemaining <= 0f)
                     {
-                        _residentDecisionRetryRemaining = Mathf.Max(
+                        _resident.DecisionRetryRemaining = Mathf.Max(
                             0.1f,
                             residentDecisionRetrySeconds);
                         TryStartResidentRoutine();
@@ -355,16 +416,22 @@ namespace Game.NomadWorkshop.Foundation
                     break;
                 case FoundationResidentPhase.MovingToWaterCan:
                     if (AdvanceResidentAlongPath(deltaTime))
-                    {
-                        ClearActiveMoveIntent();
-                        BeginTimedPhase(
-                            FoundationResidentPhase.PickingUpWaterCan,
-                            pickupSeconds,
-                            "取得唯一防漏水罐");
-                    }
+                        BeginWaterCanPickup();
                     break;
                 case FoundationResidentPhase.PickingUpWaterCan:
                     if (TickTimer(deltaTime)) CompleteWaterCanPickup();
+                    break;
+                case FoundationResidentPhase.LiftingWaterCan:
+                    if (TickTimer(deltaTime)) CompleteWaterCanLift();
+                    break;
+                case FoundationResidentPhase.MovingToWaterCanParking:
+                    if (AdvanceResidentAlongPath(deltaTime)) BeginWaterCanPlacement();
+                    break;
+                case FoundationResidentPhase.PlacingWaterCan:
+                    if (TickTimer(deltaTime)) CompleteWaterCanPlacement();
+                    break;
+                case FoundationResidentPhase.ReleasingWaterCan:
+                    if (TickTimer(deltaTime)) CompleteWaterCanRelease();
                     break;
                 case FoundationResidentPhase.MovingToWaterSource:
                     if (AdvanceResidentAlongPath(deltaTime))
@@ -383,7 +450,7 @@ namespace Game.NomadWorkshop.Foundation
                     if (AdvanceResidentAlongPath(deltaTime))
                     {
                         ClearActiveMoveIntent();
-                        if (_activeHaul != null)
+                        if (_resident.ActiveHaul != null)
                         {
                             BeginTimedPhase(
                                 FoundationResidentPhase.DeliveringWater,
@@ -499,9 +566,15 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentPhase.RepairingFacility:
                     if (TickTimer(deltaTime)) CompletePrimaryWaterTankRepair();
                     break;
+                case FoundationResidentPhase.MovingToDriver:
+                    if (MustLeaveDriving()) StopDrivingAction("途中需求升高，取消到岗并保持停车");
+                    else if (AdvanceResidentAlongPath(deltaTime)) CompleteDrivingApproach();
+                    break;
+                case FoundationResidentPhase.Driving:
+                    AdvanceDriving(deltaMilliseconds);
+                    break;
             }
 
-            WriteSimulationProjection();
         }
 
         public FoundationBuildOption[] GetBuildOptionsSnapshot()
@@ -521,6 +594,7 @@ namespace Game.NomadWorkshop.Foundation
 
         public void EnterBuildMode()
         {
+            if (RejectBuildDuringCheckpoint()) return;
             if (!_initialized || _model == null) return;
             _model.InteractionMode.Value = FoundationInteractionMode.Build;
         }
@@ -532,7 +606,7 @@ namespace Game.NomadWorkshop.Foundation
             {
                 _exitBuildModeRequested = true;
                 _cancelPlacementRequested = true;
-                _model.CurrentTask.Value = "等待导航事务安全回滚后退出建造模式";
+                _model.BuildFeedback.Value = "等待导航事务安全回滚后退出建造模式";
                 return;
             }
 
@@ -541,6 +615,12 @@ namespace Game.NomadWorkshop.Foundation
 
         public void BeginPlacement(string definitionId)
         {
+            if (RejectBuildDuringCheckpoint()) return;
+            if (FindStopVisitor() != null)
+            {
+                _model.BuildFeedback.Value = "请先召回车外作业者并装回容器，再调整甲板布局";
+                return;
+            }
             if (!_initialized ||
                 _model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle ||
                 string.IsNullOrWhiteSpace(definitionId) ||
@@ -549,6 +629,7 @@ namespace Game.NomadWorkshop.Foundation
                 return;
 
             _activePlacementDefinition = definition;
+            _model.BuildFeedback.Value = string.Empty;
             _previewPose = _snapSettings.Apply(default);
             _placementBeganFrame = Time.frameCount;
             _model.InteractionMode.Value = FoundationInteractionMode.Build;
@@ -619,6 +700,8 @@ namespace Game.NomadWorkshop.Foundation
 
         public bool ConfirmPlacement()
         {
+            if (RejectBuildDuringCheckpoint()) return false;
+            if (FindStopVisitor() != null) return false;
             if (_activePlacementDefinition == null ||
                 _model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle ||
                 Time.frameCount <= _placementBeganFrame)
@@ -641,7 +724,8 @@ namespace Game.NomadWorkshop.Foundation
                 _navigationUpdate = _navigation.BeginUpdate();
                 _model.BuildTransactionPhase.Value =
                     FoundationBuildTransactionPhase.UpdatingCandidateNavigation;
-                _model.CurrentTask.Value = "正在验证新设施对连续导航与交互位的影响";
+                SuspendNativeLocomotion();
+                _model.BuildFeedback.Value = "正在验证新设施对连续导航与交互位的影响";
                 _cancelPlacementRequested = false;
                 _exitBuildModeRequested = false;
                 SetPreview(FoundationPlacementFailure.TransactionInProgress);
@@ -652,7 +736,7 @@ namespace Game.NomadWorkshop.Foundation
                 _navigation.DeactivateAndDestroyObstacle(_pendingObstacle);
                 ClearPendingPlacement();
                 SetPreview(FoundationPlacementFailure.NavigationUpdateFailed);
-                _model.LastBlocker.Value = exception.Message;
+                _model.BuildFeedback.Value = exception.Message;
                 return false;
             }
         }
@@ -664,7 +748,7 @@ namespace Game.NomadWorkshop.Foundation
                 FoundationBuildTransactionPhase.UpdatingCandidateNavigation)
             {
                 _cancelPlacementRequested = true;
-                _model.CurrentTask.Value = "等待当前导航更新完成后取消候选设施";
+                _model.BuildFeedback.Value = "等待当前导航更新完成后取消候选设施";
                 return;
             }
             if (_model != null &&
@@ -680,11 +764,16 @@ namespace Game.NomadWorkshop.Foundation
 
         public void SetPaused(bool paused)
         {
+            if (_checkpointOperation != null) return;
             if (_model != null) _model.IsPaused.Value = paused;
+            if (paused) SuspendNativeLocomotion();
+            else if (_model != null)
+                foreach (var resident in _residents) ConfigureNativeMotion(resident);
         }
 
         public void SetSimulationSpeed(float speed)
         {
+            if (_checkpointOperation != null) return;
             if (float.IsNaN(speed) || float.IsInfinity(speed)) return;
             initialSimulationSpeed = Mathf.Clamp(speed, 0.25f, 16f);
             if (_model != null) _model.SimulationSpeed.Value = initialSimulationSpeed;
@@ -698,7 +787,7 @@ namespace Game.NomadWorkshop.Foundation
             {
                 _resetRequested = true;
                 _cancelPlacementRequested = true;
-                _model.CurrentTask.Value = "等待导航事务回滚后复位";
+                _model.BuildFeedback.Value = "等待导航事务回滚后复位";
                 return;
             }
 
@@ -728,6 +817,8 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (_initialized)
                 throw new InvalidOperationException("测试定义必须在 NomadFoundationSystem.Awake 前配置。");
+            initialResidentCount = 1;
+            nativeLocomotion = false;
             deckLayout = configuredLayout;
             facilityDefinitions = configuredDefinitions;
             worldItemDefinitions = configuredWorldItemDefinitions ??
@@ -822,11 +913,12 @@ namespace Game.NomadWorkshop.Foundation
         }
 #endif
 
-        private void ResetScenarioNow()
+        private void ResetScenarioNow(CheckpointOperation allowedOperation = null)
         {
             if (_model == null || _navigation == null) return;
+            if (!ReferenceEquals(allowedOperation, _checkpointOperation)) RevokeCheckpointOperation(publish: true);
 
-            ReleaseActiveTasks();
+            RecreateResidentExecutions(initialResidentCount);
             ClearActivePath();
             ClearActiveMoveIntent();
             ClearPendingPlacement();
@@ -845,6 +937,7 @@ namespace Game.NomadWorkshop.Foundation
             _facilityAccessProjection.Clear();
             _model.ReplaceFacilityAccess(_facilityAccessProjection);
             _drinkingStationInventories.Clear();
+            _toiletInventories.Clear();
             _facilityInventoryProjection.Clear();
             _model.ReplaceFacilityInventories(_facilityInventoryProjection);
 
@@ -864,6 +957,7 @@ namespace Game.NomadWorkshop.Foundation
                 PreviewReachabilityCellMillimeters,
                 _residentClearanceMillimeters,
                 PreviewEndpointSampleRadiusMillimeters);
+            _interactionSpaces?.Dispose();
             _interactionSpaces = new FoundationInteractionSpaceRuntime(
                 interactionSpaceMergeDistanceMillimeters);
             _previewResidentOriginResolved = false;
@@ -874,16 +968,18 @@ namespace Game.NomadWorkshop.Foundation
             _model.RotationSnapDeciDegrees.Value = _snapSettings.RotationStepDeciDegrees;
             _model.ShowPlacementGrid.Value = true;
             _nextFacilitySequence = 1;
-            _residentActionSequence = 0;
-            _leisureSequence = 0;
+            _resident.ActionSequence = 0;
+            _resident.LeisureSequence = 0;
             // 统一把游标解释为“下一次要消费的事件序号”；首个居民决策沿用历史序号 1。
-            _residentDecisionSequence = 1;
-            _bladderOpportunitySequence = 0;
-            _workActionSequence = 0;
-            _lastPublishedDecisionDiagnostic = string.Empty;
-            _routeRetryRemaining = 0f;
-            _residentDecisionRetryRemaining = 0f;
+            _resident.DecisionSequence = 1;
+            _resident.BladderOpportunitySequence = 0;
+            _resident.WorkActionSequence = 0;
+            _resident.LastPublishedDecisionDiagnostic = string.Empty;
+            _resident.RouteRetryRemaining = 0f;
+            _resident.DecisionRetryRemaining = 0f;
             _simulationClock.Restore(0L);
+            ResetJourney();
+            ResetStopWater();
 
             var initialFacilities = new List<FoundationFacilityState>();
             for (var i = 0; i < facilityDefinitions.Length; i++)
@@ -925,8 +1021,13 @@ namespace Game.NomadWorkshop.Foundation
                 TryCreateStarterCupForFacility(initialFacilities[i]);
                 TryCreateStarterRepairKitForFacility(initialFacilities[i]);
             }
-            _model.ResidentLocalPosition.Value = ToNavigationPoint(residentStartLocalPosition);
-            _model.ResidentLocalYawDegrees.Value = 180f;
+            for (var residentIndex = 0; residentIndex < _residents.Count; residentIndex++)
+            {
+                var state = _residents[residentIndex].State;
+                state.ResidentLocalPosition.Value = ToNavigationPoint(residentStartLocalPosition +
+                    (residentIndex == 0 ? Vector3.zero : Vector3.right * (residentIndex == 1 ? -0.8f : 0.8f)));
+                state.ResidentLocalYawDegrees.Value = 180f;
+            }
 
             _navigation.BuildNow();
             RebuildCommittedInteractionSpaces(reacquireActiveSpace: false);
@@ -952,26 +1053,44 @@ namespace Game.NomadWorkshop.Foundation
                 out _)
                 ? initialWaterTank.InstanceId
                 : string.Empty;
-            _activeWaterSourceFacilityInstanceId = string.Empty;
-            _activeWaterTargetFacilityInstanceId = string.Empty;
-            _waterCanPickupWasAtSource = false;
-            _residentWellbeing = new ResidentWellbeing(
+            for (var i = 0; i < initialFacilities.Count; i++) AddFacilityInventory(initialFacilities[i]);
+            foreach (var resident in _residents)
+            {
+                using var scope = UseResident(resident);
+                InitializeResidentForNewScenario();
+            }
+            _model.SimulationSpeed.Value = initialSimulationSpeed;
+            SetWaterCanLocation(FoundationWaterCanLocation.VehicleWaterTank, initialWaterCanAnchor);
+            _model.WaterCanWaterMilliliters.Value = 0;
+            _model.WaterCanCapacityMilliliters.Value = _waterCan.Capacity;
+            _model.VehicleWaterCapacityMilliliters.Value = _vehicleWater.Capacity;
+            _model.BuildFeedback.Value = string.Empty;
+            ClearPlacementSelection(exitBuildMode: true);
+            WriteSimulationProjection();
+
+            _initialized = true;
+            _model.IsReady.Value = true;
+        }
+
+        private void InitializeResidentForNewScenario()
+        {
+            _resident.DecisionSequence = 1L;
+            _resident.State.ResidentCarryingWater.Value = false;
+            _resident.State.ResidentCarriedWorldItem.Value = default;
+            _resident.ActiveWaterSourceFacilityInstanceId = string.Empty;
+            _resident.ActiveWaterTargetFacilityInstanceId = string.Empty;
+            _resident.WaterCanContactPlacement = default;
+            _resident.Wellbeing = new ResidentWellbeing(
                 initialEntertainment,
                 initialMood,
                 initialFatigue,
                 initialStress,
                 initialHealth);
-            _activeWorkEfficiency = CalculateExpectedWorkEfficiency();
-            _activeLeisureOutcomeScale = 1f;
-            for (var i = 0; i < initialFacilities.Count; i++)
-                AddFacilityInventory(initialFacilities[i]);
-            _toiletHolding = new ResourceInventory(
-                "toilet-holding",
-                ResourceMeasure.Milliliter,
-                Mathf.Max(1, toiletHoldingCapacityMilliliters));
-            _residentWaterCycle = new ResidentWaterCycle(
-                "resident-01",
-                ResidentOwnerId,
+            _resident.WorkEfficiency = CalculateExpectedWorkEfficiency();
+            _resident.LeisureOutcomeScale = 1f;
+            _resident.WaterCycle = new ResidentWaterCycle(
+                _resident.StableId,
+                _resident.OwnerId,
                 ResidentWaterCycle.DefaultDrinkServingMilliliters /
                 Mathf.Max(0.01f, drinkMetabolismSeconds),
                 drinkServingMilliliters: ResidentWaterCycle.DefaultDrinkServingMilliliters,
@@ -981,47 +1100,31 @@ namespace Game.NomadWorkshop.Foundation
                 bodyWaterCapacityMilliliters: bodyWaterCapacityMilliliters,
                 bladderCapacityMilliliters: bladderCapacityMilliliters);
 
-            _model.SimulationSpeed.Value = initialSimulationSpeed;
-            _model.ResidentCarryingWater.Value = false;
-            _model.ResidentCarriedWorldItem.Value = default;
-            SetWaterCanLocation(
-                FoundationWaterCanLocation.VehicleWaterTank,
-                initialWaterCanAnchor);
-            _model.WaterCanWaterMilliliters.Value = 0;
-            _model.WaterCanCapacityMilliliters.Value = _waterCan.Capacity;
-            _model.VehicleWaterCapacityMilliliters.Value = _vehicleWater.Capacity;
-            _model.DrinkingStationWaterMilliliters.Value = 0;
-            _model.DrinkingStationCapacityMilliliters.Value = 0;
-            _model.BodyWaterCapacityMilliliters.Value = _residentWaterCycle.BodyWater.Capacity;
-            _model.BladderCapacityMilliliters.Value = _residentWaterCycle.Bladder.Capacity;
-            _model.ToiletHoldingCapacityMilliliters.Value = _toiletHolding.Capacity;
-            _model.LatestActionPlan.Value = FoundationActionPlanProjection.None;
-            _model.CompletedDrinkCount.Value = 0;
-            _model.CompletedToiletUseCount.Value = 0;
-            _model.CompletedLeisureCount.Value = 0;
-            _model.CompletedDaydreamCount.Value = 0;
-            _model.CompletedWanderCount.Value = 0;
-            _model.CompletedGroundRestCount.Value = 0;
-            _model.CompletedHobbyCount.Value = 0;
-            _model.CompletedWorldItemMoveCount.Value = 0;
-            _model.CompletedWaterTankRepairCount.Value = 0;
-            _model.LastBlocker.Value = string.Empty;
-            _model.ActionProgress.Value = 0f;
-            _activeLeisureKind = FoundationLeisureKind.None;
-            ClearPlacementSelection(exitBuildMode: true);
+            _resident.State.BodyWaterCapacityMilliliters.Value = _resident.WaterCycle.BodyWater.Capacity;
+            _resident.State.BladderCapacityMilliliters.Value = _resident.WaterCycle.Bladder.Capacity;
+            _resident.State.LatestActionPlan.Value = FoundationActionPlanProjection.None;
+            _resident.State.MovementStallMilliseconds.Value = 0L;
+            _resident.State.CompletedDrinkCount.Value = 0;
+            _resident.State.CompletedToiletUseCount.Value = 0;
+            _resident.State.CompletedLeisureCount.Value = 0;
+            _resident.State.CompletedDaydreamCount.Value = 0;
+            _resident.State.CompletedWanderCount.Value = 0;
+            _resident.State.CompletedGroundRestCount.Value = 0;
+            _resident.State.CompletedHobbyCount.Value = 0;
+            _resident.State.CompletedWorldItemMoveCount.Value = 0;
+            _resident.State.CompletedWaterTankRepairCount.Value = 0;
+            _resident.State.LastBlocker.Value = string.Empty;
+            _resident.State.ActionProgress.Value = 0f;
+            _resident.LeisureKind = FoundationLeisureKind.None;
             SetResidentPhase(
-                !_residentWellbeing.IsAlive
+                !_resident.Wellbeing.IsAlive
                     ? FoundationResidentPhase.Dead
                     : HasPlacedFacility(NomadFacilityFunction.DrinkingStation)
                         ? FoundationResidentPhase.Idle
                         : FoundationResidentPhase.WaitingForFacility,
-                _residentWellbeing.IsAlive
+                _resident.Wellbeing.IsAlive
                     ? "等待玩家建造饮水站"
                     : "居民初始健康为零，已经死亡");
-            WriteSimulationProjection();
-
-            _initialized = true;
-            _model.IsReady.Value = true;
         }
 
         private void ValidateAndBuildCatalog()
@@ -1147,7 +1250,7 @@ namespace Game.NomadWorkshop.Foundation
                 candidate.InstanceId,
                 _activePlacementDefinition);
             DeckPose residentPose = deckLayout.LocalToPose(
-                ToNavigationPoint(_model.ResidentLocalPosition.Value));
+                ToNavigationPoint(_resident.State.ResidentLocalPosition.Value));
             if (!_previewReachabilityProbe.RebuildAllowingOriginRelocation(
                     _previewCommittedFacilities,
                     candidate,
@@ -1350,13 +1453,20 @@ namespace Game.NomadWorkshop.Foundation
             _interactionSpaces.RebuildCommitted(
                 _model.Facilities,
                 _definitions,
-                reacquireActiveSpace,
-                ResidentOwnerId);
+                reacquireActiveSpace);
+            foreach (var resident in _residents)
+            {
+                using var scope = UseResident(resident);
+                if (_resident.InteractionSpace is not { IsActive: false }) continue;
+                ReleaseActiveTasks();
+                SetResidentPhase(FoundationResidentPhase.Idle, "交互空间发生冲突，已安全取消并重新评估");
+                _resident.DecisionRetryRemaining = 0f;
+            }
         }
 
         private bool TryResolveResidentNavigationOrigin(out Vector3 resolved)
         {
-            Vector3 current = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 current = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             DeckPose currentPose = deckLayout.LocalToPose(current);
             if (_navigation.TrySampleLocalPosition(
                     current,
@@ -1395,7 +1505,7 @@ namespace Game.NomadWorkshop.Foundation
             in DeckPose previewResolvedOrigin,
             out bool relocated)
         {
-            Vector3 current = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 current = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             if (_navigation.TrySampleLocalPosition(
                     current,
                     ResidentExactNavMeshTolerance,
@@ -1500,7 +1610,7 @@ namespace Game.NomadWorkshop.Foundation
         private void ApplyResidentRelocation(Vector3 sampled)
         {
             ClearActivePath();
-            _model.ResidentLocalPosition.Value = ToNavigationPoint(sampled);
+            _resident.State.ResidentLocalPosition.Value = ToNavigationPoint(sampled);
         }
 
         private static FoundationFacilityAccess ClassifyFacilityAccess(
@@ -1556,16 +1666,22 @@ namespace Game.NomadWorkshop.Foundation
 
                         CommitPendingPlacementTruth();
                         RebuildCommittedInteractionSpaces(reacquireActiveSpace: true);
-                        residentHasPosition = EnsureResidentHasNavigablePosition(
-                            _pendingResidentOriginResolved,
-                            _pendingResolvedResidentOrigin,
-                            out residentRelocated);
+                        residentHasPosition = true;
+                        residentRelocated = false;
+                        for (var index = 0; index < _residents.Count; index++)
+                        {
+                            using var scope = UseResident(_residents[index]);
+                            residentHasPosition &= EnsureResidentHasNavigablePosition(
+                                index == 0 && _pendingResidentOriginResolved,
+                                _pendingResolvedResidentOrigin, out bool relocated);
+                            residentRelocated |= relocated;
+                        }
                         RefreshCommittedFacilityAccess();
                     }
                     catch (Exception exception)
                     {
                         RollbackPartiallyCommittedPlacementTruth();
-                        _model.LastBlocker.Value = exception.Message;
+                        _model.BuildFeedback.Value = exception.Message;
                         BeginRollback(FoundationPlacementFailure.NavigationUpdateFailed);
                         return;
                     }
@@ -1628,12 +1744,15 @@ namespace Game.NomadWorkshop.Foundation
                     ResourceFlowBlocker.None);
                 return;
             }
-            ReplanActiveMoveAfterPlacement();
-            if (_residentPhase is FoundationResidentPhase.Idle or
-                FoundationResidentPhase.WaitingForFacility)
-                _model.CurrentTask.Value = residentRelocated
-                    ? $"已建造：{placedName}；居民已自动避让施工占地"
-                    : $"已建造：{placedName}";
+            foreach (var resident in _residents)
+            {
+                using var scope = UseResident(resident);
+                ReplanActiveMoveAfterPlacement();
+            }
+            RebindNativeLocomotion();
+            _model.BuildFeedback.Value = residentRelocated
+                ? $"已建造：{placedName}；居民已自动避让施工占地"
+                : $"已建造：{placedName}";
         }
 
         private void BeginRollback(FoundationPlacementFailure failure)
@@ -1645,11 +1764,11 @@ namespace Game.NomadWorkshop.Foundation
                 _navigationUpdate = _navigation.BeginUpdate();
                 _model.BuildTransactionPhase.Value =
                     FoundationBuildTransactionPhase.RollingBackNavigation;
-                _model.CurrentTask.Value = "候选无效，正在恢复提交前的导航数据";
+                _model.BuildFeedback.Value = "候选无效，正在恢复提交前的导航数据";
             }
             catch (Exception exception)
             {
-                _model.LastBlocker.Value = exception.Message;
+                _model.BuildFeedback.Value = exception.Message;
                 _navigation.BuildNow();
                 FinishRollback();
             }
@@ -1673,6 +1792,7 @@ namespace Game.NomadWorkshop.Foundation
                 ResetScenarioNow();
                 return;
             }
+            RebindNativeLocomotion();
             RefreshCommittedFacilityAccess();
             if (cancel)
             {
@@ -1681,7 +1801,7 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             SetPreview(failure);
-            _model.CurrentTask.Value = failure == FoundationPlacementFailure.None
+            _model.BuildFeedback.Value = failure == FoundationPlacementFailure.None
                 ? "候选设施已取消"
                 : "候选设施未通过连续导航验证";
         }
@@ -1691,14 +1811,9 @@ namespace Game.NomadWorkshop.Foundation
             NomadFacilityDefinition additionalDefinition)
         {
             Vector3 anchor = ToNavigationPoint(residentStartLocalPosition);
-            Vector3 resident = ToNavigationPoint(_model.ResidentLocalPosition.Value);
-            if (!TryCalculatePath(
-                    anchor,
-                    resident,
-                    MaximumTravelSampleOffset,
-                    _dockingNavMeshTolerance,
-                    out _))
-                return false;
+            foreach (var execution in _residents)
+                if (!TryCalculatePath(anchor, ToNavigationPoint(execution.State.ResidentLocalPosition.Value),
+                        MaximumTravelSampleOffset, _dockingNavMeshTolerance, out _)) return false;
 
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
             for (var i = 0; i < facilities.Count; i++)
@@ -1878,6 +1993,10 @@ namespace Game.NomadWorkshop.Foundation
             AddPrimaryWaterTankRepairDecisionOption(options, ref pendingDiagnostic);
             AddToiletDecisionOption(options, ref pendingDiagnostic);
             AddWaterDecisionOptions(options, ref pendingDiagnostic);
+            AddDrivingDecisionOption(options);
+            AddStopWaterDecisionOption(options);
+            AddStopWasteDecisionOption(options);
+            AddStopSpareDecisionOption(options);
             AddHobbyDecisionOption(options);
             AddGroundRestDecisionOption(options);
             AddLeisureDecisionOptions(options);
@@ -1887,8 +2006,8 @@ namespace Game.NomadWorkshop.Foundation
                 candidates[i] = options[i].Evaluation.Candidate;
             var context = new ResidentDecisionContext(
                 worldSeed: worldSeed,
-                residentId: ResidentOwnerId,
-                decisionSequence: _residentDecisionSequence++,
+                residentId: _resident.OwnerId,
+                decisionSequence: _resident.DecisionSequence++,
                 needs: CreateResidentNeedSnapshot(),
                 candidates: candidates);
             ResidentDecisionResult decision = _decisionEngine.Decide(
@@ -1914,16 +2033,16 @@ namespace Game.NomadWorkshop.Foundation
 
         private ResidentNeedState[] CreateResidentNeedSnapshot()
         {
-            ResidentNeedState[] wellbeing = _residentWellbeing.CreateDecisionNeedSnapshot();
+            ResidentNeedState[] wellbeing = _resident.Wellbeing.CreateDecisionNeedSnapshot();
             var result = new List<ResidentNeedState>(2 + wellbeing.Length)
             {
                 new ResidentNeedState(
                     ResidentNeed.Thirst,
-                    _residentWaterCycle.Thirst,
+                    _resident.WaterCycle.Thirst,
                     thirstIncreasePerSecond),
                 new ResidentNeedState(
                     ResidentNeed.Bladder,
-                    _residentWaterCycle.ExcretionPressure,
+                    _resident.WaterCycle.ExcretionPressure,
                     0f,
                     pressureCurve: BladderPressureCurve),
             };
@@ -1935,59 +2054,42 @@ namespace Game.NomadWorkshop.Foundation
             ICollection<FoundationResidentDecisionOption> options,
             ref PendingDecisionDiagnostic pendingDiagnostic)
         {
-            int waste = _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
-            float pressure = _residentWaterCycle.ExcretionPressure;
+            int waste = _resident.WaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
+            float pressure = _resident.WaterCycle.ExcretionPressure;
             if (waste <= 0 || !ShouldOfferBladderAction(pressure)) return;
 
             bool urgent = BladderPressureCurve.IsUrgent(pressure);
             ResidentDecisionRiskTier tier = urgent
                 ? ResidentDecisionRiskTier.Urgent
                 : ResidentDecisionRiskTier.Routine;
-            if (!TrySelectReachableFacility(
-                    NomadFacilityFunction.Toilet,
+            if (!TrySelectUsableToilet(
+                    waste,
                     out FoundationFacilityState toilet,
                     out float pathLength,
-                    ToiletInteractionGroupId))
+                    out bool hasReachableToilet))
             {
                 options.Add(CreateBlockedNeedOption(
                     FoundationResidentDecisionKind.Toilet,
-                    $"toilet:{_residentActionSequence + 1}:unavailable",
+                    $"toilet:{_resident.StableId}:{_resident.ActionSequence + 1}:unavailable",
                     "use-toilet",
                     "寻找可达旱厕",
-                    ResidentActionPlanBlockReason.InteractionUnavailable,
-                    "没有可达旱厕",
+                    hasReachableToilet ? ResidentActionPlanBlockReason.DestinationFull :
+                        ResidentActionPlanBlockReason.InteractionUnavailable,
+                    hasReachableToilet ? "可达旱厕容量不足，需要清运或使用另一座" : "没有可达旱厕",
                     new NeedEffect(ResidentNeed.Bladder, 1f),
                     tier,
                     urgent ? pressure : 0f));
                 if (urgent)
                     pendingDiagnostic.Consider(
-                        "PhysiologyBackpressure · 膀胱接近满载，需要建造可达旱厕",
+                        hasReachableToilet ? "DestinationFull · 可达旱厕容量不足，需要清运或建造另一座" :
+                            "PhysiologyBackpressure · 膀胱接近满载，需要建造可达旱厕",
                         tier,
                         pressure);
                 return;
             }
 
-            if (_toiletHolding.FreeCapacity < waste)
-            {
-                options.Add(CreateBlockedNeedOption(
-                    FoundationResidentDecisionKind.Toilet,
-                    $"toilet:{_residentActionSequence + 1}:holding-full",
-                    "use-toilet",
-                    "使用旱厕",
-                    ResidentActionPlanBlockReason.DestinationFull,
-                    "旱厕暂存桶已满，需要先清运",
-                    new NeedEffect(ResidentNeed.Bladder, 1f),
-                    tier,
-                    urgent ? pressure : 0f));
-                pendingDiagnostic.Consider(
-                    $"DestinationFull · {_toiletHolding.Id} · 旱厕暂存桶需要清运",
-                    tier,
-                    urgent ? pressure : 0f);
-                return;
-            }
-
             var proposal = new ResidentActionPlanProposal(
-                $"toilet:{_residentActionSequence + 1}",
+                $"toilet:{_resident.StableId}:{_resident.ActionSequence + 1}",
                 "use-toilet",
                 "前往旱厕并排空膀胱")
             {
@@ -2026,9 +2128,9 @@ namespace Game.NomadWorkshop.Foundation
 
             double roll = DeterministicRandom.Sample01(
                 worldSeed: worldSeed,
-                ownerId: ResidentOwnerId,
+                ownerId: _resident.OwnerId,
                 streamId: BladderOpportunityRandomStreamId,
-                eventSequence: _bladderOpportunitySequence++);
+                eventSequence: _resident.BladderOpportunitySequence++);
             return BladderPressureCurve.ShouldOfferAction(excretionPressure, roll);
         }
 
@@ -2036,23 +2138,23 @@ namespace Game.NomadWorkshop.Foundation
             ICollection<FoundationResidentDecisionOption> options,
             ref PendingDecisionDiagnostic pendingDiagnostic)
         {
-            bool needsDrink = _residentWaterCycle.Thirst >= DrinkNeedThreshold;
-            bool bodyCanDrink = _residentWaterCycle.BodyWater.FreeCapacity >=
+            bool needsDrink = _resident.WaterCycle.Thirst >= DrinkNeedThreshold;
+            bool bodyCanDrink = _resident.WaterCycle.BodyWater.FreeCapacity >=
                                 ResidentWaterCycle.DefaultDrinkServingMilliliters;
             bool hasFeasibleRecovery = false;
             if (needsDrink && !bodyCanDrink)
             {
-                bool bladderFull = _residentWaterCycle.Bladder.FreeCapacity <= 0;
+                bool bladderFull = _resident.WaterCycle.Bladder.FreeCapacity <= 0;
                 bool urgentThirst =
-                    _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
+                    _resident.WaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
                 pendingDiagnostic.Consider(
                     bladderFull
-                    ? "DestinationFull · resident-01:body-water · 膀胱已满，需要可达旱厕"
-                    : "DestinationFull · resident-01:body-water · 正在等待体内水继续代谢",
+                    ? $"DestinationFull · {_resident.State.BodyWaterInventoryId} · 膀胱已满，需要可达旱厕"
+                    : $"DestinationFull · {_resident.State.BodyWaterInventoryId} · 正在等待体内水继续代谢",
                     urgentThirst
                         ? ResidentDecisionRiskTier.Urgent
                         : ResidentDecisionRiskTier.Routine,
-                    urgentThirst ? _residentWaterCycle.Thirst : 0f);
+                    urgentThirst ? _resident.WaterCycle.Thirst : 0f);
             }
 
             if (needsDrink && bodyCanDrink && TrySelectDrinkingStation(
@@ -2132,26 +2234,26 @@ namespace Game.NomadWorkshop.Foundation
                             : "当前没有可装入水罐并送达饮水站的水量";
             options.Add(CreateBlockedNeedOption(
                 FoundationResidentDecisionKind.DirectDrink,
-                $"drink:{_residentActionSequence + 1}:unavailable",
+                $"drink:{_resident.StableId}:{_resident.ActionSequence + 1}:unavailable",
                 "drink-water",
                 "寻找可执行饮水方案",
                 ResidentActionPlanBlockReason.PrerequisiteUnavailable,
                 reason,
                 new NeedEffect(ResidentNeed.Thirst, 0.72f),
-                _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit
+                _resident.WaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit
                     ? ResidentDecisionRiskTier.Urgent
                     : ResidentDecisionRiskTier.Routine,
-                _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit
-                    ? _residentWaterCycle.Thirst
+                _resident.WaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit
+                    ? _resident.WaterCycle.Thirst
                     : 0f));
             bool urgent =
-                _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
+                _resident.WaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
             pendingDiagnostic.Consider(
                 $"RouteUnavailable · {reason}",
                 urgent
                     ? ResidentDecisionRiskTier.Urgent
                     : ResidentDecisionRiskTier.Routine,
-                urgent ? _residentWaterCycle.Thirst : 0f);
+                urgent ? _resident.WaterCycle.Thirst : 0f);
         }
 
         private int CalculateWaterHaulMilliliters(
@@ -2175,9 +2277,9 @@ namespace Game.NomadWorkshop.Foundation
             in FoundationFacilityState station,
             float pathLength)
         {
-            bool urgent = _residentWaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
+            bool urgent = _resident.WaterCycle.Thirst >= _residentDecisionPolicy.UrgentNeedDeficit;
             var proposal = new ResidentActionPlanProposal(
-                $"drink:{_residentActionSequence + 1}",
+                $"drink:{_resident.StableId}:{_resident.ActionSequence + 1}",
                 "drink-water",
                 "前往饮水站直接饮水")
             {
@@ -2190,11 +2292,11 @@ namespace Game.NomadWorkshop.Foundation
                         label: "在饮水站饮水"),
                 },
                 BaseUtility = 0.035f,
-                DelayUrgency = _residentWaterCycle.Thirst,
+                DelayUrgency = _resident.WaterCycle.Thirst,
                 RiskTier = urgent
                     ? ResidentDecisionRiskTier.Urgent
                     : ResidentDecisionRiskTier.Routine,
-                RiskPriority = urgent ? _residentWaterCycle.Thirst : 0f,
+                RiskPriority = urgent ? _resident.WaterCycle.Thirst : 0f,
                 NeedEffects = new[] { new NeedEffect(ResidentNeed.Thirst, 0.72f) },
                 ReservationKeys = new[] { $"facility:{station.InstanceId}:drink" },
             };
@@ -2318,8 +2420,8 @@ namespace Game.NomadWorkshop.Foundation
             motionSickness: 0f,
             timeSensitivity: 1f,
             effortAversion: ResidentPerformance.CalculateEffortAversion(
-                _residentWellbeing.Health,
-                _residentWellbeing.Fatigue),
+                _resident.Wellbeing.Health,
+                _resident.Wellbeing.Fatigue),
             riskAversion: 1f);
 
         private ResidentActionStepEstimate CreateTravelStep(
@@ -2335,21 +2437,21 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (pendingDiagnostic.HasValue)
             {
-                _lastPublishedDecisionDiagnostic = pendingDiagnostic.Message;
-                _model.LastBlocker.Value = pendingDiagnostic.Message;
+                _resident.LastPublishedDecisionDiagnostic = pendingDiagnostic.Message;
+                _resident.State.LastBlocker.Value = pendingDiagnostic.Message;
                 return;
             }
 
             bool ownsVisibleDiagnostic = string.Equals(
-                _model.LastBlocker.Value,
-                _lastPublishedDecisionDiagnostic,
+                _resident.State.LastBlocker.Value,
+                _resident.LastPublishedDecisionDiagnostic,
                 StringComparison.Ordinal);
-            bool isPhysiologyBackpressure = _model.LastBlocker.Value.StartsWith(
+            bool isPhysiologyBackpressure = _resident.State.LastBlocker.Value.StartsWith(
                 "PhysiologyBackpressure",
                 StringComparison.Ordinal);
             if (ownsVisibleDiagnostic || isPhysiologyBackpressure)
-                _model.LastBlocker.Value = string.Empty;
-            _lastPublishedDecisionDiagnostic = string.Empty;
+                _resident.State.LastBlocker.Value = string.Empty;
+            _resident.LastPublishedDecisionDiagnostic = string.Empty;
         }
 
         private static FoundationResidentDecisionOption FindSelectedOption(
@@ -2373,8 +2475,8 @@ namespace Game.NomadWorkshop.Foundation
                     BeginToiletUse(option.TargetFacility);
                     return;
                 case FoundationResidentDecisionKind.DirectDrink:
-                    _residentActionSequence++;
-                    _model.LastBlocker.Value = string.Empty;
+                    _resident.ActionSequence++;
+                    _resident.State.LastBlocker.Value = string.Empty;
                     BeginDrink(option.TargetFacility);
                     return;
                 case FoundationResidentDecisionKind.WaterRestock:
@@ -2393,6 +2495,18 @@ namespace Game.NomadWorkshop.Foundation
                 case FoundationResidentDecisionKind.RepairWaterTank:
                     BeginPrimaryWaterTankRepair(option);
                     return;
+                case FoundationResidentDecisionKind.Drive:
+                    BeginDrivingApproach(option);
+                    return;
+                case FoundationResidentDecisionKind.StopWater:
+                    BeginStopWater(option);
+                    return;
+                case FoundationResidentDecisionKind.StopWaste:
+                    BeginStopWaste(option);
+                    return;
+                case FoundationResidentDecisionKind.StopSpare:
+                    BeginStopSpare(option);
+                    return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(option.Kind), option.Kind, null);
             }
@@ -2400,7 +2514,7 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BeginToiletUse(in FoundationFacilityState toilet)
         {
-            int waste = _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
+            int waste = _resident.WaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste);
             if (waste <= 0)
             {
                 SetResidentPhase(
@@ -2409,19 +2523,19 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _residentActionSequence++;
-            if (!_residentWaterCycle.TryReserveToiletUse(
+            _resident.ActionSequence++;
+            if (!_resident.WaterCycle.TryReserveToiletUse(
                     _resourceFlow,
-                    _toiletHolding,
-                    $"toilet:{_residentActionSequence}",
+                    _toiletInventories[toilet.InstanceId],
+                    $"toilet:{_resident.StableId}:{_resident.ActionSequence}",
                     $"facility:{toilet.InstanceId}:toilet-use",
                     waste,
-                    out _activeResidentAction,
+                    out _resident.ActiveWaterAction,
                     out ResourceFlowBlocker blocker))
             {
                 if (blocker.Reason == ResourceFlowBlockReason.DestinationFull)
                 {
-                    _model.LastBlocker.Value =
+                    _resident.State.LastBlocker.Value =
                         $"{blocker.Reason} · {blocker.InventoryId} · 旱厕暂存桶需要清运";
                     SetResidentPhase(
                         FoundationResidentPhase.Idle,
@@ -2434,7 +2548,7 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _model.LastBlocker.Value = string.Empty;
+            _resident.State.LastBlocker.Value = string.Empty;
             TryBeginMove(
                 FoundationResidentPhase.MovingToToilet,
                 "统一 Utility 已选择如厕：前往可达旱厕",
@@ -2444,10 +2558,10 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BeginWaterRestock(FoundationResidentDecisionOption option)
         {
-            _residentActionSequence++;
+            _resident.ActionSequence++;
             var request = new HaulTaskRequest(
-                $"water-haul:{_residentActionSequence}",
-                ResidentOwnerId,
+                $"water-haul:{_resident.StableId}:{_resident.ActionSequence}",
+                _resident.OwnerId,
                 _vehicleWater,
                 _waterCan,
                 option.TargetInventory,
@@ -2465,7 +2579,7 @@ namespace Game.NomadWorkshop.Foundation
 
             if (!_resourceFlow.TryReserveHaul(
                     request,
-                    out _activeHaul,
+                    out _resident.ActiveHaul,
                     out ResourceFlowBlocker blocker))
             {
                 if (option.DrinkAfterDelivery)
@@ -2477,11 +2591,10 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _model.LastBlocker.Value = string.Empty;
-            _activeWaterSourceFacilityInstanceId = option.SourceFacility.InstanceId;
-            _activeWaterTargetFacilityInstanceId = option.TargetFacility.InstanceId;
-            _drinkAfterActiveHaul = option.DrinkAfterDelivery;
-            _waterCanPickupWasAtSource = option.WaterCanAtSource;
+            _resident.State.LastBlocker.Value = string.Empty;
+            _resident.ActiveWaterSourceFacilityInstanceId = option.SourceFacility.InstanceId;
+            _resident.ActiveWaterTargetFacilityInstanceId = option.TargetFacility.InstanceId;
+            _resident.DrinkAfterActiveHaul = option.DrinkAfterDelivery;
             if (_waterCanLocation == FoundationWaterCanLocation.Resident)
             {
                 TryBeginMove(
@@ -2512,25 +2625,24 @@ namespace Game.NomadWorkshop.Foundation
 
             return definition.Function switch
             {
-                NomadFacilityFunction.VehicleWaterTank => WaterPickupInteractionGroupId,
-                NomadFacilityFunction.DrinkingStation => DrinkAndDeliverInteractionGroupId,
+                NomadFacilityFunction.VehicleWaterTank or NomadFacilityFunction.DrinkingStation => WaterCanAccessInteractionGroupId,
                 _ => string.Empty,
             };
         }
 
         private void BeginLeisure(FoundationResidentDecisionOption option)
         {
-            _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
+            _resident.LeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
                 worldSeed: worldSeed,
-                residentId: ResidentOwnerId,
-                leisureSequence: _leisureSequence++);
+                residentId: _resident.OwnerId,
+                leisureSequence: _resident.LeisureSequence++);
             if (option.Kind == FoundationResidentDecisionKind.Wander)
             {
-                _activeLeisureKind = FoundationLeisureKind.Wander;
+                _resident.LeisureKind = FoundationLeisureKind.Wander;
                 if (!TryAssignTravelPath(option.WanderTarget))
                 {
-                    _activeLeisureOutcomeScale = 1f;
-                    _activeLeisureKind = FoundationLeisureKind.None;
+                    _resident.LeisureOutcomeScale = 1f;
+                    _resident.LeisureKind = FoundationLeisureKind.None;
                     SetResidentPhase(
                         FoundationResidentPhase.Idle,
                         "散步目标刚刚失效，稍后重新选择空地");
@@ -2542,7 +2654,7 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _activeLeisureKind = FoundationLeisureKind.Daydream;
+            _resident.LeisureKind = FoundationLeisureKind.Daydream;
             BeginTimedPhase(
                 FoundationResidentPhase.Relaxing,
                 leisureSeconds,
@@ -2551,12 +2663,12 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BeginGroundRest()
         {
-            _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
+            _resident.LeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
                 worldSeed: worldSeed,
-                residentId: ResidentOwnerId,
-                leisureSequence: _leisureSequence++);
-            _activeLeisureKind = FoundationLeisureKind.GroundRest;
-            _model.LastBlocker.Value = string.Empty;
+                residentId: _resident.OwnerId,
+                leisureSequence: _resident.LeisureSequence++);
+            _resident.LeisureKind = FoundationLeisureKind.GroundRest;
+            _resident.State.LastBlocker.Value = string.Empty;
             BeginTimedPhase(
                 FoundationResidentPhase.RestingOnGround,
                 groundRestSeconds,
@@ -2565,12 +2677,12 @@ namespace Game.NomadWorkshop.Foundation
 
         private void BeginHobby(FoundationResidentDecisionOption option)
         {
-            _activeLeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
+            _resident.LeisureOutcomeScale = ResidentWellbeing.SampleLeisureOutcomeScale(
                 worldSeed: worldSeed,
-                residentId: ResidentOwnerId,
-                leisureSequence: _leisureSequence++);
-            _activeLeisureKind = FoundationLeisureKind.Hobby;
-            _model.LastBlocker.Value = string.Empty;
+                residentId: _resident.OwnerId,
+                leisureSequence: _resident.LeisureSequence++);
+            _resident.LeisureKind = FoundationLeisureKind.Hobby;
+            _resident.State.LastBlocker.Value = string.Empty;
             if (TryBeginMove(
                     FoundationResidentPhase.MovingToHobby,
                     $"统一 Utility 选择爱好：前往 {option.TargetFacility.InstanceId} 的观景画架",
@@ -2579,9 +2691,9 @@ namespace Game.NomadWorkshop.Foundation
                 return;
 
             // TryBeginMove 会保留语义移动意图并进入等待重试；只有初始化前置条件异常时才需要清理。
-            if (_hasActiveMoveIntent) return;
-            _activeLeisureOutcomeScale = 1f;
-            _activeLeisureKind = FoundationLeisureKind.None;
+            if (_resident.HasMoveIntent) return;
+            _resident.LeisureOutcomeScale = 1f;
+            _resident.LeisureKind = FoundationLeisureKind.None;
         }
 
         private bool TrySelectWanderTarget(
@@ -2589,7 +2701,7 @@ namespace Game.NomadWorkshop.Foundation
             out DeckNavPathProbe selectedPath,
             out string label)
         {
-            Vector3 current = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 current = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             DeckBounds bounds = deckLayout.CreateBounds();
             float margin = (_residentClearanceMillimeters + 120) / 1000f;
             float minX = bounds.MinXMillimeters / 1000f + margin;
@@ -2603,7 +2715,7 @@ namespace Game.NomadWorkshop.Foundation
             {
                 float normalizedRadius = (attempt % 4 + 1f) / 4f;
                 float radius = Mathf.Lerp(minimumDistance, maximumDistance, normalizedRadius);
-                float angleDegrees = (_leisureSequence * 83 + attempt * 137.508f) % 360f;
+                float angleDegrees = (_resident.LeisureSequence * 83 + attempt * 137.508f) % 360f;
                 float angle = angleDegrees * Mathf.Deg2Rad;
                 var requested = new Vector3(
                     Mathf.Clamp(current.x + Mathf.Cos(angle) * radius, minX, maxX),
@@ -2656,23 +2768,8 @@ namespace Game.NomadWorkshop.Foundation
                     waterCanFacility = waterCanAtSource ? source : station;
             }
 
-            var requirement = new CargoTransportRequirement(
-                NomadResourceIds.Water,
-                haulMilliliters,
-                CargoContainerCapability.LiquidTight,
-                allowBareHands: false,
-                bareHandsMaxAmount: 0,
-                contaminationSensitivity: 0.8f);
-            var carrier = new CargoCarrierOption(
-                _waterCan.Id,
-                CargoCarrierKind.Container,
-                _waterCan.FreeCapacity,
-                waterCanCleanliness,
-                EstimateWorkDuration(pickupSeconds),
-                waterCanCapabilities,
-                isAvailable: true);
             CargoTransportOptionEvaluation carrierEvaluation =
-                CargoTransportPlanner.Evaluate(requirement, carrier);
+                EvaluateWaterCanCargo(haulMilliliters);
 
             ResidentActionPlanFeasibility feasibility = carrierEvaluation.IsFeasible
                 ? ResidentActionPlanFeasibility.Available
@@ -2684,7 +2781,6 @@ namespace Game.NomadWorkshop.Foundation
                     station,
                     drinkAfterDelivery,
                     waterCanFacility,
-                    waterCanAtSource,
                     steps))
             {
                 feasibility = ResidentActionPlanFeasibility.Blocked(
@@ -2697,7 +2793,7 @@ namespace Game.NomadWorkshop.Foundation
                  stationInventory.GetAmount(NomadResourceIds.Water)) /
                 (float)DrinkingStationRestockTargetMilliliters);
             var proposal = new ResidentActionPlanProposal(
-                $"water-restock:{_residentActionSequence + 1}",
+                $"water-restock:{_resident.StableId}:{_resident.ActionSequence + 1}",
                 drinkAfterDelivery ? "drink-water" : "restock-drinking-station",
                 drinkAfterDelivery ? "取防漏水罐、补水并饮用" : "取防漏水罐并例行补水")
             {
@@ -2705,14 +2801,14 @@ namespace Game.NomadWorkshop.Foundation
                 Feasibility = feasibility,
                 BaseUtility = 0.04f,
                 WorkUrgency = drinkAfterDelivery
-                    ? 0.32f + _residentWaterCycle.Thirst * 0.32f
+                    ? 0.32f + _resident.WaterCycle.Thirst * 0.32f
                     : 0.18f + stockDeficit * 0.18f,
                 DependencyValue = drinkAfterDelivery ? 0.18f : 0.04f,
-                RiskTier = drinkAfterDelivery && _residentWaterCycle.Thirst >= 0.82f
+                RiskTier = drinkAfterDelivery && _resident.WaterCycle.Thirst >= 0.82f
                     ? ResidentDecisionRiskTier.Urgent
                     : ResidentDecisionRiskTier.Routine,
-                RiskPriority = drinkAfterDelivery ? _residentWaterCycle.Thirst : 0f,
-                DelayUrgency = drinkAfterDelivery ? _residentWaterCycle.Thirst : stockDeficit * 0.25f,
+                RiskPriority = drinkAfterDelivery ? _resident.WaterCycle.Thirst : 0f,
+                DelayUrgency = drinkAfterDelivery ? _resident.WaterCycle.Thirst : stockDeficit * 0.25f,
                 Effort = 0.24f,
                 WorkIntensity = 0.3f,
                 FailureProbability = carrierEvaluation.ContaminationTransferRisk,
@@ -2739,14 +2835,13 @@ namespace Game.NomadWorkshop.Foundation
             in FoundationFacilityState station,
             bool drinkAfterDelivery,
             in FoundationFacilityState waterCanFacility,
-            bool waterCanAtSource,
             ICollection<ResidentActionStepEstimate> steps)
         {
             if (!_definitions.TryGetValue(source.DefinitionId, out NomadFacilityDefinition sourceDefinition) ||
                 !_definitions.TryGetValue(station.DefinitionId, out NomadFacilityDefinition stationDefinition))
                 return false;
 
-            Vector3 cursor = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 cursor = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             Vector3 sourceGoal;
             if (_waterCanLocation != FoundationWaterCanLocation.Resident)
             {
@@ -2769,30 +2864,15 @@ namespace Game.NomadWorkshop.Foundation
                 AddTravelStep(steps, acquireTravelMeters, "前往防漏水罐");
                 steps.Add(new ResidentActionStepEstimate(
                     ResidentActionStepKind.AcquireItem,
-                    EstimateWorkDuration(pickupSeconds),
-                    label: "取得唯一防漏水罐"));
+                    EstimateWorkDuration(pickupSeconds + WaterCanLiftSeconds),
+                    label: "接触并抬起唯一防漏水罐"));
                 cursor = waterCanGoal;
             }
 
-            if (waterCanAtSource && _waterCanLocation != FoundationWaterCanLocation.Resident)
-            {
-                sourceGoal = cursor;
-            }
-            else
-            {
-                if (!TrySelectBestInteractionSlot(
-                        cursor,
-                        source,
-                        sourceDefinition,
-                        out sourceGoal,
-                        out _,
-                        out _,
-                        out float sourceTravelMeters,
-                        out _,
-                        WaterPickupInteractionGroupId))
-                    return false;
-                AddTravelStep(steps, sourceTravelMeters, "携带空水罐前往车辆水箱");
-            }
+            if (!TrySelectBestInteractionSlot(cursor, source, sourceDefinition, out sourceGoal,
+                    out _, out _, out float sourceTravelMeters, out _, WaterPickupInteractionGroupId))
+                return false;
+            AddTravelStep(steps, sourceTravelMeters, "携带空水罐从停放区前往装水位");
 
             steps.Add(new ResidentActionStepEstimate(
                 ResidentActionStepKind.Transfer,
@@ -2803,7 +2883,7 @@ namespace Game.NomadWorkshop.Foundation
                     sourceGoal,
                     station,
                     stationDefinition,
-                    out _,
+                    out Vector3 stationGoal,
                     out _,
                     out _,
                     out float stationTravelMeters,
@@ -2815,8 +2895,18 @@ namespace Game.NomadWorkshop.Foundation
                 ResidentActionStepKind.Transfer,
                 EstimateWorkDuration(deliverySeconds),
                 label: "把水罐中的水倒入饮水站"));
+            if (!TrySelectBestInteractionSlot(stationGoal, station, stationDefinition,
+                    out Vector3 parkingGoal, out _, out _, out float parkingTravelMeters, out _,
+                    WaterCanAccessInteractionGroupId))
+                return false;
+            AddTravelStep(steps, parkingTravelMeters, "携带空罐走到侧面停放区");
+            steps.Add(new ResidentActionStepEstimate(ResidentActionStepKind.Transfer,
+                EstimateWorkDuration(deliverySeconds + WaterCanReleaseSeconds), label: "落罐、松手并起身"));
             if (drinkAfterDelivery)
             {
+                if (!TryMeasureFacilityPath(parkingGoal, station, stationDefinition,
+                        out float toDrink, DrinkAndDeliverInteractionGroupId)) return false;
+                AddTravelStep(steps, toDrink, "从侧面停放位返回饮水位");
                 steps.Add(new ResidentActionStepEstimate(
                     ResidentActionStepKind.Consume,
                     drinkingSeconds,
@@ -2849,7 +2939,7 @@ namespace Game.NomadWorkshop.Foundation
                 break;
             }
             ActionPlanUtilityBreakdown utility = plan.Utility;
-            _model.LatestActionPlan.Value = new FoundationActionPlanProjection(
+            _resident.State.LatestActionPlan.Value = new FoundationActionPlanProjection(
                 plan.Candidate.Id,
                 plan.Candidate.DisplayName,
                 plan.Feasibility.IsFeasible,
@@ -2897,17 +2987,20 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             SetWaterCanLocation(FoundationWaterCanLocation.Resident);
-            if (_waterCanPickupWasAtSource)
+            BeginTimedPhase(FoundationResidentPhase.LiftingWaterCan, WaterCanLiftSeconds,
+                "接管同一只水罐，从实际停放点抬起");
+        }
+
+        private void CompleteWaterCanLift()
+        {
+            _resident.WaterCanContactPlacement = default;
+            if (IsStopWaterVisit)
             {
-                BeginTimedPhase(
-                    FoundationResidentPhase.PickingUpWater,
-                    pickupSeconds,
-                    "已取得防漏水罐，正在从车辆水箱装水");
+                BeginStopWaterOutbound();
                 return;
             }
-
             if (!TryFindFacilityByInstanceId(
-                    _activeWaterSourceFacilityInstanceId,
+                    _resident.ActiveWaterSourceFacilityInstanceId,
                     NomadFacilityFunction.VehicleWaterTank,
                     out FoundationFacilityState source))
             {
@@ -2924,8 +3017,8 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteWaterPickup()
         {
-            if (_activeHaul == null ||
-                _activeHaul.State != HaulTaskState.Reserved)
+            if (_resident.ActiveHaul == null ||
+                _resident.ActiveHaul.State != HaulTaskState.Reserved)
             {
                 ReleaseActiveTasks();
                 ClearActivePath();
@@ -2933,18 +3026,18 @@ namespace Game.NomadWorkshop.Foundation
                 SetResidentPhase(
                     FoundationResidentPhase.Idle,
                     "取水任务已经失效，正在重新评估");
-                _residentDecisionRetryRemaining = 0f;
+                _resident.DecisionRetryRemaining = 0f;
                 return;
             }
-            if (!IsWaterSourceOperational(_activeWaterSourceFacilityInstanceId))
+            if (!IsWaterSourceOperational(_resident.ActiveWaterSourceFacilityInstanceId))
             {
-                CancelPendingWaterHaulForFault(_activeWaterSourceFacilityInstanceId);
+                CancelPendingWaterHaulForFault(_resident.ActiveWaterSourceFacilityInstanceId);
                 return;
             }
 
-            _activeHaul.PickUp();
+            _resident.ActiveHaul.PickUp();
             if (!TryFindFacilityByInstanceId(
-                    _activeWaterTargetFacilityInstanceId,
+                    _resident.ActiveWaterTargetFacilityInstanceId,
                     NomadFacilityFunction.DrinkingStation,
                     out FoundationFacilityState station))
             {
@@ -2961,38 +3054,16 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteWaterDelivery()
         {
-            bool shouldDrink = (_drinkAfterActiveHaul ||
-                                _residentWaterCycle.Thirst >= DrinkNeedThreshold) &&
-                               _residentWaterCycle.BodyWater.FreeCapacity >=
+            bool shouldDrink = (_resident.DrinkAfterActiveHaul ||
+                                _resident.WaterCycle.Thirst >= DrinkNeedThreshold) &&
+                               _resident.WaterCycle.BodyWater.FreeCapacity >=
                                ResidentWaterCycle.DefaultDrinkServingMilliliters;
-            string deliveredStationInstanceId = _activeWaterTargetFacilityInstanceId;
-            _activeHaul.Deliver();
-            _activeHaul = null;
-            _drinkAfterActiveHaul = false;
-            _activeWaterSourceFacilityInstanceId = string.Empty;
-            SetWaterCanLocation(
-                FoundationWaterCanLocation.DrinkingStation,
-                deliveredStationInstanceId);
-
-            if (!shouldDrink)
-            {
-                _activeWaterTargetFacilityInstanceId = string.Empty;
-                ReleaseActiveInteractionSpace(publishProjection: true);
-                SetResidentPhase(
-                    FoundationResidentPhase.Idle,
-                    "完成低优先级饮水站补货，没有额外饮水");
-                return;
-            }
-
-            if (!TryFindFacilityByInstanceId(
-                    deliveredStationInstanceId,
-                    NomadFacilityFunction.DrinkingStation,
-                    out FoundationFacilityState station))
-            {
-                Block("饮水站在任务途中消失", ResourceFlowBlocker.None);
-                return;
-            }
-            BeginDrink(station);
+            string deliveredStationInstanceId = _resident.ActiveWaterTargetFacilityInstanceId;
+            _resident.ActiveHaul.Deliver();
+            _resident.ActiveHaul = null;
+            _resident.DrinkAfterActiveHaul = shouldDrink;
+            _resident.ActiveWaterSourceFacilityInstanceId = string.Empty;
+            BeginWaterCanParking(deliveredStationInstanceId, FoundationWaterCanLocation.DrinkingStation);
         }
 
         private void BeginDrink(FoundationFacilityState station)
@@ -3007,20 +3078,20 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            if (!_residentWaterCycle.TryReserveDrink(
+            if (!_resident.WaterCycle.TryReserveDrink(
                     _resourceFlow,
                     stationInventory,
-                    $"drink:{_residentActionSequence}",
+                    $"drink:{_resident.StableId}:{_resident.ActionSequence}",
                     $"facility:{station.InstanceId}:drink",
                     ResidentWaterCycle.DefaultDrinkServingMilliliters,
-                    out _activeResidentAction,
+                    out _resident.ActiveWaterAction,
                     out ResourceFlowBlocker blocker))
             {
                 if (blocker.Reason == ResourceFlowBlockReason.DestinationFull)
                 {
-                    _model.LastBlocker.Value =
+                    _resident.State.LastBlocker.Value =
                         $"{blocker.Reason} · {blocker.InventoryId} · 等待代谢或如厕后再饮水";
-                    _activeWaterTargetFacilityInstanceId = string.Empty;
+                    _resident.ActiveWaterTargetFacilityInstanceId = string.Empty;
                     ReleaseActiveInteractionSpace(publishProjection: true);
                     SetResidentPhase(
                         FoundationResidentPhase.Idle,
@@ -3033,7 +3104,7 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _activeWaterTargetFacilityInstanceId = station.InstanceId;
+            _resident.ActiveWaterTargetFacilityInstanceId = station.InstanceId;
             if (!TryBeginMove(
                     FoundationResidentPhase.MovingToDrinkingStation,
                     "沿连续 NavMesh 路径前往饮水站",
@@ -3051,21 +3122,21 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteDrink()
         {
-            _activeResidentAction.Commit();
-            _activeResidentAction = null;
+            _resident.ActiveWaterAction.Commit();
+            _resident.ActiveWaterAction = null;
             ReleaseActiveInteractionSpace(publishProjection: true);
-            _model.CompletedDrinkCount.Value++;
-            _activeWaterTargetFacilityInstanceId = string.Empty;
+            _resident.State.CompletedDrinkCount.Value++;
+            _resident.ActiveWaterTargetFacilityInstanceId = string.Empty;
             SetResidentPhase(FoundationResidentPhase.Idle, "完成一次饮水，水已进入居民身体");
         }
 
         private void CompleteToiletUse()
         {
-            _activeResidentAction.Commit();
-            _activeResidentAction = null;
+            _resident.ActiveWaterAction.Commit();
+            _resident.ActiveWaterAction = null;
             ReleaseActiveInteractionSpace(publishProjection: true);
-            _model.CompletedToiletUseCount.Value++;
-            _model.LastBlocker.Value = string.Empty;
+            _resident.State.CompletedToiletUseCount.Value++;
+            _resident.State.LastBlocker.Value = string.Empty;
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "完成一次如厕，排泄物已进入旱厕暂存桶");
@@ -3073,13 +3144,13 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteLeisure()
         {
-            _activeLeisureOutcomeScale = 1f;
-            _model.CompletedLeisureCount.Value++;
-            if (_activeLeisureKind == FoundationLeisureKind.Daydream)
-                _model.CompletedDaydreamCount.Value++;
-            else if (_activeLeisureKind == FoundationLeisureKind.Wander)
-                _model.CompletedWanderCount.Value++;
-            _activeLeisureKind = FoundationLeisureKind.None;
+            _resident.LeisureOutcomeScale = 1f;
+            _resident.State.CompletedLeisureCount.Value++;
+            if (_resident.LeisureKind == FoundationLeisureKind.Daydream)
+                _resident.State.CompletedDaydreamCount.Value++;
+            else if (_resident.LeisureKind == FoundationLeisureKind.Wander)
+                _resident.State.CompletedWanderCount.Value++;
+            _resident.LeisureKind = FoundationLeisureKind.None;
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "完成一次自主休整：疲劳与压力得到缓解，娱乐满足度未被虚构补充");
@@ -3087,9 +3158,9 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteGroundRest()
         {
-            _activeLeisureOutcomeScale = 1f;
-            _activeLeisureKind = FoundationLeisureKind.None;
-            _model.CompletedGroundRestCount.Value++;
+            _resident.LeisureOutcomeScale = 1f;
+            _resident.LeisureKind = FoundationLeisureKind.None;
+            _resident.State.CompletedGroundRestCount.Value++;
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "完成一次地面休息：健康和疲劳得到有限恢复，但舒适度不足略微影响心情");
@@ -3098,10 +3169,10 @@ namespace Game.NomadWorkshop.Foundation
         private void CompleteHobby()
         {
             ReleaseActiveInteractionSpace(publishProjection: true);
-            _activeLeisureOutcomeScale = 1f;
-            _activeLeisureKind = FoundationLeisureKind.None;
-            _model.CompletedLeisureCount.Value++;
-            _model.CompletedHobbyCount.Value++;
+            _resident.LeisureOutcomeScale = 1f;
+            _resident.LeisureKind = FoundationLeisureKind.None;
+            _resident.State.CompletedLeisureCount.Value++;
+            _resident.State.CompletedHobbyCount.Value++;
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "完成一次作画与观景：娱乐满足、心情和压力已按连续身心模型结算");
@@ -3113,16 +3184,16 @@ namespace Game.NomadWorkshop.Foundation
         /// </summary>
         private ResidentWellbeingActivity ResolveWellbeingActivity()
         {
-            if (_residentPhase == FoundationResidentPhase.EnjoyingHobby)
+            if (_resident.Phase == FoundationResidentPhase.EnjoyingHobby)
                 return ResidentWellbeingActivity.Hobby;
 
-            if (_residentPhase == FoundationResidentPhase.RestingOnGround)
+            if (_resident.Phase == FoundationResidentPhase.RestingOnGround)
                 return ResidentWellbeingActivity.GroundRest;
 
-            if (_residentPhase == FoundationResidentPhase.MovingToLeisure ||
-                _residentPhase == FoundationResidentPhase.Relaxing)
+            if (_resident.Phase == FoundationResidentPhase.MovingToLeisure ||
+                _resident.Phase == FoundationResidentPhase.Relaxing)
             {
-                return _activeLeisureKind switch
+                return _resident.LeisureKind switch
                 {
                     FoundationLeisureKind.Wander => ResidentWellbeingActivity.Wander,
                     FoundationLeisureKind.Daydream => ResidentWellbeingActivity.Daydream,
@@ -3130,9 +3201,10 @@ namespace Game.NomadWorkshop.Foundation
                 };
             }
 
-            return _residentPhase switch
+            return _resident.Phase switch
             {
                 FoundationResidentPhase.MovingToWaterCan or
+                    FoundationResidentPhase.MovingToWaterCanParking or
                     FoundationResidentPhase.MovingToWaterSource or
                     FoundationResidentPhase.MovingToDrinkingStation or
                     FoundationResidentPhase.MovingToToilet or
@@ -3140,16 +3212,34 @@ namespace Game.NomadWorkshop.Foundation
                     FoundationResidentPhase.MovingToWorldItemSource or
                     FoundationResidentPhase.MovingToWorldItemDestination or
                     FoundationResidentPhase.MovingToRepairPart or
+                    FoundationResidentPhase.MovingToDriver or
+                    FoundationResidentPhase.MovingToStopWater or
+                    FoundationResidentPhase.MovingToStopSpare or
+                    FoundationResidentPhase.ReturningStopSpare or
+                    FoundationResidentPhase.MovingToWasteBucket or
+                    FoundationResidentPhase.MovingToWasteReceiver or
+                    FoundationResidentPhase.ReturningWasteBucket or
+                    FoundationResidentPhase.ReturningFromStopWater or
                     FoundationResidentPhase.MovingToRepairTarget =>
                     ResidentWellbeingActivity.Travel,
                 FoundationResidentPhase.PickingUpWaterCan or
+                    FoundationResidentPhase.LiftingWaterCan or FoundationResidentPhase.PlacingWaterCan or
+                    FoundationResidentPhase.ReleasingWaterCan or
                     FoundationResidentPhase.PickingUpWater or
                     FoundationResidentPhase.DeliveringWater or
                     FoundationResidentPhase.PickingUpWorldItem or
                     FoundationResidentPhase.PlacingWorldItem or
                     FoundationResidentPhase.PickingUpRepairPart or
+                    FoundationResidentPhase.FillingAtStop or
+                    FoundationResidentPhase.DetachingWasteBucket or
+                    FoundationResidentPhase.EmptyingWasteBucket or
+                    FoundationResidentPhase.InstallingWasteBucket or
+                    FoundationResidentPhase.DeliveringStopWater or
+                    FoundationResidentPhase.PickingUpStopSpare or
+                    FoundationResidentPhase.DeliveringStopSpare or
                     FoundationResidentPhase.RepairingFacility =>
                     ResidentWellbeingActivity.Work,
+                FoundationResidentPhase.Driving => ResidentWellbeingActivity.Work,
                 FoundationResidentPhase.Drinking or
                     FoundationResidentPhase.UsingToilet =>
                     ResidentWellbeingActivity.PersonalCare,
@@ -3172,14 +3262,14 @@ namespace Game.NomadWorkshop.Foundation
                 return false;
             }
 
-            _activeMoveIntent = new FoundationResidentMoveIntent(
+            _resident.MoveIntent = new FoundationResidentMoveIntent(
                 phase,
                 task,
                 definition.Function,
                 facility.InstanceId,
                 allowAlternativeFacility,
                 interactionGroupId);
-            _hasActiveMoveIntent = true;
+            _resident.HasMoveIntent = true;
             return TryResumeActiveMove();
         }
 
@@ -3189,13 +3279,13 @@ namespace Game.NomadWorkshop.Foundation
         /// </summary>
         private bool TryResumeActiveMove()
         {
-            if (!_hasActiveMoveIntent) return false;
+            if (!_resident.HasMoveIntent) return false;
 
             ReleaseActiveInteractionSpace(publishProjection: false);
             ClearActivePath();
             ResourceFlowBlocker retargetBlocker = ResourceFlowBlocker.None;
             bool hasCandidate = TrySelectFacilityInteractionForIntent(
-                    _activeMoveIntent,
+                    _resident.MoveIntent,
                     out FoundationFacilityState selectedFacility,
                     out DeckPose dockingPose,
                     out string slotLabel,
@@ -3203,47 +3293,61 @@ namespace Game.NomadWorkshop.Foundation
             bool resourceTargetReady = hasCandidate &&
                                        TryRetargetActiveWaterHaul(
                                            selectedFacility,
-                                           out retargetBlocker);
+                                           out retargetBlocker) &&
+                                       TryRetargetActiveToiletUse(selectedFacility, out retargetBlocker);
             if (!resourceTargetReady ||
                 !TryAcquireInteractionSpace(selectedSlot) ||
                 !TryAssignDockingPath(dockingPose))
             {
                 ReleaseActiveInteractionSpace(publishProjection: false);
                 ClearActivePath();
-                if (_activeMoveIntent.TravelPhase == FoundationResidentPhase.MovingToHobby)
+                if (_resident.MoveIntent.TravelPhase == FoundationResidentPhase.MovingToToilet ||
+                    (_resident.MoveIntent.TravelPhase == FoundationResidentPhase.MovingToDrinkingStation &&
+                     _resident.ActiveHaul?.State != HaulTaskState.Carrying))
+                {
+                    // 尚未消费的身体/站点预约不应在丢失工作位后长期占着资源；重新竞标仍不会转移水量。
+                    // 已取出的水不同：取消 Haul 只释放预留，货物仍留在罐里。必须保留交付意图等待/改道，
+                    // 否则下一次任务只搬新水，残留水永远无法送达，还会阻断要求空罐的驿站取水。
+                    ReleaseActiveTasks();
+                    SetResidentPhase(FoundationResidentPhase.Idle, "饮水或如厕的通路/容量已改变，取消未提交行动并重评");
+                    _resident.DecisionRetryRemaining = 0f;
+                    PublishCurrentFacilityAccessProjection();
+                    return false;
+                }
+                if (_resident.MoveIntent.TravelPhase == FoundationResidentPhase.MovingToHobby)
                 {
                     // 爱好没有物资或中间结果需要保护；目标失效时回到统一决策，比长期占住
                     // WaitingForRoute 更安全，否则后续口渴 / 如厕等新需求无法得到评估。
                     ClearActiveMoveIntent();
-                    _activeLeisureOutcomeScale = 1f;
-                    _activeLeisureKind = FoundationLeisureKind.None;
-                    _model.LastBlocker.Value = string.Empty;
+                    _resident.LeisureOutcomeScale = 1f;
+                    _resident.LeisureKind = FoundationLeisureKind.None;
+                    _resident.State.LastBlocker.Value = string.Empty;
                     PublishCurrentFacilityAccessProjection();
                     SetResidentPhase(
                         FoundationResidentPhase.Idle,
                         "观景画架当前不可达，已放弃软性爱好并准备重新决策");
                     return false;
                 }
-                _routeRetryRemaining = Mathf.Max(0.1f, routeRetrySeconds);
+                _resident.RouteRetryRemaining = Mathf.Max(0.1f, routeRetrySeconds);
                 SetResidentPhase(
                     FoundationResidentPhase.WaitingForRoute,
-                    $"路线暂不可达：{_activeMoveIntent.Task}；将自动换 Slot、换同功能设施或重试");
-                _model.LastBlocker.Value = retargetBlocker.IsBlocked
+                    $"路线暂不可达：{_resident.MoveIntent.Task}；将自动换 Slot、换同功能设施或重试");
+                _resident.State.LastBlocker.Value = retargetBlocker.IsBlocked
                     ? $"{retargetBlocker.Reason} · 搬运资源目标无法改道 · " +
                       selectedFacility.InstanceId
-                    : $"RouteUnavailable · {_activeMoveIntent.FacilityFunction} · " +
-                      _activeMoveIntent.PreferredFacilityInstanceId;
+                    : $"RouteUnavailable · {_resident.MoveIntent.FacilityFunction} · " +
+                      _resident.MoveIntent.PreferredFacilityInstanceId;
                 PublishCurrentFacilityAccessProjection();
                 return false;
             }
 
-            _activeMoveIntent = _activeMoveIntent.Retarget(selectedFacility.InstanceId);
-            _routeRetryRemaining = 0f;
-            _model.LastBlocker.Value = string.Empty;
+            _resident.MoveIntent = _resident.MoveIntent.Retarget(selectedFacility.InstanceId);
+            _resident.RouteRetryRemaining = 0f;
+            _resident.State.LastBlocker.Value = string.Empty;
             PublishCurrentFacilityAccessProjection();
             SetResidentPhase(
-                _activeMoveIntent.TravelPhase,
-                $"{_activeMoveIntent.Task} · {selectedFacility.InstanceId}/{slotLabel}");
+                _resident.MoveIntent.TravelPhase,
+                $"{_resident.MoveIntent.Task} · {selectedFacility.InstanceId}/{slotLabel}");
             return true;
         }
 
@@ -3252,13 +3356,13 @@ namespace Game.NomadWorkshop.Foundation
             out ResourceFlowBlocker blocker)
         {
             blocker = ResourceFlowBlocker.None;
-            if (_activeHaul == null ||
-                _activeHaul.State != HaulTaskState.Carrying ||
-                _activeMoveIntent.TravelPhase !=
+            if (_resident.ActiveHaul == null ||
+                _resident.ActiveHaul.State != HaulTaskState.Carrying ||
+                _resident.MoveIntent.TravelPhase !=
                 FoundationResidentPhase.MovingToDrinkingStation ||
                 string.Equals(
                     selectedFacility.InstanceId,
-                    _activeWaterTargetFacilityInstanceId,
+                    _resident.ActiveWaterTargetFacilityInstanceId,
                     StringComparison.Ordinal))
                 return true;
 
@@ -3273,18 +3377,18 @@ namespace Game.NomadWorkshop.Foundation
                 return false;
             }
 
-            if (!_activeHaul.TryRetargetDestination(
+            if (!_resident.ActiveHaul.TryRetargetDestination(
                     destination,
                     new[]
                     {
-                        $"facility:{_activeWaterSourceFacilityInstanceId}:water-pickup",
+                        $"facility:{_resident.ActiveWaterSourceFacilityInstanceId}:water-pickup",
                         $"facility:{selectedFacility.InstanceId}:water-delivery",
                         $"carrier:{_waterCan.Id}",
                     },
                     out blocker))
                 return false;
 
-            _activeWaterTargetFacilityInstanceId = selectedFacility.InstanceId;
+            _resident.ActiveWaterTargetFacilityInstanceId = selectedFacility.InstanceId;
             return true;
         }
 
@@ -3301,7 +3405,7 @@ namespace Game.NomadWorkshop.Foundation
                     out FoundationFacilityState preferred) &&
                 IsFacilityCompatibleWithActiveMove(intent, preferred) &&
                 TrySelectBestInteractionSlot(
-                    ToNavigationPoint(_model.ResidentLocalPosition.Value),
+                    ToNavigationPoint(_resident.State.ResidentLocalPosition.Value),
                     preferred,
                     _definitions[preferred.DefinitionId],
                     out _,
@@ -3336,7 +3440,7 @@ namespace Game.NomadWorkshop.Foundation
                     definition.Function != intent.FacilityFunction ||
                     !IsFacilityCompatibleWithActiveMove(intent, candidate) ||
                     !TrySelectBestInteractionSlot(
-                        ToNavigationPoint(_model.ResidentLocalPosition.Value),
+                        ToNavigationPoint(_resident.State.ResidentLocalPosition.Value),
                         candidate,
                         definition,
                         out _,
@@ -3361,23 +3465,25 @@ namespace Game.NomadWorkshop.Foundation
             in FoundationResidentMoveIntent intent,
             in FoundationFacilityState candidate)
         {
+            if (intent.TravelPhase == FoundationResidentPhase.MovingToToilet)
+                return IsToiletCompatibleWithActiveMove(candidate);
             if (intent.TravelPhase == FoundationResidentPhase.MovingToWaterSource &&
                 !IsWaterSourceOperational(candidate.InstanceId))
                 return false;
 
-            if (_activeHaul == null ||
-                _activeHaul.State != HaulTaskState.Carrying ||
+            if (_resident.ActiveHaul == null ||
+                _resident.ActiveHaul.State != HaulTaskState.Carrying ||
                 intent.TravelPhase != FoundationResidentPhase.MovingToDrinkingStation ||
                 string.Equals(
                     candidate.InstanceId,
-                    _activeWaterTargetFacilityInstanceId,
+                    _resident.ActiveWaterTargetFacilityInstanceId,
                     StringComparison.Ordinal))
                 return true;
 
             return _drinkingStationInventories.TryGetValue(
                        candidate.InstanceId,
                        out ResourceInventory inventory) &&
-                   _resourceFlow.GetAvailableCapacity(inventory) >= _activeHaul.Request.Amount;
+                   _resourceFlow.GetAvailableCapacity(inventory) >= _resident.ActiveHaul.Request.Amount;
         }
 
         private bool TrySelectBestInteractionSlot(
@@ -3388,7 +3494,7 @@ namespace Game.NomadWorkshop.Foundation
             out InteractionSpaceSlot selectedSlot,
             string interactionGroupId = "")
             => TrySelectBestInteractionSlot(
-                ToNavigationPoint(_model.ResidentLocalPosition.Value),
+                ToNavigationPoint(_resident.State.ResidentLocalPosition.Value),
                 facility,
                 definition,
                 out selectedPosition,
@@ -3455,12 +3561,15 @@ namespace Game.NomadWorkshop.Foundation
 
         private bool TryAcquireInteractionSpace(in InteractionSpaceSlot slot)
         {
-            return _interactionSpaces.TryAcquire(ResidentOwnerId, slot);
+            if (_resident.InteractionSpace != null) return false;
+            return _interactionSpaces.TryAcquire(
+                _resident.OwnerId, slot, out _resident.InteractionSpace);
         }
 
         private void ReleaseActiveInteractionSpace(bool publishProjection)
         {
-            bool changed = _interactionSpaces != null && _interactionSpaces.Release();
+            bool changed = _resident.ReleaseInteractionSpace();
+            if (changed) PublishResidentFacilityWork();
             if (changed && publishProjection)
                 PublishCurrentFacilityAccessProjection();
         }
@@ -3483,7 +3592,7 @@ namespace Game.NomadWorkshop.Foundation
 
         private bool TryAssignDockingPath(in DeckPose dockingPose)
         {
-            Vector3 start = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 start = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             if (!TryCalculateDockingPath(start, dockingPose, out DeckNavPathProbe path))
                 return false;
 
@@ -3497,7 +3606,7 @@ namespace Game.NomadWorkshop.Foundation
 
         private bool TryAssignTravelPath(Vector3 requestedGoal)
         {
-            Vector3 start = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 start = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             requestedGoal = ToNavigationPoint(requestedGoal);
             if (!TryCalculateTravelPath(start, requestedGoal, out DeckNavPathProbe path))
                 return false;
@@ -3517,33 +3626,33 @@ namespace Game.NomadWorkshop.Foundation
             var cornerCount = path.Corners.Count;
             bool appendExactGoal = cornerCount == 0 ||
                 HorizontalDistance(path.Corners[cornerCount - 1], exactGoal) > 0.001f;
-            _activePathCorners = new Vector3[cornerCount + (appendExactGoal ? 1 : 0)];
+            _resident.PathCorners = new Vector3[cornerCount + (appendExactGoal ? 1 : 0)];
 
             for (var i = 0; i < cornerCount; i++)
             {
-                _activePathCorners[i] = ToNavigationPoint(path.Corners[i]);
+                _resident.PathCorners[i] = ToNavigationPoint(path.Corners[i]);
             }
             exactGoal = ToNavigationPoint(exactGoal);
-            if (appendExactGoal) _activePathCorners[cornerCount] = exactGoal;
-            _hasActiveDockingYaw = hasDockingYaw;
-            _activeDockingYawDegrees = Mathf.Repeat(dockingYawDegrees, 360f);
-            Vector3 current = _model.ResidentLocalPosition.Value;
-            _nextPathCornerIndex = _activePathCorners.Length > 0 &&
-                                   HorizontalDistance(current, _activePathCorners[0]) <= 0.01f
+            if (appendExactGoal) _resident.PathCorners[cornerCount] = exactGoal;
+            _resident.HasDockingYaw = hasDockingYaw;
+            _resident.DockingYawDegrees = Mathf.Repeat(dockingYawDegrees, 360f);
+            Vector3 current = _resident.State.ResidentLocalPosition.Value;
+            _resident.NextPathCornerIndex = _resident.PathCorners.Length > 0 &&
+                                   HorizontalDistance(current, _resident.PathCorners[0]) <= 0.01f
                 ? 1
                 : 0;
-            _model.ActivePathSummary.Value = DescribePath(_activePathCorners);
+            _resident.State.ActivePathSummary.Value = DescribePath(_resident.PathCorners);
             WriteRemainingPathProjection();
-            return _activePathCorners.Length > 0;
+            return _resident.PathCorners.Length > 0 && AssignNativePath(path.SampledEnd);
         }
 
         private bool AdvanceResidentAlongPath(float deltaTime)
         {
-            if (_activePathCorners.Length == 0)
+            if (_resident.PathCorners.Length == 0)
             {
-                if (_hasActiveMoveIntent)
+                if (_resident.HasMoveIntent)
                 {
-                    _routeRetryRemaining = Mathf.Max(0.1f, routeRetrySeconds);
+                    _resident.RouteRetryRemaining = Mathf.Max(0.1f, routeRetrySeconds);
                     SetResidentPhase(
                         FoundationResidentPhase.WaitingForRoute,
                         "当前路线失效，正在等待自动重新解析移动意图");
@@ -3555,21 +3664,22 @@ namespace Game.NomadWorkshop.Foundation
                 return false;
             }
 
-            Vector3 current = _model.ResidentLocalPosition.Value;
+            if (UsesNativeLocomotion) return AdvanceNativeResidentPath(deltaTime);
+            Vector3 current = _resident.State.ResidentLocalPosition.Value;
             float remainingDistance = residentMoveSpeed * Mathf.Max(0f, deltaTime);
-            while (_nextPathCornerIndex < _activePathCorners.Length)
+            while (_resident.NextPathCornerIndex < _resident.PathCorners.Length)
             {
-                Vector3 target = _activePathCorners[_nextPathCornerIndex];
+                Vector3 target = _resident.PathCorners[_resident.NextPathCornerIndex];
                 Vector3 facing = target - current;
                 if (facing.sqrMagnitude > 0.000001f)
-                    _model.ResidentLocalYawDegrees.Value = Mathf.Repeat(
+                    _resident.State.ResidentLocalYawDegrees.Value = Mathf.Repeat(
                         Mathf.Atan2(facing.x, facing.z) * Mathf.Rad2Deg,
                         360f);
                 float distance = Vector3.Distance(current, target);
                 if (distance <= 0.0001f)
                 {
                     current = target;
-                    _nextPathCornerIndex++;
+                    _resident.NextPathCornerIndex++;
                     continue;
                 }
 
@@ -3578,7 +3688,7 @@ namespace Game.NomadWorkshop.Foundation
                 {
                     current = target;
                     remainingDistance -= distance;
-                    _nextPathCornerIndex++;
+                    _resident.NextPathCornerIndex++;
                     continue;
                 }
 
@@ -3586,43 +3696,43 @@ namespace Game.NomadWorkshop.Foundation
                 remainingDistance = 0f;
             }
 
-            if (current != _model.ResidentLocalPosition.Value)
-                _model.ResidentLocalPosition.Value = current;
+            if (current != _resident.State.ResidentLocalPosition.Value)
+                _resident.State.ResidentLocalPosition.Value = current;
             WriteRemainingPathProjection();
 
-            if (_nextPathCornerIndex < _activePathCorners.Length) return false;
-            if (_hasActiveDockingYaw)
-                _model.ResidentLocalYawDegrees.Value = _activeDockingYawDegrees;
+            if (_resident.NextPathCornerIndex < _resident.PathCorners.Length) return false;
+            if (_resident.HasDockingYaw)
+                _resident.State.ResidentLocalYawDegrees.Value = _resident.DockingYawDegrees;
             ClearActivePath();
             return true;
         }
 
         private void ReplanActiveMoveAfterPlacement()
         {
-            if (_residentPhase == FoundationResidentPhase.MovingToLeisure)
+            if (_resident.Phase == FoundationResidentPhase.MovingToLeisure)
             {
                 ClearActivePath();
-                _activeLeisureOutcomeScale = 1f;
-                _activeLeisureKind = FoundationLeisureKind.None;
+                _resident.LeisureOutcomeScale = 1f;
+                _resident.LeisureKind = FoundationLeisureKind.None;
                 SetResidentPhase(
                     FoundationResidentPhase.Idle,
                     "建造改变了散步路线，已放弃旧空地点并准备重新选择");
                 return;
             }
 
-            if (!_hasActiveMoveIntent || TryResumeActiveMove()) return;
+            if (!_resident.HasMoveIntent || TryResumeActiveMove()) return;
 
-            bool canSafelyReplan = _activeResidentAction != null ||
-                                   (_activeHaul != null &&
-                                    _activeHaul.State == HaulTaskState.Reserved) ||
-                                   _activeWorldItemMove != null ||
-                                   _activeRepairPartUse != null;
+            bool canSafelyReplan = _resident.ActiveWaterAction != null ||
+                                   (_resident.ActiveHaul != null &&
+                                    _resident.ActiveHaul.State == HaulTaskState.Reserved) ||
+                                   _resident.ActiveWorldItemMove != null ||
+                                   _resident.ActiveRepairPartUse != null;
             if (!canSafelyReplan) return;
 
             ReleaseActiveTasks();
             ClearActivePath();
             PublishCurrentFacilityAccessProjection();
-            _model.LastBlocker.Value = string.Empty;
+            _resident.State.LastBlocker.Value = string.Empty;
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "建造使未提交任务路线失效，已释放预留并准备重新选择目标");
@@ -3631,37 +3741,33 @@ namespace Game.NomadWorkshop.Foundation
         private void WriteRemainingPathProjection()
         {
             float remaining = 0f;
-            Vector3 cursor = _model.ResidentLocalPosition.Value;
-            for (var i = _nextPathCornerIndex; i < _activePathCorners.Length; i++)
+            Vector3 cursor = _resident.State.ResidentLocalPosition.Value;
+            for (var i = _resident.NextPathCornerIndex; i < _resident.PathCorners.Length; i++)
             {
-                remaining += Vector3.Distance(cursor, _activePathCorners[i]);
-                cursor = _activePathCorners[i];
+                remaining += Vector3.Distance(cursor, _resident.PathCorners[i]);
+                cursor = _resident.PathCorners[i];
             }
 
-            SetFloat(_model.RemainingPathMeters, remaining);
-            int corners = Math.Max(0, _activePathCorners.Length - _nextPathCornerIndex);
-            if (_model.RemainingPathCorners.Value != corners)
-                _model.RemainingPathCorners.Value = corners;
+            SetFloat(_resident.State.RemainingPathMeters, remaining);
+            int corners = Math.Max(0, _resident.PathCorners.Length - _resident.NextPathCornerIndex);
+            if (_resident.State.RemainingPathCorners.Value != corners)
+                _resident.State.RemainingPathCorners.Value = corners;
         }
 
         private void ClearActivePath()
         {
-            _activePathCorners = Array.Empty<Vector3>();
-            _nextPathCornerIndex = 0;
-            _hasActiveDockingYaw = false;
-            _activeDockingYawDegrees = 0f;
+            _resident.ClearPath();
             if (_model == null) return;
-            SetFloat(_model.RemainingPathMeters, 0f);
-            if (_model.RemainingPathCorners.Value != 0) _model.RemainingPathCorners.Value = 0;
-            if (!string.IsNullOrEmpty(_model.ActivePathSummary.Value))
-                _model.ActivePathSummary.Value = string.Empty;
+            _resident.State.MovementStallMilliseconds.Value = 0L;
+            SetFloat(_resident.State.RemainingPathMeters, 0f);
+            if (_resident.State.RemainingPathCorners.Value != 0) _resident.State.RemainingPathCorners.Value = 0;
+            if (!string.IsNullOrEmpty(_resident.State.ActivePathSummary.Value))
+                _resident.State.ActivePathSummary.Value = string.Empty;
         }
 
         private void ClearActiveMoveIntent()
         {
-            _activeMoveIntent = default;
-            _hasActiveMoveIntent = false;
-            _routeRetryRemaining = 0f;
+            _resident.ClearMoveIntent();
         }
 
         private static string DescribePath(IReadOnlyList<Vector3> corners)
@@ -3687,57 +3793,70 @@ namespace Game.NomadWorkshop.Foundation
             float resolvedDuration = duration;
             if (IsWorkTimedPhase(phase))
             {
-                _activeWorkEfficiency = ResidentPerformance.SampleWorkEfficiency(
+                _resident.WorkEfficiency = ResidentPerformance.SampleWorkEfficiency(
                     worldSeed,
-                    ResidentOwnerId,
-                    _workActionSequence++,
+                    _resident.OwnerId,
+                    _resident.WorkActionSequence++,
                     CalculateExpectedWorkEfficiency(),
                     workPaceVariation);
-                resolvedDuration /= _activeWorkEfficiency;
+                resolvedDuration /= _resident.WorkEfficiency;
             }
             else
             {
-                _activeWorkEfficiency = CalculateExpectedWorkEfficiency();
+                _resident.WorkEfficiency = CalculateExpectedWorkEfficiency();
             }
 
-            _phaseDuration = Mathf.Max(0.001f, resolvedDuration);
-            _phaseRemaining = _phaseDuration;
-            _model.ActionProgress.Value = 0f;
+            _resident.PhaseDuration = Mathf.Max(0.001f, resolvedDuration);
+            _resident.PhaseRemaining = _resident.PhaseDuration;
+            _resident.State.ActionProgress.Value = 0f;
             SetResidentPhase(phase, task);
         }
 
         private float CalculateExpectedWorkEfficiency() =>
             ResidentPerformance.CalculateExpectedWorkEfficiency(
                 residentBaseWorkEfficiency,
-                _residentWellbeing.Health,
-                _residentWellbeing.Fatigue,
-                _residentWellbeing.Stress);
+                _resident.Wellbeing.Health,
+                _resident.Wellbeing.Fatigue,
+                _resident.Wellbeing.Stress);
 
         private float EstimateWorkDuration(float standardDuration) =>
             standardDuration / CalculateExpectedWorkEfficiency();
 
         private static bool IsWorkTimedPhase(FoundationResidentPhase phase) =>
             phase is FoundationResidentPhase.PickingUpWaterCan or
+                FoundationResidentPhase.LiftingWaterCan or FoundationResidentPhase.PlacingWaterCan or
+                FoundationResidentPhase.ReleasingWaterCan or
                 FoundationResidentPhase.PickingUpWater or
                 FoundationResidentPhase.DeliveringWater or
                 FoundationResidentPhase.PickingUpWorldItem or
                 FoundationResidentPhase.PlacingWorldItem or
                 FoundationResidentPhase.PickingUpRepairPart or
+                FoundationResidentPhase.FillingAtStop or
+                FoundationResidentPhase.DetachingWasteBucket or
+                FoundationResidentPhase.EmptyingWasteBucket or
+                FoundationResidentPhase.InstallingWasteBucket or
+                FoundationResidentPhase.DeliveringStopWater or
+                    FoundationResidentPhase.PickingUpStopSpare or
+                    FoundationResidentPhase.DeliveringStopSpare or
                 FoundationResidentPhase.RepairingFacility;
 
         private bool TickTimer(float deltaTime)
         {
-            _phaseRemaining = Mathf.Max(0f, _phaseRemaining - deltaTime);
-            _model.ActionProgress.Value = 1f - _phaseRemaining / _phaseDuration;
-            return _phaseRemaining <= 0f;
+            _resident.PhaseRemaining = Mathf.Max(0f, _resident.PhaseRemaining - deltaTime);
+            _resident.State.ActionProgress.Value = 1f - _resident.PhaseRemaining / _resident.PhaseDuration;
+            PublishResidentFacilityWork();
+            return _resident.PhaseRemaining <= 0f;
         }
 
         private void SetResidentPhase(FoundationResidentPhase phase, string task)
         {
-            _residentPhase = phase;
-            _model.ResidentPhase.Value = phase;
-            _model.CurrentTask.Value = task;
+            _resident.Phase = phase;
+            _resident.State.ResidentPhase.Value = phase;
+            _resident.State.CurrentTask.Value = task;
             if (phase != FoundationResidentPhase.PickingUpWaterCan &&
+                phase != FoundationResidentPhase.LiftingWaterCan &&
+                phase != FoundationResidentPhase.PlacingWaterCan &&
+                phase != FoundationResidentPhase.ReleasingWaterCan &&
                 phase != FoundationResidentPhase.PickingUpWater &&
                 phase != FoundationResidentPhase.DeliveringWater &&
                 phase != FoundationResidentPhase.PickingUpWorldItem &&
@@ -3749,7 +3868,8 @@ namespace Game.NomadWorkshop.Foundation
                 phase != FoundationResidentPhase.Relaxing &&
                 phase != FoundationResidentPhase.RestingOnGround &&
                 phase != FoundationResidentPhase.EnjoyingHobby)
-                _model.ActionProgress.Value = 0f;
+                _resident.State.ActionProgress.Value = 0f;
+            PublishResidentFacilityWork();
         }
 
         private void HandleResidentDeath()
@@ -3758,14 +3878,14 @@ namespace Game.NomadWorkshop.Foundation
             ReleaseActiveInteractionSpace(publishProjection: true);
             ClearActivePath();
             ClearActiveMoveIntent();
-            _activeLeisureOutcomeScale = 1f;
-            _activeLeisureKind = FoundationLeisureKind.None;
-            _phaseDuration = 0f;
-            _phaseRemaining = 0f;
+            _resident.LeisureOutcomeScale = 1f;
+            _resident.LeisureKind = FoundationLeisureKind.None;
+            _resident.PhaseDuration = 0f;
+            _resident.PhaseRemaining = 0f;
             SetResidentPhase(
                 FoundationResidentPhase.Dead,
                 "健康归零，居民已经死亡");
-            _model.LastBlocker.Value = "ResidentDied · 健康归零；普通休息不能复活居民";
+            _resident.State.LastBlocker.Value = "ResidentDied · 健康归零；普通休息不能复活居民";
         }
 
         private void Block(string task, ResourceFlowBlocker blocker)
@@ -3773,8 +3893,17 @@ namespace Game.NomadWorkshop.Foundation
             ReleaseActiveTasks();
             ClearActivePath();
             PublishCurrentFacilityAccessProjection();
+            // 共享工作位或唯一工具被另一居民预留是临时背压。多人候选在领用时可能失效，
+            // 释放本次行动后回到有限频率决策；不能让一次正常争用永久阻断生理行动。
+            if (blocker.Reason == ResourceFlowBlockReason.InteractionUnavailable)
+            {
+                SetResidentPhase(FoundationResidentPhase.Idle, "工作位或工具正在使用，稍后重新选择行动");
+                _resident.State.LastBlocker.Value = "InteractionUnavailable · 等待共享工作位或工具";
+                _resident.DecisionRetryRemaining = Mathf.Max(0.1f, residentDecisionRetrySeconds);
+                return;
+            }
             SetResidentPhase(FoundationResidentPhase.Blocked, task);
-            _model.LastBlocker.Value = blocker.IsBlocked
+            _resident.State.LastBlocker.Value = blocker.IsBlocked
                 ? $"{blocker.Reason} · {blocker.InventoryId} · {blocker.Resource}"
                 : task;
         }
@@ -3789,7 +3918,7 @@ namespace Game.NomadWorkshop.Foundation
             selectedStation = default;
             selectedInventory = null;
             bestPathLength = float.PositiveInfinity;
-            Vector3 residentPosition = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 residentPosition = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
             for (var i = 0; i < facilities.Count; i++)
             {
@@ -3837,7 +3966,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             selected = default;
             bestPathLength = float.PositiveInfinity;
-            Vector3 residentPosition = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 residentPosition = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
             for (var i = 0; i < facilities.Count; i++)
             {
@@ -3900,9 +4029,17 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (!_definitions.TryGetValue(
                     facility.DefinitionId,
-                    out NomadFacilityDefinition definition) ||
-                definition.Function != NomadFacilityFunction.DrinkingStation)
+                    out NomadFacilityDefinition definition))
                 return;
+
+            if (definition.Function == NomadFacilityFunction.Toilet)
+            {
+                _toiletInventories.Add(facility.InstanceId, new ResourceInventory(
+                    BuildToiletInventoryId(facility.InstanceId), ResourceMeasure.Milliliter,
+                    Mathf.Max(1, toiletHoldingCapacityMilliliters)));
+                return;
+            }
+            if (definition.Function != NomadFacilityFunction.DrinkingStation) return;
 
             _drinkingStationInventories.Add(
                 facility.InstanceId,
@@ -3916,6 +4053,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (string.IsNullOrWhiteSpace(facilityInstanceId)) return;
             _drinkingStationInventories.Remove(facilityInstanceId);
+            _toiletInventories.Remove(facilityInstanceId);
         }
 
         /// <summary>
@@ -4141,15 +4279,17 @@ namespace Game.NomadWorkshop.Foundation
 
             // 代谢遇到满膀胱时不打断正在进行的安全动作，只把真实背压投影给 Inspector。
             // 下一次居民决策会优先生成如厕意图；没有厕所时仍可休闲和等待，不进入永久 Blocked。
-            if (string.IsNullOrEmpty(_model.LastBlocker.Value) ||
-                _model.LastBlocker.Value.StartsWith("PhysiologyBackpressure", StringComparison.Ordinal))
-                _model.LastBlocker.Value =
+            if (string.IsNullOrEmpty(_resident.State.LastBlocker.Value) ||
+                _resident.State.LastBlocker.Value.StartsWith("PhysiologyBackpressure", StringComparison.Ordinal))
+                _resident.State.LastBlocker.Value =
                     $"PhysiologyBackpressure · {blocker.InventoryId} · 需要如厕或清运";
         }
 
         private void WriteSimulationProjection()
         {
-            if (_residentWaterCycle == null) return;
+            WriteJourneyProjection();
+            WriteStopWaterProjection();
+            if (_resident.WaterCycle == null) return;
             NomadCalendarSnapshot calendar = CalendarPolicy.Project(
                 _simulationClock.SimulationTick);
             SetLong(_model.SimulationTick, _simulationClock.SimulationTick);
@@ -4166,49 +4306,68 @@ namespace Game.NomadWorkshop.Foundation
             if (_model.CurrentWeather.Value != environment.Weather)
                 _model.CurrentWeather.Value = environment.Weather;
             SetInt(_model.SandstormIntensityPermille, environment.IntensityPermille);
-            SetFloat(_model.ResidentThirst, _residentWaterCycle.Thirst);
-            SetFloat(_model.ResidentHealth, _residentWellbeing.Health);
-            SetFloat(_model.ResidentEntertainment, _residentWellbeing.Entertainment);
-            SetFloat(_model.ResidentMood, _residentWellbeing.Mood);
-            SetFloat(_model.ResidentFatigue, _residentWellbeing.Fatigue);
-            SetFloat(_model.ResidentStress, _residentWellbeing.Stress);
-            SetFloat(
-                _model.ResidentWorkEfficiency,
-                IsWorkTimedPhase(_residentPhase)
-                    ? _activeWorkEfficiency
-                    : CalculateExpectedWorkEfficiency());
             SetInt(
                 _model.VehicleWaterMilliliters,
                 _vehicleWater.GetAmount(NomadResourceIds.Water));
             SetInt(
                 _model.WaterCanWaterMilliliters,
                 _waterCan.GetAmount(NomadResourceIds.Water));
-            bool carryingWater = _waterCanLocation == FoundationWaterCanLocation.Resident &&
-                                 _waterCan.GetAmount(NomadResourceIds.Water) > 0;
-            if (_model.ResidentCarryingWater.Value != carryingWater)
-                _model.ResidentCarryingWater.Value = carryingWater;
             WriteFacilityInventoryProjection();
             WriteFacilityConditionProjection();
+            foreach (var resident in _residents)
+            {
+                using var scope = UseResident(resident);
+                WriteResidentProjection();
+            }
+        }
+
+        private void WriteResidentProjection()
+        {
+            if (_resident.WaterCycle == null) return;
+            SetFloat(_resident.State.ResidentThirst, _resident.WaterCycle.Thirst);
+            SetFloat(_resident.State.ResidentHealth, _resident.Wellbeing.Health);
+            SetFloat(_resident.State.ResidentEntertainment, _resident.Wellbeing.Entertainment);
+            SetFloat(_resident.State.ResidentMood, _resident.Wellbeing.Mood);
+            SetFloat(_resident.State.ResidentFatigue, _resident.Wellbeing.Fatigue);
+            SetFloat(_resident.State.ResidentStress, _resident.Wellbeing.Stress);
+            SetFloat(
+                _resident.State.ResidentWorkEfficiency,
+                IsWorkTimedPhase(_resident.Phase)
+                    ? _resident.WorkEfficiency
+                    : CalculateExpectedWorkEfficiency());
+            bool carryingWater = _waterCanLocation == FoundationWaterCanLocation.Resident &&
+                                 _waterCanCarrierId == _resident.StableId &&
+                                 _waterCan.GetAmount(NomadResourceIds.Water) > 0;
+            if (_resident.State.ResidentCarryingWater.Value != carryingWater)
+                _resident.State.ResidentCarryingWater.Value = carryingWater;
             SetInt(
-                _model.BodyWaterMilliliters,
-                _residentWaterCycle.BodyWater.GetAmount(NomadResourceIds.Water));
+                _resident.State.BodyWaterMilliliters,
+                _resident.WaterCycle.BodyWater.GetAmount(NomadResourceIds.Water));
             SetInt(
-                _model.BladderWasteMilliliters,
-                _residentWaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
-            SetInt(
-                _model.ToiletHoldingWasteMilliliters,
-                _toiletHolding.GetAmount(NomadResourceIds.HumanWaste));
+                _resident.State.BladderWasteMilliliters,
+                _resident.WaterCycle.Bladder.GetAmount(NomadResourceIds.HumanWaste));
         }
 
         private void WriteFacilityInventoryProjection()
         {
             var totalWater = 0;
             var totalCapacity = 0;
+            var totalWaste = 0;
+            var totalWasteCapacity = 0;
             _facilityInventoryProjection.Clear();
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
             for (var i = 0; i < facilities.Count; i++)
             {
                 FoundationFacilityState facility = facilities[i];
+                if (_toiletInventories.TryGetValue(facility.InstanceId, out ResourceInventory toilet))
+                {
+                    int waste = toilet.GetAmount(NomadResourceIds.HumanWaste);
+                    totalWaste = checked(totalWaste + waste);
+                    totalWasteCapacity = checked(totalWasteCapacity + toilet.Capacity);
+                    _facilityInventoryProjection.Add(new FoundationFacilityInventoryState(
+                        facility.InstanceId, toilet.Id, "toilet-waste", NomadResourceIds.HumanWaste.Value,
+                        toilet.Measure, waste, toilet.Capacity));
+                }
                 if (!_drinkingStationInventories.TryGetValue(
                         facility.InstanceId,
                         out ResourceInventory inventory))
@@ -4229,6 +4388,9 @@ namespace Game.NomadWorkshop.Foundation
 
             SetInt(_model.DrinkingStationWaterMilliliters, totalWater);
             SetInt(_model.DrinkingStationCapacityMilliliters, totalCapacity);
+            SetInt(_model.ToiletHoldingWasteMilliliters, totalWaste);
+            SetInt(_model.ToiletHoldingCapacityMilliliters, totalWasteCapacity);
+            _facilityInventoryProjection.Sort(static (a, b) => string.CompareOrdinal(a.InventoryId, b.InventoryId));
             _model.ReplaceFacilityInventories(_facilityInventoryProjection);
         }
 
@@ -4436,6 +4598,9 @@ namespace Game.NomadWorkshop.Foundation
                 }
             }
 
+            _waterCanCarrierId = location == FoundationWaterCanLocation.Resident
+                ? _resident.StableId : string.Empty;
+            _model.WaterCanCarrierId.Value = _waterCanCarrierId;
             _waterCanLocation = location;
             _waterCanAnchorFacilityInstanceId = anchor;
             if (_model == null) return;
@@ -4457,24 +4622,22 @@ namespace Game.NomadWorkshop.Foundation
 
         private void ReleaseActiveTasks()
         {
-            _activeHaul?.Dispose();
-            _activeHaul = null;
-            _drinkAfterActiveHaul = false;
-            _activeResidentAction?.Dispose();
-            _activeResidentAction = null;
-            CancelActiveWorldItemMove();
-            CancelActiveFacilityRepair();
-            _activeWaterSourceFacilityInstanceId = string.Empty;
-            _activeWaterTargetFacilityInstanceId = string.Empty;
-            ReleaseActiveInteractionSpace(publishProjection: false);
-            _activeLeisureOutcomeScale = 1f;
-            _activeLeisureKind = FoundationLeisureKind.None;
-            ClearActiveMoveIntent();
+            if (_resident == null) return;
+            bool worldItemsChanged = _resident.CancelAction();
+            if (worldItemsChanged && _model != null)
+            {
+                _resident.State.ResidentCarriedWorldItem.Value = default;
+                PublishWorldItemPlacements();
+            }
+            ClearActivePath();
         }
 
         protected override void OnDestroy()
         {
-            ReleaseActiveTasks();
+            RevokeCheckpointOperation(publish: false);
+            DisposeResidentExecutions(publishProjection: false);
+            _interactionSpaces?.Dispose();
+            _journey?.Dispose();
             if (_navigation != null)
             {
                 _navigation.DeactivateAndDestroyObstacle(_pendingObstacle);

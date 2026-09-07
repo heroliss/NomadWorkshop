@@ -24,6 +24,46 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void JourneySave_PreservesSubMillimeterAndSubMilliliterTruthWithoutDriverOwnership()
+        {
+            var route = new NomadJourneyRoute("route", "a", "b", 1000, 137, 3);
+            using var session = new NomadJourneySession(route, 99_999_999L);
+            session.SetDestination(NomadJourneyEndpoint.Destination);
+            Assert.That(session.TryAcquireDriver("driver", session.DestinationRevision, out _), Is.True);
+            session.Advance(1);
+            NomadWorkshopSaveData save = CreateValidSave();
+            save.Vehicle.Journey = NomadJourneySaveData.FromSnapshot(session.Capture());
+            NomadWorkshopSaveContract.ValidateForSave(save);
+            using var restored = new NomadJourneySession(route, 0);
+            restored.Restore(save.Vehicle.Journey.ToValidatedSnapshot());
+            Assert.That(restored.PositionMicrometers, Is.EqualTo(137L));
+            Assert.That(restored.FuelPicoliters, Is.EqualTo(99_999_588L));
+            Assert.That(restored.Status, Is.EqualTo(NomadJourneyStatus.AwaitingDriver));
+        }
+
+        [Test]
+        public void VersionFourJourneyMigration_PreservesExistingWorld_AndLeavesJourneyForAdapterInitialization()
+        {
+            NomadWorkshopSaveData save = CreateValidSave();
+            save.Version = 4;
+            int thirst = save.Residents[0].ThirstPermille;
+            NomadWorkshopSaveContract.PrepareAfterLoad(save);
+            Assert.That(save.Version, Is.EqualTo(NomadWorkshopSaveSchema.CurrentVersion));
+            Assert.That(save.Vehicle.Journey, Is.Null);
+            Assert.That(save.Residents[0].ThirstPermille, Is.EqualTo(thirst));
+        }
+
+        [Test]
+        public void EmptyJourneyDto_IsLegacyMissingState_ButPartialDtoIsRejected()
+        {
+            NomadWorkshopSaveData save = CreateValidSave();
+            save.Vehicle.Journey = new NomadJourneySaveData();
+            Assert.DoesNotThrow(() => NomadWorkshopSaveContract.ValidateForSave(save));
+            save.Vehicle.Journey.FuelPicoliters = 1;
+            Assert.Throws<ArgumentException>(() => NomadWorkshopSaveContract.ValidateForSave(save));
+        }
+
+        [Test]
         public void ValidateForSave_AcceptsCoherentMidInteractionSnapshot()
         {
             NomadWorkshopSaveData save = CreateValidSave();

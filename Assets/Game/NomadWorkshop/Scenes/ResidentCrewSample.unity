@@ -1,0 +1,1373 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!29 &1
+OcclusionCullingSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_OcclusionBakeSettings:
+    smallestOccluder: 5
+    smallestHole: 0.25
+    backfaceThreshold: 100
+  m_SceneGUID: 00000000000000000000000000000000
+  m_OcclusionCullingData: {fileID: 0}
+--- !u!104 &2
+RenderSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 10
+  m_Fog: 0
+  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  m_FogMode: 3
+  m_FogDensity: 0.01
+  m_LinearFogStart: 0
+  m_LinearFogEnd: 300
+  m_AmbientSkyColor: {r: 0.235, g: 0.255, b: 0.265, a: 1}
+  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
+  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
+  m_AmbientIntensity: 1.02
+  m_AmbientMode: 0
+  m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 6ae242a4f37940d4ea76857f323019c6, type: 2}
+  m_HaloStrength: 0.5
+  m_FlareStrength: 1
+  m_FlareFadeSpeed: 3
+  m_HaloTexture: {fileID: 0}
+  m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
+  m_DefaultReflectionMode: 0
+  m_DefaultReflectionResolution: 128
+  m_ReflectionBounces: 1
+  m_ReflectionIntensity: 0.95
+  m_CustomReflection: {fileID: 0}
+  m_Sun: {fileID: 1907831079}
+  m_UseRadianceAmbientProbe: 0
+--- !u!157 &3
+LightmapSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 13
+  m_BakeOnSceneLoad: 0
+  m_GISettings:
+    serializedVersion: 2
+    m_BounceScale: 1
+    m_IndirectOutputScale: 1
+    m_AlbedoBoost: 1
+    m_EnvironmentLightingMode: 0
+    m_EnableBakedLightmaps: 0
+    m_EnableRealtimeLightmaps: 0
+  m_LightmapEditorSettings:
+    serializedVersion: 12
+    m_Resolution: 2
+    m_BakeResolution: 40
+    m_AtlasSize: 1024
+    m_AO: 0
+    m_AOMaxDistance: 1
+    m_CompAOExponent: 1
+    m_CompAOExponentDirect: 0
+    m_ExtractAmbientOcclusion: 0
+    m_Padding: 2
+    m_LightmapParameters: {fileID: 0}
+    m_LightmapsBakeMode: 1
+    m_TextureCompression: 1
+    m_ReflectionCompression: 2
+    m_MixedBakeMode: 2
+    m_BakeBackend: 2
+    m_PVRSampling: 1
+    m_PVRDirectSampleCount: 32
+    m_PVRSampleCount: 512
+    m_PVRBounces: 2
+    m_PVREnvironmentSampleCount: 256
+    m_PVREnvironmentReferencePointCount: 2048
+    m_PVRFilteringMode: 1
+    m_PVRDenoiserTypeDirect: 1
+    m_PVRDenoiserTypeIndirect: 1
+    m_PVRDenoiserTypeAO: 1
+    m_PVRFilterTypeDirect: 0
+    m_PVRFilterTypeIndirect: 0
+    m_PVRFilterTypeAO: 0
+    m_PVREnvironmentMIS: 1
+    m_PVRCulling: 1
+    m_PVRFilteringGaussRadiusDirect: 1
+    m_PVRFilteringGaussRadiusIndirect: 1
+    m_PVRFilteringGaussRadiusAO: 1
+    m_PVRFilteringAtrousPositionSigmaDirect: 0.5
+    m_PVRFilteringAtrousPositionSigmaIndirect: 2
+    m_PVRFilteringAtrousPositionSigmaAO: 1
+    m_ExportTrainingData: 0
+    m_TrainingDataDestination: TrainingData
+    m_LightProbeSampleCountMultiplier: 4
+  m_LightingDataAsset: {fileID: 20201, guid: 0000000000000000f000000000000000, type: 0}
+  m_LightingSettings: {fileID: 0}
+--- !u!196 &4
+NavMeshSettings:
+  serializedVersion: 2
+  m_ObjectHideFlags: 0
+  m_BuildSettings:
+    serializedVersion: 3
+    agentTypeID: 0
+    agentRadius: 0.5
+    agentHeight: 2
+    agentSlope: 45
+    agentClimb: 0.4
+    ledgeDropHeight: 0
+    maxJumpAcrossDistance: 0
+    minRegionArea: 2
+    manualCellSize: 0
+    cellSize: 0.16666667
+    manualTileSize: 0
+    tileSize: 256
+    buildHeightMesh: 0
+    maxJobWorkers: 0
+    preserveTilesOutsideBounds: 0
+    debug:
+      m_Flags: 0
+  m_NavMeshData: {fileID: 0}
+--- !u!1 &139890904
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 139890905}
+  - component: {fileID: 139890906}
+  m_Layer: 0
+  m_Name: "Graphics \xB7 Global Volume"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &139890905
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 139890904}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 516167185}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &139890906
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 139890904}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 0
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 70d6bc4ac2bb78f4e81a8a13065052f6, type: 2}
+--- !u!1 &160187521
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 160187523}
+  - component: {fileID: 160187522}
+  m_Layer: 0
+  m_Name: "Nomad Workshop \xB7 Foundation Slice"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &160187522
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 160187521}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f8352be347d511419ef33d0a79494e5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFoundationContext
+  _parentContextHost: {fileID: 0}
+  _inheritFromParent: 1
+  _inheritFromGlobal: 1
+--- !u!4 &160187523
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 160187521}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 2000713698}
+  - {fileID: 815974020}
+  - {fileID: 1446126325}
+  - {fileID: 516167185}
+  - {fileID: 963999921}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &241706440
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 241706441}
+  - component: {fileID: 241706443}
+  - component: {fileID: 241706442}
+  m_Layer: 0
+  m_Name: "Nav Source \xB7 Walkable Deck"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 2147483647
+  m_IsActive: 1
+--- !u!4 &241706441
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 241706440}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -0.15, z: 0}
+  m_LocalScale: {x: 10.8, y: 0.3, z: 8.400001}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 815974020}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &241706442
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 241706440}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!33 &241706443
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 241706440}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &516167184
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 516167185}
+  - component: {fileID: 516167186}
+  m_Layer: 0
+  m_Name: "Presentation \xB7 Mono Views"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &516167185
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 516167184}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1446063189}
+  - {fileID: 1792913800}
+  - {fileID: 1907831078}
+  - {fileID: 1670735136}
+  - {fileID: 139890905}
+  - {fileID: 1791895532}
+  m_Father: {fileID: 160187523}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &516167186
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 516167184}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4b79bb4d3224cf4988e57eed2788558, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFoundationWorldView
+  _targetContext: {fileID: 0}
+  deckLayout: {fileID: 11400000, guid: a04490fff9b17d442b8dac5c83b91bb8, type: 2}
+  facilityDefinitions:
+  - {fileID: 11400000, guid: 7658e360dd65666498f2548ab0eab43c, type: 2}
+  - {fileID: 11400000, guid: a1670bbf619339840874a71324e39dd3, type: 2}
+  - {fileID: 11400000, guid: ddd145b9c35e8cd4dba1c28eb1e4b644, type: 2}
+  - {fileID: 11400000, guid: 1e64cd6237f16a345a44534d2c1e15be, type: 2}
+  - {fileID: 11400000, guid: 5e2010b87e73021429f38c28f771880d, type: 2}
+  - {fileID: 11400000, guid: ed0c5a5954083f94ea38cf8ce3a2c3fe, type: 2}
+  worldItemDefinitions:
+  - {fileID: 11400000, guid: 334d95d72fb19ed4390ae9d56db30eba, type: 2}
+  - {fileID: 11400000, guid: df720016ecb41714aa0e8800ed9cbaaa, type: 2}
+  - {fileID: 11400000, guid: 5ffa4ce248eb8f34ab34934d8d9b635b, type: 2}
+  deckRoot: {fileID: 1446063189}
+  worldCamera: {fileID: 1792913803}
+  keyLight: {fileID: 1907831079}
+  fillLight: {fileID: 1670735137}
+  skyboxMaterial: {fileID: 2100000, guid: 6ae242a4f37940d4ea76857f323019c6, type: 2}
+  reflectionProbe: {fileID: 1791895533}
+  screenUi: {fileID: 963999922}
+  vehicleVisualPrefab: {fileID: 4708065296495233900, guid: 6a12082fd6819644cab4f17ee74d0513, type: 3}
+  environmentVisualPrefab: {fileID: 1030598556807106459, guid: 2fa0f2f1db4379b45ab59bba743c85a9, type: 3}
+  waystationVisualPrefab: {fileID: 4698855629650623304, guid: 2b0cfb13e3278c045836769e3a47f89a, type: 3}
+  residentVisualPrefab: {fileID: 7370436065333556048, guid: d5fbe45240023b34195a9bbf8dad7380, type: 3}
+  residentVisualBindings:
+  - residentId: resident-01
+    prefab: {fileID: 7370436065333556048, guid: d5fbe45240023b34195a9bbf8dad7380, type: 3}
+  - residentId: resident-02
+    prefab: {fileID: 2962866998358475209, guid: 17382c0071f7f104d814bc7be301aeff, type: 3}
+  - residentId: resident-03
+    prefab: {fileID: 33734848056973832, guid: 2f7c8091678bc9c42a558e3e90e31bee, type: 3}
+  residentAnimationController: {fileID: 9100000, guid: cc142588163757c46b20c608d71eff21, type: 2}
+  captureReflectionProbeOnStart: 1
+  cameraOrbitDegreesPerPixel: 0.2
+  cameraZoomMetersPerScrollUnit: 1
+  cameraTouchOrbitDegreesPerPixel: 0.12
+  cameraPinchZoomMetersPerPixel: 0.04
+--- !u!1 &815974019
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 815974020}
+  - component: {fileID: 815974022}
+  - component: {fileID: 815974021}
+  m_Layer: 0
+  m_Name: "Infrastructure \xB7 Continuous Deck Navigation Utility"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &815974020
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 815974019}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 241706441}
+  - {fileID: 1365569597}
+  m_Father: {fileID: 160187523}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &815974021
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 815974019}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bdb398168e599fd479a3526a088673c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Navigation.DeckNavigationUtility
+  _targetContext: {fileID: 0}
+  surface: {fileID: 815974022}
+  agentBindings: []
+  sampleDistance: 0.42
+  navigationSpace: {fileID: 815974020}
+  runtimeObstacleRoot: {fileID: 1365569597}
+  runtimeObstacleHeight: 2.4
+--- !u!114 &815974022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 815974019}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
+  m_SerializedVersion: 0
+  m_AgentTypeID: 0
+  m_CollectObjects: 2
+  m_Size: {x: 10, y: 10, z: 10}
+  m_Center: {x: 0, y: 2, z: 0}
+  m_LayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_UseGeometry: 1
+  m_DefaultArea: 0
+  m_GenerateLinks: 0
+  m_IgnoreNavMeshAgent: 1
+  m_IgnoreNavMeshObstacle: 1
+  m_OverrideTileSize: 1
+  m_TileSize: 128
+  m_OverrideVoxelSize: 1
+  m_VoxelSize: 0.09
+  m_MinRegionArea: 0.05
+  m_NavMeshData: {fileID: 0}
+  m_BuildHeightMesh: 0
+--- !u!1 &963999920
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 963999921}
+  - component: {fileID: 963999922}
+  m_Layer: 0
+  m_Name: "Debug \xB7 Command View"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &963999921
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 963999920}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 160187523}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &963999922
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 963999920}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 79cb653ab4062e74cba8db8315a5d822, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFoundationDebugView
+  _targetContext: {fileID: 0}
+  _openPanel: 0
+--- !u!1 &1365569596
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1365569597}
+  m_Layer: 0
+  m_Name: Runtime Facility Navigation Obstacles
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1365569597
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1365569596}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 815974020}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1446063188
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1446063189}
+  m_Layer: 0
+  m_Name: Vehicle Deck Root
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1446063189
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1446063188}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 516167185}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1446126324
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1446126325}
+  - component: {fileID: 1446126326}
+  m_Layer: 0
+  m_Name: "Logic \xB7 Mono System"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1446126325
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1446126324}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 160187523}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1446126326
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1446126324}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 20f88c5be7657c943a8dfac5c6721e24, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFoundationSystem
+  _targetContext: {fileID: 0}
+  nativeLocomotion: 1
+  initialResidentCount: 3
+  deckLayout: {fileID: 11400000, guid: a04490fff9b17d442b8dac5c83b91bb8, type: 2}
+  facilityDefinitions:
+  - {fileID: 11400000, guid: 7658e360dd65666498f2548ab0eab43c, type: 2}
+  - {fileID: 11400000, guid: a1670bbf619339840874a71324e39dd3, type: 2}
+  - {fileID: 11400000, guid: ddd145b9c35e8cd4dba1c28eb1e4b644, type: 2}
+  - {fileID: 11400000, guid: 1e64cd6237f16a345a44534d2c1e15be, type: 2}
+  - {fileID: 11400000, guid: 5e2010b87e73021429f38c28f771880d, type: 2}
+  - {fileID: 11400000, guid: ed0c5a5954083f94ea38cf8ce3a2c3fe, type: 2}
+  worldItemDefinitions:
+  - {fileID: 11400000, guid: 334d95d72fb19ed4390ae9d56db30eba, type: 2}
+  - {fileID: 11400000, guid: df720016ecb41714aa0e8800ed9cbaaa, type: 2}
+  - {fileID: 11400000, guid: 5ffa4ce248eb8f34ab34934d8d9b635b, type: 2}
+  worldSeed: 1729
+  residentStartLocalPosition: {x: 0, y: 0, z: 2.4}
+  residentMoveSpeed: 2.8
+  pickupSeconds: 1.2
+  deliverySeconds: 1.2
+  drinkingSeconds: 3.2
+  toiletSeconds: 4
+  drinkMetabolismSeconds: 8
+  initialThirst: 0.78
+  thirstIncreasePerSecond: 0.004
+  bodyWaterCapacityMilliliters: 900
+  bladderCapacityMilliliters: 500
+  initialSimulationSpeed: 1
+  routeRetrySeconds: 0.5
+  residentDecisionRetrySeconds: 0.5
+  waterTankWearUnitsPerMillisecond: 17
+  waterTankMaintenanceDebtUnitsPerMillisecond: 250
+  waterTankDustUnitsPerMillisecond: 167
+  waterTankBaseMicroHazardPerSecond: 50
+  waterTankWearMicroHazardPerPermilleSecond: 1
+  waterTankMaintenanceMicroHazardPerPermilleSecond: 2
+  waterTankDustMicroHazardPerPermilleSecond: 1
+  waterTankSandstormWearUnitsPerMillisecond: 55
+  waterTankSandstormMaintenanceDebtUnitsPerMillisecond: 120
+  waterTankSandstormDustUnitsPerMillisecond: 2000
+  waterTankSandstormBaseMicroHazardPerSecond: 1000
+  initialEntertainment: 0.68
+  initialMood: 0.7
+  initialFatigue: 0.28
+  initialStress: 0.22
+  initialHealth: 1
+  residentBaseWorkEfficiency: 1
+  workPaceVariation: 0.08
+  waterTankRepairSeconds: 16
+  leisureSeconds: 3.5
+  groundRestSeconds: 20
+  hobbySeconds: 8
+  residentPaintingAffinity: 0.34
+  minimumWanderDistance: 0.9
+  maximumWanderDistance: 2.8
+  waterCanCapabilities: 5
+  waterCanCleanliness: 0.96
+  toiletHoldingCapacityMilliliters: 12000
+--- !u!1 &1670735135
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1670735136}
+  - component: {fileID: 1670735137}
+  m_Layer: 0
+  m_Name: Fill Light
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1670735136
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1670735135}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.10776333, y: 0.89037144, z: -0.3417816, w: 0.28073305}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 516167185}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!108 &1670735137
+Light:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1670735135}
+  m_Enabled: 1
+  serializedVersion: 12
+  m_Type: 1
+  m_Color: {r: 0.52, g: 0.68, b: 1, a: 1}
+  m_Intensity: 0.52
+  m_Range: 10
+  m_SpotAngle: 30
+  m_InnerSpotAngle: 21.80208
+  m_CookieSize2D: {x: 0.5, y: 0.5}
+  m_Shadows:
+    m_Type: 0
+    m_Resolution: -1
+    m_CustomResolution: -1
+    m_Strength: 1
+    m_Bias: 0.05
+    m_NormalBias: 0.4
+    m_NearPlane: 0.2
+    m_CullingMatrixOverride:
+      e00: 1
+      e01: 0
+      e02: 0
+      e03: 0
+      e10: 0
+      e11: 1
+      e12: 0
+      e13: 0
+      e20: 0
+      e21: 0
+      e22: 1
+      e23: 0
+      e30: 0
+      e31: 0
+      e32: 0
+      e33: 1
+    m_UseCullingMatrixOverride: 0
+  m_Cookie: {fileID: 0}
+  m_DrawHalo: 0
+  m_Flare: {fileID: 0}
+  m_RenderMode: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingLayerMask: 1
+  m_Lightmapping: 4
+  m_LightShadowCasterMode: 0
+  m_AreaSize: {x: 1, y: 1}
+  m_BounceIntensity: 1
+  m_ColorTemperature: 6570
+  m_UseColorTemperature: 0
+  m_BoundingSphereOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_UseBoundingSphereOverride: 0
+  m_UseViewFrustumForShadowCasterCull: 1
+  m_ForceVisible: 0
+  m_ShadowRadius: 0
+  m_ShadowAngle: 0
+  m_LightUnit: 1
+  m_LuxAtDistance: 1
+  m_EnableSpotReflector: 1
+--- !u!1 &1791895531
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1791895532}
+  - component: {fileID: 1791895533}
+  m_Layer: 0
+  m_Name: "Graphics \xB7 Vehicle Reflection Probe"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1791895532
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1791895531}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 516167185}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!215 &1791895533
+ReflectionProbe:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1791895531}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Type: 0
+  m_Mode: 1
+  m_RefreshMode: 2
+  m_TimeSlicingMode: 0
+  m_Resolution: 128
+  m_UpdateFrequency: 0
+  m_BoxSize: {x: 14.8, y: 6, z: 12.400001}
+  m_BoxOffset: {x: 0, y: 1.4, z: 0}
+  m_NearClip: 0.1
+  m_FarClip: 80
+  m_ShadowDistance: 100
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_IntensityMultiplier: 0.9
+  m_BlendDistance: 1.5
+  m_HDR: 1
+  m_BoxProjection: 1
+  m_RenderDynamicObjects: 0
+  m_UseOcclusionCulling: 1
+  m_Importance: 1
+  m_CustomBakedTexture: {fileID: 0}
+--- !u!1 &1792913799
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1792913800}
+  - component: {fileID: 1792913803}
+  - component: {fileID: 1792913802}
+  - component: {fileID: 1792913801}
+  m_Layer: 0
+  m_Name: Main Camera
+  m_TagString: MainCamera
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1792913800
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1792913799}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 516167185}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!81 &1792913801
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1792913799}
+  m_Enabled: 1
+--- !u!114 &1792913802
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1792913799}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 1
+  m_RequiresOpaqueTextureOption: 0
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: 1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 1
+  m_Antialiasing: 2
+  m_AntialiasingQuality: 2
+  m_StopNaN: 1
+  m_Dithering: 1
+  m_ClearDepth: 1
+  m_AllowXRRendering: 0
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
+--- !u!20 &1792913803
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1792913799}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.055, g: 0.075, b: 0.085, a: 1}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.1
+  far clip plane: 120
+  field of view: 42
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 1
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!1 &1907831077
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1907831078}
+  - component: {fileID: 1907831079}
+  m_Layer: 0
+  m_Name: Key Light
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1907831078
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1907831077}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.38791165, y: -0.27470842, z: 0.12230807, w: 0.8712638}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 516167185}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!108 &1907831079
+Light:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1907831077}
+  m_Enabled: 1
+  serializedVersion: 12
+  m_Type: 1
+  m_Color: {r: 1, g: 0.89, b: 0.72, a: 1}
+  m_Intensity: 1.6
+  m_Range: 10
+  m_SpotAngle: 30
+  m_InnerSpotAngle: 21.80208
+  m_CookieSize2D: {x: 0.5, y: 0.5}
+  m_Shadows:
+    m_Type: 2
+    m_Resolution: -1
+    m_CustomResolution: -1
+    m_Strength: 1
+    m_Bias: 0.05
+    m_NormalBias: 0.4
+    m_NearPlane: 0.2
+    m_CullingMatrixOverride:
+      e00: 1
+      e01: 0
+      e02: 0
+      e03: 0
+      e10: 0
+      e11: 1
+      e12: 0
+      e13: 0
+      e20: 0
+      e21: 0
+      e22: 1
+      e23: 0
+      e30: 0
+      e31: 0
+      e32: 0
+      e33: 1
+    m_UseCullingMatrixOverride: 0
+  m_Cookie: {fileID: 0}
+  m_DrawHalo: 0
+  m_Flare: {fileID: 0}
+  m_RenderMode: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingLayerMask: 1
+  m_Lightmapping: 4
+  m_LightShadowCasterMode: 0
+  m_AreaSize: {x: 1, y: 1}
+  m_BounceIntensity: 1
+  m_ColorTemperature: 6570
+  m_UseColorTemperature: 0
+  m_BoundingSphereOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_UseBoundingSphereOverride: 0
+  m_UseViewFrustumForShadowCasterCull: 1
+  m_ForceVisible: 0
+  m_ShadowRadius: 0
+  m_ShadowAngle: 0
+  m_LightUnit: 1
+  m_LuxAtDistance: 1
+  m_EnableSpotReflector: 1
+--- !u!1 &2000713697
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000713698}
+  - component: {fileID: 2000713699}
+  m_Layer: 0
+  m_Name: "Data \xB7 Mono Model"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2000713698
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000713697}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 160187523}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2000713699
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000713697}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29849802a6992874e8cb06b74aa2b31d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFoundationModel
+  _targetContext: {fileID: 0}
+  <IsReady>k__BackingField:
+    value: 0
+  <JourneyPositionMicrometers>k__BackingField:
+    value: 0
+  <StopWaterMilliliters>k__BackingField:
+    value: 0
+  <StopWaterRequested>k__BackingField:
+    value: 0
+  <StopWaterActive>k__BackingField:
+    value: 0
+  <StopWasteMilliliters>k__BackingField:
+    value: 0
+  <StopWasteCapacityMilliliters>k__BackingField:
+    value: 0
+  <StopWasteRequested>k__BackingField:
+    value: 0
+  <StopWasteActive>k__BackingField:
+    value: 0
+  <CarriedWasteBucketFacilityId>k__BackingField:
+    value: 
+  <CarriedWasteMilliliters>k__BackingField:
+    value: 0
+  <StopWorkFeedback>k__BackingField:
+    value: 
+  <StopSpareCount>k__BackingField:
+    value: 0
+  <StopSpareRequested>k__BackingField:
+    value: 0
+  <StopSpareActive>k__BackingField:
+    value: 0
+  <StopAccessOpen>k__BackingField:
+    value: 0
+  <JourneyFuelPicoliters>k__BackingField:
+    value: 0
+  <JourneyDestination>k__BackingField:
+    value: 0
+  <JourneyStatus>k__BackingField:
+    value: 0
+  <IsPaused>k__BackingField:
+    value: 0
+  <CheckpointBusy>k__BackingField:
+    value: 0
+  <CheckpointFeedback>k__BackingField:
+    value: "\u624B\u52A8\u4FDD\u5B58\u65C5\u7A0B\uFF0C\u4E0B\u6B21\u53EF\u4ECE\u8FD9\u91CC\u7EE7\u7EED\u3002"
+  <SimulationSpeed>k__BackingField:
+    value: 1
+  <SimulationTick>k__BackingField:
+    value: 0
+  <LifeDay>k__BackingField:
+    value: 1
+  <LifeMinuteOfDay>k__BackingField:
+    value: 0
+  <LifeDayProgressPermille>k__BackingField:
+    value: 0
+  <ClimateYear>k__BackingField:
+    value: 1
+  <SeasonIndex>k__BackingField:
+    value: 0
+  <ClimateWeekInSeason>k__BackingField:
+    value: 1
+  <SeasonProgressPermille>k__BackingField:
+    value: 0
+  <CurrentWeather>k__BackingField:
+    value: 0
+  <SandstormIntensityPermille>k__BackingField:
+    value: 0
+  <InteractionMode>k__BackingField:
+    value: 0
+  <PlacementPreview>k__BackingField:
+    value:
+      active: 0
+      definitionId: 
+      xMillimeters: 0
+      zMillimeters: 0
+      yawDeciDegrees: 0
+      deckLevel: 0
+      failure: 0
+      reachableInteractionSlotMask: 0
+      sharedSpaceInteractionSlotMask: 0
+      interactionSlotCount: 0
+      realtimeReachabilityEvaluated: 0
+      realtimeProbeMilliseconds: 0
+      realtimeVisitedCells: 0
+      realtimeProbeCellCount: 0
+  <BuildTransactionPhase>k__BackingField:
+    value: 0
+  <PositionSnapMillimeters>k__BackingField:
+    value: 200
+  <RotationSnapDeciDegrees>k__BackingField:
+    value: 450
+  <ShowPlacementGrid>k__BackingField:
+    value: 1
+  <FacilityRevision>k__BackingField:
+    value: 0
+  <FacilityAccessRevision>k__BackingField:
+    value: 0
+  <FacilityInventoryRevision>k__BackingField:
+    value: 0
+  <FacilityConditionRevision>k__BackingField:
+    value: 0
+  <WorldItemPlacementRevision>k__BackingField:
+    value: 0
+  <WaterCanLocation>k__BackingField:
+    value: 0
+  <WaterCanAnchorFacilityInstanceId>k__BackingField:
+    value: 
+  <WaterCanPlacement>k__BackingField:
+    value:
+      itemId: 
+      definitionId: 
+      regionId: 
+      ownerEntityId: 
+      localXMillimeters: 0
+      localZMillimeters: 0
+      localYawDeciDegrees: 0
+      worldXMillimeters: 0
+      worldZMillimeters: 0
+      worldYawDeciDegrees: 0
+      deckLevel: 0
+      supportHeightMillimeters: 0
+  <WaterCanWaterMilliliters>k__BackingField:
+    value: 0
+  <WaterCanCapacityMilliliters>k__BackingField:
+    value: 0
+  <VehicleWaterMilliliters>k__BackingField:
+    value: 0
+  <VehicleWaterCapacityMilliliters>k__BackingField:
+    value: 0
+  <DrinkingStationWaterMilliliters>k__BackingField:
+    value: 0
+  <DrinkingStationCapacityMilliliters>k__BackingField:
+    value: 0
+  <ToiletHoldingWasteMilliliters>k__BackingField:
+    value: 0
+  <ToiletHoldingCapacityMilliliters>k__BackingField:
+    value: 0
+  <PrimaryResident>k__BackingField:
+    stableId: resident-01
+    ownerId: 3841
+    <ResidentPhase>k__BackingField:
+      value: 0
+    <ResidentLocalPosition>k__BackingField:
+      value: {x: 0, y: 0, z: 0}
+    <ResidentLocalYawDegrees>k__BackingField:
+      value: 0
+    <RemainingPathMeters>k__BackingField:
+      value: 0
+    <MovementStallMilliseconds>k__BackingField:
+      value: 0
+    <RemainingPathCorners>k__BackingField:
+      value: 0
+    <ActivePathSummary>k__BackingField:
+      value: 
+    <ResidentCarryingWater>k__BackingField:
+      value: 0
+    <ResidentCarriedWorldItem>k__BackingField:
+      value:
+        itemId: 
+        definitionId: 
+    <LatestActionPlan>k__BackingField:
+      value:
+        evaluated: 0
+        candidateId: 
+        displayName: 
+        feasible: 0
+        selected: 0
+        blocker: 
+        stepCount: 0
+        totalDurationSeconds: 0
+        travelSeconds: 0
+        travelDistanceMeters: 0
+        contextBenefit: 0
+        travelCost: 0
+        activeCost: 0
+        effortCost: 0
+        expectedRiskCost: 0
+        planCost: 0
+        totalUtility: 0
+        selectionProbability: 0
+        riskTier: 0
+        riskPriority: 0
+    <ResidentThirst>k__BackingField:
+      value: 0
+    <ResidentHealth>k__BackingField:
+      value: 1
+    <ResidentEntertainment>k__BackingField:
+      value: 0
+    <ResidentMood>k__BackingField:
+      value: 0
+    <ResidentFatigue>k__BackingField:
+      value: 0
+    <ResidentStress>k__BackingField:
+      value: 0
+    <ResidentWorkEfficiency>k__BackingField:
+      value: 1
+    <BodyWaterMilliliters>k__BackingField:
+      value: 0
+    <BodyWaterCapacityMilliliters>k__BackingField:
+      value: 0
+    <BladderWasteMilliliters>k__BackingField:
+      value: 0
+    <BladderCapacityMilliliters>k__BackingField:
+      value: 0
+    <ActionProgress>k__BackingField:
+      value: 0
+    <FacilityWork>k__BackingField:
+      value:
+        facilityInstanceId: 
+        groupId: 
+        slotId: 
+        phase: 0
+        progress: 0
+        itemContactPlacement:
+          itemId: 
+          definitionId: 
+          regionId: 
+          ownerEntityId: 
+          localXMillimeters: 0
+          localZMillimeters: 0
+          localYawDeciDegrees: 0
+          worldXMillimeters: 0
+          worldZMillimeters: 0
+          worldYawDeciDegrees: 0
+          deckLevel: 0
+          supportHeightMillimeters: 0
+    <CompletedDrinkCount>k__BackingField:
+      value: 0
+    <CompletedToiletUseCount>k__BackingField:
+      value: 0
+    <CompletedLeisureCount>k__BackingField:
+      value: 0
+    <CompletedDaydreamCount>k__BackingField:
+      value: 0
+    <CompletedWanderCount>k__BackingField:
+      value: 0
+    <CompletedGroundRestCount>k__BackingField:
+      value: 0
+    <CompletedHobbyCount>k__BackingField:
+      value: 0
+    <CompletedWorldItemMoveCount>k__BackingField:
+      value: 0
+    <CompletedWaterTankRepairCount>k__BackingField:
+      value: 0
+    <CurrentTask>k__BackingField:
+      value: "\u7B49\u5F85\u521D\u59CB\u5316"
+    <LastBlocker>k__BackingField:
+      value: 
+  <WaterCanCarrierId>k__BackingField:
+    value: 
+  <WasteBucketCarrierId>k__BackingField:
+    value: 
+  <DepartureFeedback>k__BackingField:
+    value: 
+  <BuildFeedback>k__BackingField:
+    value: 
+  facilities: []
+  facilityAccess: []
+  facilityInventories: []
+  facilityConditions: []
+  worldItemPlacements: []
+--- !u!1660057539 &9223372036854775807
+SceneRoots:
+  m_ObjectHideFlags: 0
+  m_Roots:
+  - {fileID: 160187523}

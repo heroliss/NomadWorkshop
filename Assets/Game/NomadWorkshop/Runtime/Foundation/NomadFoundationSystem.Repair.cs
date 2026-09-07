@@ -11,8 +11,6 @@ namespace Game.NomadWorkshop.Foundation
     /// </summary>
     public sealed partial class NomadFoundationSystem
     {
-        private PlacementRegionUseLease _activeRepairPartUse;
-        private string _activeRepairTargetFacilityInstanceId = string.Empty;
 
         private void AddPrimaryWaterTankRepairDecisionOption(
             ICollection<FoundationResidentDecisionOption> options,
@@ -31,16 +29,14 @@ namespace Game.NomadWorkshop.Foundation
                 out _,
                 out _);
             bool urgent = !hasStockedDrinkingStation &&
-                          _residentWaterCycle.Thirst >=
+                          _resident.WaterCycle.Thirst >=
                           _residentDecisionPolicy.UrgentNeedDeficit;
             ResidentDecisionRiskTier riskTier = urgent
                 ? ResidentDecisionRiskTier.Urgent
                 : ResidentDecisionRiskTier.Routine;
-            float riskPriority = urgent ? _residentWaterCycle.Thirst : 0f;
+            float riskPriority = urgent ? _resident.WaterCycle.Thirst : 0f;
 
-            if (!_worldItemPlacementLedger.TryGetPlacement(
-                    WaterValveRepairKitItemId,
-                    out PlacementRegionItem repairKit))
+            if (!TrySelectRepairKit(waterTank, out PlacementRegionItem repairKit))
             {
                 AddBlockedRepairOption(
                     options,
@@ -77,7 +73,7 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            Vector3 start = ToNavigationPoint(_model.ResidentLocalPosition.Value);
+            Vector3 start = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
             if (!TrySelectBestInteractionSlot(
                     start,
                     supplyFacility,
@@ -116,7 +112,7 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             var proposal = new ResidentActionPlanProposal(
-                $"repair-water-tank:{_residentActionSequence + 1}",
+                $"repair-water-tank:{_resident.StableId}:{_resident.ActionSequence + 1}",
                 "repair-water-tank",
                 "拿取维修包并修复车辆水箱出水阀")
             {
@@ -138,7 +134,7 @@ namespace Game.NomadWorkshop.Foundation
                 DependencyValue = urgent ? 0.42f : 0.24f,
                 RiskTier = riskTier,
                 RiskPriority = riskPriority,
-                DelayUrgency = urgent ? _residentWaterCycle.Thirst : 0.22f,
+                DelayUrgency = urgent ? _resident.WaterCycle.Thirst : 0.22f,
                 Effort = 0.38f,
                 WorkIntensity = 0.55f,
                 ResourceCost = 0.08f,
@@ -162,6 +158,32 @@ namespace Game.NomadWorkshop.Foundation
             });
         }
 
+        private bool TrySelectRepairKit(in FoundationFacilityState waterTank, out PlacementRegionItem selected)
+        {
+            selected = null;
+            PlacementRegionItem fallback = null;
+            float best = float.PositiveInfinity;
+            foreach (var item in _worldItemPlacementLedger.CreateStableSnapshot())
+            {
+                if (item.Footprint.DefinitionId != WaterValveRepairKitDefinitionId ||
+                    !TryFindFacilityState(item.Region.OwnerEntityId, out var facility) ||
+                    !_definitions.TryGetValue(facility.DefinitionId, out var definition)) continue;
+                if (fallback == null || string.CompareOrdinal(item.ItemId, fallback.ItemId) < 0) fallback = item;
+                if (!TrySelectBestInteractionSlot(ToNavigationPoint(_resident.State.ResidentLocalPosition.Value), facility, definition,
+                        out var point, out _, out _, out float approach, out _, MaintenanceSupplyInteractionGroupId) ||
+                    !TryMeasureFacilityPath(point, waterTank, _definitions[waterTank.DefinitionId],
+                        out float work, ServiceValveInteractionGroupId)) continue;
+                float travel = approach + work;
+                if (travel > best || travel == best && selected != null &&
+                    string.CompareOrdinal(item.ItemId, selected.ItemId) >= 0) continue;
+                best = travel;
+                selected = item;
+            }
+            // 有物资却不可达时仍交给原方案生成精确的路径阻塞，不能冒充已耗尽。
+            selected ??= fallback;
+            return selected != null;
+        }
+
         private void AddBlockedRepairOption(
             ICollection<FoundationResidentDecisionOption> options,
             in FoundationFacilityState waterTank,
@@ -171,7 +193,7 @@ namespace Game.NomadWorkshop.Foundation
             float riskPriority)
         {
             var proposal = new ResidentActionPlanProposal(
-                $"repair-water-tank:{_residentActionSequence + 1}:blocked",
+                $"repair-water-tank:{_resident.StableId}:{_resident.ActionSequence + 1}:blocked",
                 "repair-water-tank",
                 "修复车辆水箱出水阀")
             {
@@ -216,7 +238,7 @@ namespace Game.NomadWorkshop.Foundation
                     out PlacementRegionUseLease use,
                     out PlacementRegionFailure failure))
             {
-                _model.LastBlocker.Value =
+                _resident.State.LastBlocker.Value =
                     $"{failure} · 维修包在方案提交前已被占用或移走";
                 SetResidentPhase(
                     FoundationResidentPhase.Idle,
@@ -224,10 +246,10 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _activeRepairPartUse = use;
-            _activeRepairTargetFacilityInstanceId = option.TargetFacility.InstanceId;
-            _residentActionSequence++;
-            _model.LastBlocker.Value = string.Empty;
+            _resident.ActiveRepairPartUse = use;
+            _resident.ActiveRepairTargetFacilityInstanceId = option.TargetFacility.InstanceId;
+            _resident.ActionSequence++;
+            _resident.State.LastBlocker.Value = string.Empty;
             TryBeginMove(
                 FoundationResidentPhase.MovingToRepairPart,
                 "统一 Utility 已选择维修：先前往维护托盘拿取实体备件",
@@ -239,8 +261,8 @@ namespace Game.NomadWorkshop.Foundation
         private void CompleteRepairPartPickup()
         {
             PlacementRegionFailure failure = PlacementRegionFailure.InvalidRequest;
-            if (_activeRepairPartUse == null ||
-                !_activeRepairPartUse.TryPickUp(out failure))
+            if (_resident.ActiveRepairPartUse == null ||
+                !_resident.ActiveRepairPartUse.TryPickUp(out failure))
             {
                 Block(
                     $"维修包拿取事务已经失效：{failure}",
@@ -248,13 +270,13 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            PlacementRegionItem source = _activeRepairPartUse.Source;
-            _model.ResidentCarriedWorldItem.Value = new FoundationCarriedWorldItemState(
+            PlacementRegionItem source = _resident.ActiveRepairPartUse.Source;
+            _resident.State.ResidentCarriedWorldItem.Value = new FoundationCarriedWorldItemState(
                 source.ItemId,
                 source.Footprint.DefinitionId);
             PublishWorldItemPlacements();
             if (!TryFindFacilityState(
-                    _activeRepairTargetFacilityInstanceId,
+                    _resident.ActiveRepairTargetFacilityInstanceId,
                     out FoundationFacilityState target) ||
                 !_facilityConditions.TryGetValue(
                     target.InstanceId,
@@ -266,7 +288,7 @@ namespace Game.NomadWorkshop.Foundation
                 SetResidentPhase(
                     FoundationResidentPhase.Idle,
                     "水箱维修目标已经失效，维修包已放回原位");
-                _residentDecisionRetryRemaining = 0f;
+                _resident.DecisionRetryRemaining = 0f;
                 return;
             }
 
@@ -280,10 +302,10 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompletePrimaryWaterTankRepair()
         {
-            if (_activeRepairPartUse == null ||
-                _activeRepairPartUse.State != PlacementRegionUseState.Carrying ||
+            if (_resident.ActiveRepairPartUse == null ||
+                _resident.ActiveRepairPartUse.State != PlacementRegionUseState.Carrying ||
                 !_facilityConditions.TryGetValue(
-                    _activeRepairTargetFacilityInstanceId,
+                    _resident.ActiveRepairTargetFacilityInstanceId,
                     out FacilityConditionCycle condition) ||
                 condition.ActiveFault != FacilityFaultKind.OutletValveJammed)
             {
@@ -292,48 +314,32 @@ namespace Game.NomadWorkshop.Foundation
                 SetResidentPhase(
                     FoundationResidentPhase.Idle,
                     "维修提交条件已经变化，维修包已安全回滚");
-                _residentDecisionRetryRemaining = 0f;
+                _resident.DecisionRetryRemaining = 0f;
                 return;
             }
 
             SettleCondition(condition, NomadFacilityFunction.VehicleWaterTank);
-            if (!_activeRepairPartUse.TryConsume(out PlacementRegionFailure failure))
+            if (!_resident.ActiveRepairPartUse.TryConsume(out PlacementRegionFailure failure))
                 throw new InvalidOperationException(
                     $"水箱维修已到提交点，但维修包消耗事务失效：{failure}。");
-            _activeRepairPartUse = null;
+            _resident.ActiveRepairPartUse = null;
             if (!condition.Repair())
                 throw new InvalidOperationException(
                     "水箱维修包已经提交，但设施故障状态未能修复。");
 
-            _activeRepairTargetFacilityInstanceId = string.Empty;
-            _model.ResidentCarriedWorldItem.Value = default;
+            _resident.ActiveRepairTargetFacilityInstanceId = string.Empty;
+            _resident.State.ResidentCarriedWorldItem.Value = default;
             PublishWorldItemPlacements();
             WriteFacilityConditionProjection();
-            _model.CompletedWaterTankRepairCount.Value++;
-            _model.LastBlocker.Value = string.Empty;
-            _lastPublishedDecisionDiagnostic = string.Empty;
+            _resident.State.CompletedWaterTankRepairCount.Value++;
+            _resident.State.LastBlocker.Value = string.Empty;
+            _resident.LastPublishedDecisionDiagnostic = string.Empty;
             ReleaseActiveInteractionSpace(publishProjection: true);
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "已消耗一份维修包并完成水箱出水阀维修");
-            _residentDecisionRetryRemaining = 0f;
+            _resident.DecisionRetryRemaining = 0f;
         }
 
-        private void CancelActiveFacilityRepair()
-        {
-            if (_activeRepairPartUse != null)
-            {
-                _activeRepairPartUse.Dispose();
-                _activeRepairPartUse = null;
-                if (_model != null &&
-                    string.Equals(
-                        _model.ResidentCarriedWorldItem.Value.ItemId,
-                        WaterValveRepairKitItemId,
-                        StringComparison.Ordinal))
-                    _model.ResidentCarriedWorldItem.Value = default;
-                PublishWorldItemPlacements();
-            }
-            _activeRepairTargetFacilityInstanceId = string.Empty;
-        }
     }
 }

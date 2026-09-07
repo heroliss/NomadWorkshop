@@ -25,6 +25,7 @@ namespace Game.NomadWorkshop.Editor
             "Assets/Game/NomadWorkshop/Foundation/Definitions";
         public const string DeckLayoutPath = DefinitionRoot + "/NW_DeckLayout.asset";
         public const string VehicleWaterTankPath = DefinitionRoot + "/NW_Facility_VehicleWaterTank.asset";
+        public const string DriverStationPath = DefinitionRoot + "/NW_Facility_DriverStation.asset";
         public const string DrinkingStationPath = DefinitionRoot + "/NW_Facility_DrinkingStation.asset";
         public const string FieldKitchenPath = DefinitionRoot + "/NW_Facility_FieldKitchen.asset";
         public const string ToiletPath = DefinitionRoot + "/NW_Facility_Toilet.asset";
@@ -61,6 +62,7 @@ namespace Game.NomadWorkshop.Editor
                 RequireAsset<NomadFacilityDefinition>(FieldKitchenPath),
                 RequireAsset<NomadFacilityDefinition>(ToiletPath),
                 RequireAsset<NomadFacilityDefinition>(ObservationEaselPath),
+                RequireAsset<NomadFacilityDefinition>(DriverStationPath),
             };
             NomadWorldItemDefinition[] itemDefinitions =
             {
@@ -186,6 +188,14 @@ namespace Game.NomadWorkshop.Editor
                 0f,
                 new Vector3(0.78f, 0.9f, 0.65f),
                 new Color(0.12f, 0.72f, 0.86f));
+            ConfigureDefinition(
+                DriverStationPath, "driver-station", "驾驶台", NomadFacilityFunction.DriverStation,
+                buildable: false,
+                new[] { new NomadFacilityFootprintPartDefinition(Vector2.zero, new Vector2(1.1f, 0.7f)) },
+                RequiredGroup("drive", new NomadFacilityInteractionSlotDefinition(
+                    "seat", new Vector2(0f, -0.85f))),
+                placeAtStart: true, new Vector2(3.8f, 3.4f), 0f,
+                new Vector3(1f, 0.9f, 0.65f), new Color(0.87f, 0.64f, 0.2f));
             ConfigureDefinition(
                 FieldKitchenPath,
                 "field-kitchen",
@@ -327,14 +337,15 @@ namespace Game.NomadWorkshop.Editor
             Color prototypeColor)
         {
             NomadFacilityDefinition definition = LoadOrCreate<NomadFacilityDefinition>(path);
+            NomadPlacementRegionDefinition[] regions = CreatePlacementRegions(function);
             definition.ConfigureForEditor(
                 id,
                 displayName,
                 function,
                 buildable,
                 footprintParts,
-                interactionGroups,
-                CreatePlacementRegions(function),
+                NomadWaterCanHandlingPipeline.WithAccessGroup(function, interactionGroups, regions),
+                regions,
                 placeAtStart,
                 startPositionMeters,
                 startYawDegrees,

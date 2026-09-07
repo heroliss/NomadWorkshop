@@ -87,8 +87,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                     systemSerialized.FindProperty("deckLayout").objectReferenceValue,
                     viewSerialized.FindProperty("deckLayout").objectReferenceValue,
                     "逻辑与表现必须引用同一份甲板布局，避免边界与可选网格漂移。");
-                Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
-                Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(5));
+                Assert.That(systemSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(6));
+                Assert.That(viewSerialized.FindProperty("facilityDefinitions").arraySize, Is.EqualTo(6));
                 Assert.That(systemSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(3));
                 Assert.That(viewSerialized.FindProperty("worldItemDefinitions").arraySize, Is.EqualTo(3));
                 Assert.That(
@@ -149,7 +149,8 @@ namespace Game.NomadWorkshop.Editor.Tests
                 var waterTank = AssetDatabase.LoadAssetAtPath<NomadFacilityDefinition>(
                     NomadFoundationVerticalSlicePipeline.VehicleWaterTankPath);
                 Assert.That(waterTank, Is.Not.Null);
-                Assert.That(waterTank.InteractionGroups.Count, Is.EqualTo(3));
+                Assert.That(waterTank.InteractionGroups.Count, Is.EqualTo(4),
+                    "拿取水罐需要独立的侧面工作组，不能复用正面的装水位。");
                 Assert.That(
                     waterTank.TryGetPlacementRegion("maintenance-tray", out var maintenanceTray),
                     Is.True,

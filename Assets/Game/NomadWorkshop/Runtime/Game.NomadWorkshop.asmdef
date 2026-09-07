@@ -4,6 +4,7 @@
     "references": [
         "Game.NomadWorkshop.Simulation",
         "Game.Framework",
+        "Game.Framework.UI",
         "R3.Unity",
         "UniTask",
         "Unity.AI.Navigation",
@@ -14,7 +15,8 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "R3.dll"
+        "R3.dll",
+        "ObservableCollections.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [],

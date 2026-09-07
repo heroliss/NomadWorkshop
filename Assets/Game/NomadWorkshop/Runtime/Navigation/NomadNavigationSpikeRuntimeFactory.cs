@@ -91,6 +91,7 @@ namespace Game.NomadWorkshop.Navigation
 
             NavMeshAgent agentA = CreateAgent(
                 presentation.transform,
+                surface.agentTypeID,
                 "Resident A · Orange",
                 new Vector3(-6f, 0f, -1.9f),
                 new Color(1f, 0.5f, 0.12f),
@@ -99,6 +100,7 @@ namespace Game.NomadWorkshop.Navigation
                 out GameObject cargoA);
             NavMeshAgent agentB = CreateAgent(
                 presentation.transform,
+                surface.agentTypeID,
                 "Resident B · Blue",
                 new Vector3(6f, 0f, -2.5f),
                 new Color(0.12f, 0.65f, 1f),
@@ -144,6 +146,7 @@ namespace Game.NomadWorkshop.Navigation
 
         private static NavMeshAgent CreateAgent(
             Transform parent,
+            int agentTypeId,
             string name,
             Vector3 position,
             Color color,
@@ -157,6 +160,8 @@ namespace Game.NomadWorkshop.Navigation
             // 组合根启用时 NavMesh 尚未由 System 建立；由 DeckNavigationUtility.TryWarp
             // 在构建和目标采样成功后启用，避免产生“没有有效 NavMesh”的误导性警告。
             agent.enabled = false;
+            // 新建 Agent 的默认类型受项目状态影响，必须与本次烘焙 Surface 显式一致。
+            agent.agentTypeID = agentTypeId;
             agent.radius = 0.34f;
             agent.height = 1.7f;
             agent.baseOffset = 0f;

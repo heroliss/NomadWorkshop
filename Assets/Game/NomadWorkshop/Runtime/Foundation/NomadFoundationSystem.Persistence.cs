@@ -10,13 +10,17 @@ namespace Game.NomadWorkshop.Foundation
 {
     public sealed partial class NomadFoundationSystem
     {
-        private const string ResidentStableId = "resident-01";
-        private const string ResidentPersonalInventoryId = "resident-01:personal";
-        private const string ResidentBodyWaterInventoryId = "resident-01:body-water";
-        private const string ResidentBladderInventoryId = "resident-01:bladder";
+        private string ResidentStableId => _resident.StableId;
+        private static NomadJourneySnapshot ResolveCheckpointJourney(NomadVehicleSaveData vehicle) =>
+            vehicle.Journey is { IsEmpty: false }
+                ? vehicle.Journey.ToValidatedSnapshot()
+                : new NomadJourneySnapshot(FoundationRoute, 0L, InitialJourneyFuelPicoliters,
+                    NomadJourneyEndpoint.None);
+        private string ResidentPersonalInventoryId => _resident.State.PersonalInventoryId;
+        private string ResidentBodyWaterInventoryId => _resident.State.BodyWaterInventoryId;
+        private string ResidentBladderInventoryId => _resident.State.BladderInventoryId;
         private const string VehicleWaterInventoryId = "vehicle-water-tank";
         private const string WaterCanInventoryId = "water-can-01";
-        private const string ToiletHoldingInventoryId = "toilet-holding";
         private const string ResidentDecisionRandomStreamId = "resident-decision";
         private const string LeisureOutcomeRandomStreamId =
             "resident-wellbeing:leisure-outcome";
@@ -39,7 +43,7 @@ namespace Game.NomadWorkshop.Foundation
             int liveVehicleWater = _vehicleWater.GetAmount(NomadResourceIds.Water);
             int liveWaterCanWater = _waterCan.GetAmount(NomadResourceIds.Water);
             bool rewindCarriedWater = _waterCanLocation == FoundationWaterCanLocation.Resident;
-            int checkpointVehicleWater = rewindCarriedWater
+            int checkpointVehicleWater = rewindCarriedWater && FindStopVisitor(FoundationStopVisitKind.WaterCollection) == null
                 ? checked(liveVehicleWater + liveWaterCanWater)
                 : liveVehicleWater;
             if (checkpointVehicleWater > _vehicleWater.Capacity)
@@ -72,7 +76,11 @@ namespace Game.NomadWorkshop.Foundation
             {
                 WorldSeed = worldSeed,
                 SimulationTick = _simulationClock.SimulationTick,
-                Vehicle = new NomadVehicleSaveData(),
+                Stop = CaptureStopWater(),
+                Vehicle = new NomadVehicleSaveData
+                {
+                    Journey = NomadJourneySaveData.FromSnapshot(_journey.Capture()),
+                },
             };
 
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
@@ -126,22 +134,24 @@ namespace Game.NomadWorkshop.Foundation
             waterCanSave.PlacementLocalPose =
                 QuantizedPlacementPose.FromPlacementPose(waterCanLocalPose);
             data.Inventories.Add(waterCanSave);
-            data.Inventories.Add(CreateInventorySaveData(
-                _toiletHolding,
-                "vehicle-01"));
-            data.Inventories.Add(new NomadInventorySaveData
+            foreach (var resident in _residents)
             {
-                InventoryId = ResidentPersonalInventoryId,
-                OwnerEntityId = ResidentStableId,
-                Measure = ResourceMeasure.Item,
-                CapacityBaseUnits = 2,
-            });
-            data.Inventories.Add(CreateInventorySaveData(
-                _residentWaterCycle.BodyWater,
-                ResidentStableId));
-            data.Inventories.Add(CreateInventorySaveData(
-                _residentWaterCycle.Bladder,
-                ResidentStableId));
+                using var scope = UseResident(resident);
+                data.Inventories.Add(new NomadInventorySaveData
+                {
+                    InventoryId = ResidentPersonalInventoryId,
+                    OwnerEntityId = ResidentStableId,
+                    Measure = ResourceMeasure.Item,
+                    CapacityBaseUnits = 2,
+                });
+                data.Inventories.Add(CreateInventorySaveData(
+                    _resident.WaterCycle.BodyWater,
+                    ResidentStableId));
+                data.Inventories.Add(CreateInventorySaveData(
+                    _resident.WaterCycle.Bladder,
+                    ResidentStableId));
+
+            }
 
             for (var i = 0; i < facilities.Count; i++)
             {
@@ -150,44 +160,52 @@ namespace Game.NomadWorkshop.Foundation
                         facility.InstanceId,
                         out ResourceInventory inventory))
                     data.Inventories.Add(CreateInventorySaveData(inventory, facility.InstanceId));
+                if (_toiletInventories.TryGetValue(facility.InstanceId, out ResourceInventory toilet))
+                    data.Inventories.Add(CreateInventorySaveData(toilet, facility.InstanceId));
             }
 
-            ResidentWaterCycleCheckpoint waterCycle = _residentWaterCycle.CaptureCheckpoint();
-            data.Residents.Add(new NomadResidentSaveData
+            foreach (var resident in _residents)
             {
-                ResidentId = ResidentStableId,
-                Pose = QuantizedDeckPose.FromDeckPose(deckLayout.LocalToPose(
-                    _model.ResidentLocalPosition.Value,
-                    _model.ResidentLocalYawDegrees.Value)),
-                PersonalInventoryId = ResidentPersonalInventoryId,
-                ThirstPermille = ToPermille(waterCycle.Thirst),
-                HealthPermille = ToPermille(_residentWellbeing.Health),
-                FatiguePermille = ToPermille(_residentWellbeing.Fatigue),
-                StressPermille = ToPermille(_residentWellbeing.Stress),
-                EntertainmentPermille = ToPermille(_residentWellbeing.Entertainment),
-                MoodPermille = ToPermille(_residentWellbeing.Mood),
-                WaterMetabolismPendingNanoliters =
-                    waterCycle.PendingMetabolismNanoliters,
-                WaterMetabolismSequence = waterCycle.MetabolismSequence,
-                // 当前执行器的路径、租约和定时表现均可重建；不保存半个行动，避免重复提交结果。
-                ActiveAction = null,
-            });
+                using var scope = UseResident(resident);
+                ResidentWaterCycleCheckpoint waterCycle = _resident.WaterCycle.CaptureCheckpoint();
+                data.Residents.Add(new NomadResidentSaveData
+                {
+                    ResidentId = ResidentStableId,
+                    Pose = QuantizedDeckPose.FromDeckPose(_resident.StopVisit?.CheckpointPose ??
+                        (!IsResidentAboard ? _resident.LastDeckCheckpointPose : null) ?? deckLayout.LocalToPose(
+                        _resident.State.ResidentLocalPosition.Value,
+                        _resident.State.ResidentLocalYawDegrees.Value)),
+                    PersonalInventoryId = ResidentPersonalInventoryId,
+                    ThirstPermille = ToPermille(waterCycle.Thirst),
+                    HealthPermille = ToPermille(_resident.Wellbeing.Health),
+                    FatiguePermille = ToPermille(_resident.Wellbeing.Fatigue),
+                    StressPermille = ToPermille(_resident.Wellbeing.Stress),
+                    EntertainmentPermille = ToPermille(_resident.Wellbeing.Entertainment),
+                    MoodPermille = ToPermille(_resident.Wellbeing.Mood),
+                    WaterMetabolismPendingNanoliters =
+                        waterCycle.PendingMetabolismNanoliters,
+                    WaterMetabolismSequence = waterCycle.MetabolismSequence,
+                    // 当前执行器的路径、租约和定时表现均可重建；不保存半个行动，避免重复提交结果。
+                    ActiveAction = null,
+                });
 
-            data.RandomStreams.Add(CreateRandomStream(
-                ResidentDecisionRandomStreamId,
-                _residentDecisionSequence));
-            data.RandomStreams.Add(CreateRandomStream(
-                BladderOpportunityRandomStreamId,
-                _bladderOpportunitySequence));
-            data.RandomStreams.Add(CreateRandomStream(
-                LeisureOutcomeRandomStreamId,
-                _leisureSequence));
-            data.RandomStreams.Add(CreateRandomStream(
-                WorkPaceRandomStreamId,
-                _workActionSequence));
-            data.RandomStreams.Add(CreateRandomStream(
-                ResidentActionSequenceStreamId,
-                (long)_residentActionSequence + 1L));
+                data.RandomStreams.Add(CreateRandomStream(
+                    ResidentDecisionRandomStreamId,
+                    _resident.DecisionSequence));
+                data.RandomStreams.Add(CreateRandomStream(
+                    BladderOpportunityRandomStreamId,
+                    _resident.BladderOpportunitySequence));
+                data.RandomStreams.Add(CreateRandomStream(
+                    LeisureOutcomeRandomStreamId,
+                    _resident.LeisureSequence));
+                data.RandomStreams.Add(CreateRandomStream(
+                    WorkPaceRandomStreamId,
+                    _resident.WorkActionSequence));
+                data.RandomStreams.Add(CreateRandomStream(
+                    ResidentActionSequenceStreamId,
+                    (long)_resident.ActionSequence + 1L));
+
+            }
 
             NomadWorkshopSaveContract.ValidateForSave(data);
             return data;
@@ -241,7 +259,8 @@ namespace Game.NomadWorkshop.Foundation
             IReadOnlyList<NomadWorldItemSaveData> savedItems,
             IReadOnlyList<NomadFacilitySaveData> facilities,
             IReadOnlyDictionary<string, NomadFacilityDefinition> facilityDefinitionsByInstance,
-            PlacementRegionLedger validationLedger)
+            PlacementRegionLedger validationLedger,
+            bool initializeStopSpares)
         {
             var result = new List<NomadWorldItemSaveData>(savedItems.Count + 1);
             var hasStarterCup = false;
@@ -257,7 +276,7 @@ namespace Game.NomadWorkshop.Foundation
                         out PlacementFootprint footprint))
                     throw new NotSupportedException(
                         $"世界物品 {item.ItemId} 使用当前版本不存在的定义 {item.DefinitionId}。");
-                if (!facilityDefinitionsByInstance.ContainsKey(item.OwnerEntityId))
+                if (!facilityDefinitionsByInstance.ContainsKey(item.OwnerEntityId) && item.OwnerEntityId != StopSupplyOwnerId)
                     throw new InvalidOperationException(
                         $"世界物品 {item.ItemId} 的支撑设施 {item.OwnerEntityId} 不存在。");
                 if (string.Equals(item.ItemId, StarterCupItemId, StringComparison.Ordinal))
@@ -282,6 +301,8 @@ namespace Game.NomadWorkshop.Foundation
                         $"世界物品 {item.ItemId} 的区域姿态无效：{failure}。");
                 result.Add(item);
             }
+
+            if (initializeStopSpares) AddInitialStopSpares(validationLedger, result);
 
             if (!hasStarterCup && TryFindStarterCupSurface(
                     facilities,
@@ -346,8 +367,12 @@ namespace Game.NomadWorkshop.Foundation
         /// 从已校验检查点重建设施、NavMesh、交互空间、真实库存和连续居民状态。
         /// 进行中的建造导航事务不能同步打断；调用方应等待事务回到 Idle 后再加载。
         /// </summary>
-        public void RestoreCheckpoint(NomadWorkshopSaveData checkpoint)
+        public void RestoreCheckpoint(NomadWorkshopSaveData checkpoint) => RestoreCheckpoint(checkpoint, null);
+
+        internal void RestoreCheckpoint(NomadWorkshopSaveData checkpoint, CheckpointOperation operation)
         {
+            if (operation == null) RevokeCheckpointOperation(publish: true);
+            else RequireCheckpointOperation(operation);
             EnsureCheckpointRuntimeReady();
             if (_model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle)
                 throw new InvalidOperationException(
@@ -363,7 +388,7 @@ namespace Game.NomadWorkshop.Foundation
             float simulationSpeed = _model.SimulationSpeed.Value;
             try
             {
-                RestoreValidatedCheckpoint(data, restore, wasPaused, simulationSpeed);
+                RestoreValidatedCheckpoint(data, restore, wasPaused, simulationSpeed, operation);
             }
             catch (Exception restoreException)
             {
@@ -373,7 +398,8 @@ namespace Game.NomadWorkshop.Foundation
                         rollbackCheckpoint,
                         rollback,
                         wasPaused,
-                        simulationSpeed);
+                        simulationSpeed,
+                        operation);
                 }
                 catch (Exception rollbackException)
                 {
@@ -393,9 +419,11 @@ namespace Game.NomadWorkshop.Foundation
             NomadWorkshopSaveData data,
             FoundationRestoreData restore,
             bool wasPaused,
-            float simulationSpeed)
+            float simulationSpeed,
+            CheckpointOperation operation)
         {
-            ResetScenarioNow();
+            initialResidentCount = restore.Residents.Count;
+            ResetScenarioNow(operation);
             _initialized = false;
             _model.IsReady.Value = false;
 
@@ -409,9 +437,11 @@ namespace Game.NomadWorkshop.Foundation
             _facilityConditions.Clear();
             _committedFacilityAccess.Clear();
             _drinkingStationInventories.Clear();
+            _toiletInventories.Clear();
             _facilityInventoryProjection.Clear();
             _placementLedger = deckLayout.CreatePlacementLedger();
             _worldItemPlacementLedger = new PlacementRegionLedger();
+            RegisterStopSupplyRegion(_worldItemPlacementLedger);
             _waterCanPlacement = null;
 
             var restoredFacilities = new List<FoundationFacilityState>(data.Facilities.Count);
@@ -456,20 +486,25 @@ namespace Game.NomadWorkshop.Foundation
             RestorePlacedWorldItems(restore.WorldItems);
 
             _navigation.BuildNow();
-            Vector3 requestedResidentPosition = ToNavigationPoint(
-                deckLayout.PoseToLocal(restore.Resident.Pose.ToDeckPose()));
-            if (!_navigation.TrySampleLocalPosition(
-                    requestedResidentPosition,
-                    MaximumTravelSampleOffset,
-                    out Vector3 sampledResidentPosition) ||
-                HorizontalDistance(requestedResidentPosition, sampledResidentPosition) >
-                MaximumTravelSampleOffset ||
-                !IsResidentPoseClear(deckLayout.LocalToPose(sampledResidentPosition)))
-                throw new InvalidOperationException(
-                    $"检查点居民位置 {restore.Resident.Pose.XMillimeters}, " +
-                    $"{restore.Resident.Pose.ZMillimeters} mm 已不在可站立甲板上。");
-            _model.ResidentLocalPosition.Value = ToNavigationPoint(sampledResidentPosition);
-            _model.ResidentLocalYawDegrees.Value = restore.Resident.Pose.YawDegrees;
+            foreach (var personal in restore.Residents)
+            {
+                using var scope = UseResident(FindResident(personal.Resident.ResidentId));
+                Vector3 requestedResidentPosition = ToNavigationPoint(
+                    deckLayout.PoseToLocal(personal.Resident.Pose.ToDeckPose()));
+                if (!_navigation.TrySampleLocalPosition(
+                        requestedResidentPosition,
+                        MaximumTravelSampleOffset,
+                        out Vector3 sampledResidentPosition) ||
+                    HorizontalDistance(requestedResidentPosition, sampledResidentPosition) >
+                    MaximumTravelSampleOffset ||
+                    !IsResidentPoseClear(deckLayout.LocalToPose(sampledResidentPosition)))
+                    throw new InvalidOperationException(
+                        $"检查点居民位置 {personal.Resident.Pose.XMillimeters}, " +
+                        $"{personal.Resident.Pose.ZMillimeters} mm 已不在可站立甲板上。");
+                _resident.State.ResidentLocalPosition.Value = ToNavigationPoint(sampledResidentPosition);
+                _resident.State.ResidentLocalYawDegrees.Value = personal.Resident.Pose.YawDegrees;
+
+            }
 
             RebuildCommittedInteractionSpaces(reacquireActiveSpace: false);
             RefreshCommittedFacilityAccess();
@@ -500,14 +535,13 @@ namespace Game.NomadWorkshop.Foundation
                 restore.WaterCan,
                 NomadResourceIds.Water,
                 waterCanAmount);
-            _toiletHolding = CreateSingleResourceInventory(
-                restore.ToiletHolding,
-                NomadResourceIds.HumanWaste,
-                restore.ToiletHoldingAmount);
 
             for (var i = 0; i < restoredFacilities.Count; i++)
             {
                 FoundationFacilityState facility = restoredFacilities[i];
+                if (restore.ToiletInventories.TryGetValue(facility.InstanceId, out var toilet))
+                    _toiletInventories.Add(facility.InstanceId, CreateSingleResourceInventory(
+                        toilet, NomadResourceIds.HumanWaste, GetSingleResourceAmount(toilet, NomadResourceIds.HumanWaste)));
                 if (!_definitions.TryGetValue(
                         facility.DefinitionId,
                         out NomadFacilityDefinition definition) ||
@@ -522,102 +556,109 @@ namespace Game.NomadWorkshop.Foundation
                         GetSingleResourceAmount(station, NomadResourceIds.Water)));
             }
 
-            _residentWaterCycle = new ResidentWaterCycle(
-                ResidentStableId,
-                ResidentOwnerId,
-                ResidentWaterCycle.DefaultDrinkServingMilliliters /
-                Mathf.Max(0.01f, drinkMetabolismSeconds),
-                drinkServingMilliliters: ResidentWaterCycle.DefaultDrinkServingMilliliters,
-                initialThirst: restore.Resident.ThirstPermille / 1000f,
-                thirstIncreasePerSecond: thirstIncreasePerSecond,
-                thirstReliefPerServing: 0.72f,
-                bodyWaterCapacityMilliliters: restore.BodyWater.CapacityBaseUnits,
-                bladderCapacityMilliliters: restore.Bladder.CapacityBaseUnits,
-                checkpoint: new ResidentWaterCycleCheckpoint(
-                    restore.Resident.ThirstPermille / 1000f,
-                    restore.BodyWaterAmount,
-                    restore.BladderAmount,
-                    restore.Resident.WaterMetabolismPendingNanoliters,
-                    restore.Resident.WaterMetabolismSequence));
-            _residentWellbeing = new ResidentWellbeing(
-                restore.Resident.EntertainmentPermille / 1000f,
-                restore.Resident.MoodPermille / 1000f,
-                restore.Resident.FatiguePermille / 1000f,
-                restore.Resident.StressPermille / 1000f,
-                restore.Resident.HealthPermille / 1000f);
-
             worldSeed = data.WorldSeed;
             _simulationClock.Restore(data.SimulationTick);
-            _residentDecisionSequence = GetRandomStreamCursor(
-                data,
-                ResidentDecisionRandomStreamId,
-                fallback: 1L);
-            _bladderOpportunitySequence = GetRandomStreamCursor(
-                data,
-                BladderOpportunityRandomStreamId,
-                fallback: 0L);
-            _leisureSequence = ToIntCursor(GetRandomStreamCursor(
-                data,
-                LeisureOutcomeRandomStreamId,
-                fallback: 0L), LeisureOutcomeRandomStreamId);
-            _workActionSequence = GetRandomStreamCursor(
-                data,
-                WorkPaceRandomStreamId,
-                fallback: 0L);
-            long nextActionSequence = GetRandomStreamCursor(
-                data,
-                ResidentActionSequenceStreamId,
-                fallback: 1L);
-            _residentActionSequence = Math.Max(
-                0,
-                ToIntCursor(nextActionSequence, ResidentActionSequenceStreamId) - 1);
-            _nextFacilitySequence = FindNextFacilitySequence(restoredFacilities);
-            _lastPublishedDecisionDiagnostic = string.Empty;
-            _routeRetryRemaining = 0f;
-            _residentDecisionRetryRemaining = 0f;
-            _phaseDuration = 0f;
-            _phaseRemaining = 0f;
-            _activeWorkEfficiency = CalculateExpectedWorkEfficiency();
-            _activeLeisureOutcomeScale = 1f;
-            _activeLeisureKind = FoundationLeisureKind.None;
-            _activeWaterSourceFacilityInstanceId = string.Empty;
-            _activeWaterTargetFacilityInstanceId = string.Empty;
-            _waterCanPickupWasAtSource = false;
-            _drinkAfterActiveHaul = false;
-
+            _journey.Restore(ResolveCheckpointJourney(data.Vehicle));
+            RestoreStopWater(data.Stop);
             _model.SimulationSpeed.Value = Mathf.Clamp(simulationSpeed, 0.25f, 16f);
             _model.IsPaused.Value = wasPaused;
             _model.WaterCanCapacityMilliliters.Value = _waterCan.Capacity;
             _model.VehicleWaterCapacityMilliliters.Value = _vehicleWater.Capacity;
-            _model.BodyWaterCapacityMilliliters.Value = _residentWaterCycle.BodyWater.Capacity;
-            _model.BladderCapacityMilliliters.Value = _residentWaterCycle.Bladder.Capacity;
-            _model.ToiletHoldingCapacityMilliliters.Value = _toiletHolding.Capacity;
-            _model.LatestActionPlan.Value = FoundationActionPlanProjection.None;
-            _model.ResidentCarriedWorldItem.Value = default;
-            _model.ActionProgress.Value = 0f;
-            _model.LastBlocker.Value = string.Empty;
-            _model.CompletedDrinkCount.Value = 0;
-            _model.CompletedToiletUseCount.Value = 0;
-            _model.CompletedLeisureCount.Value = 0;
-            _model.CompletedDaydreamCount.Value = 0;
-            _model.CompletedWanderCount.Value = 0;
-            _model.CompletedGroundRestCount.Value = 0;
-            _model.CompletedHobbyCount.Value = 0;
-            _model.CompletedWorldItemMoveCount.Value = 0;
-            _model.CompletedWaterTankRepairCount.Value = 0;
+            _nextFacilitySequence = FindNextFacilitySequence(restoredFacilities);
+            _model.BuildFeedback.Value = string.Empty;
+            foreach (var personal in restore.Residents)
+            {
+                using var scope = UseResident(FindResident(personal.Resident.ResidentId));
+                _resident.WaterCycle = new ResidentWaterCycle(
+                    ResidentStableId,
+                    _resident.OwnerId,
+                    ResidentWaterCycle.DefaultDrinkServingMilliliters /
+                    Mathf.Max(0.01f, drinkMetabolismSeconds),
+                    drinkServingMilliliters: ResidentWaterCycle.DefaultDrinkServingMilliliters,
+                    initialThirst: personal.Resident.ThirstPermille / 1000f,
+                    thirstIncreasePerSecond: thirstIncreasePerSecond,
+                    thirstReliefPerServing: 0.72f,
+                    bodyWaterCapacityMilliliters: personal.BodyWater.CapacityBaseUnits,
+                    bladderCapacityMilliliters: personal.Bladder.CapacityBaseUnits,
+                    checkpoint: new ResidentWaterCycleCheckpoint(
+                        personal.Resident.ThirstPermille / 1000f,
+                        personal.BodyWaterAmount,
+                        personal.BladderAmount,
+                        personal.Resident.WaterMetabolismPendingNanoliters,
+                        personal.Resident.WaterMetabolismSequence));
+                _resident.Wellbeing = new ResidentWellbeing(
+                    personal.Resident.EntertainmentPermille / 1000f,
+                    personal.Resident.MoodPermille / 1000f,
+                    personal.Resident.FatiguePermille / 1000f,
+                    personal.Resident.StressPermille / 1000f,
+                    personal.Resident.HealthPermille / 1000f);
+
+                _resident.DecisionSequence = GetRandomStreamCursor(
+                    data,
+                    ResidentDecisionRandomStreamId,
+                    fallback: 1L);
+                _resident.BladderOpportunitySequence = GetRandomStreamCursor(
+                    data,
+                    BladderOpportunityRandomStreamId,
+                    fallback: 0L);
+                _resident.LeisureSequence = ToIntCursor(GetRandomStreamCursor(
+                    data,
+                    LeisureOutcomeRandomStreamId,
+                    fallback: 0L), LeisureOutcomeRandomStreamId);
+                _resident.WorkActionSequence = GetRandomStreamCursor(
+                    data,
+                    WorkPaceRandomStreamId,
+                    fallback: 0L);
+                long nextActionSequence = GetRandomStreamCursor(
+                    data,
+                    ResidentActionSequenceStreamId,
+                    fallback: 1L);
+                _resident.ActionSequence = Math.Max(
+                    0,
+                    ToIntCursor(nextActionSequence, ResidentActionSequenceStreamId) - 1);
+                _resident.LastPublishedDecisionDiagnostic = string.Empty;
+                _resident.RouteRetryRemaining = 0f;
+                _resident.DecisionRetryRemaining = 0f;
+                _resident.PhaseDuration = 0f;
+                _resident.PhaseRemaining = 0f;
+                _resident.WorkEfficiency = CalculateExpectedWorkEfficiency();
+                _resident.LeisureOutcomeScale = 1f;
+                _resident.LeisureKind = FoundationLeisureKind.None;
+                _resident.ActiveWaterSourceFacilityInstanceId = string.Empty;
+                _resident.ActiveWaterTargetFacilityInstanceId = string.Empty;
+                _resident.WaterCanContactPlacement = default;
+                _resident.DrinkAfterActiveHaul = false;
+
+                _resident.State.BodyWaterCapacityMilliliters.Value = _resident.WaterCycle.BodyWater.Capacity;
+                _resident.State.BladderCapacityMilliliters.Value = _resident.WaterCycle.Bladder.Capacity;
+                _resident.State.LatestActionPlan.Value = FoundationActionPlanProjection.None;
+                _resident.State.MovementStallMilliseconds.Value = 0L;
+                _resident.State.ResidentCarriedWorldItem.Value = default;
+                _resident.State.ActionProgress.Value = 0f;
+                _resident.State.LastBlocker.Value = string.Empty;
+                _resident.State.CompletedDrinkCount.Value = 0;
+                _resident.State.CompletedToiletUseCount.Value = 0;
+                _resident.State.CompletedLeisureCount.Value = 0;
+                _resident.State.CompletedDaydreamCount.Value = 0;
+                _resident.State.CompletedWanderCount.Value = 0;
+                _resident.State.CompletedGroundRestCount.Value = 0;
+                _resident.State.CompletedHobbyCount.Value = 0;
+                _resident.State.CompletedWorldItemMoveCount.Value = 0;
+                _resident.State.CompletedWaterTankRepairCount.Value = 0;
+                SetResidentPhase(
+                    _resident.Wellbeing.IsAlive
+                        ? FoundationResidentPhase.Idle
+                        : FoundationResidentPhase.Dead,
+                    _resident.Wellbeing.IsAlive
+                        ? "已恢复运行检查点；瞬时路径与租约已重建，正在重新评估行动"
+                        : "已恢复运行检查点；居民健康为零，保持死亡状态");
+            }
             SetWaterCanLocation(
                 waterCanLocation,
                 waterCanAnchor,
                 restore.WaterCanRegionId,
                 restore.WaterCanLocalPose);
             ClearPlacementSelection(exitBuildMode: true);
-            SetResidentPhase(
-                _residentWellbeing.IsAlive
-                    ? FoundationResidentPhase.Idle
-                    : FoundationResidentPhase.Dead,
-                _residentWellbeing.IsAlive
-                    ? "已恢复运行检查点；瞬时路径与租约已重建，正在重新评估行动"
-                    : "已恢复运行检查点；居民健康为零，保持死亡状态");
             WriteSimulationProjection();
 
             _initialized = true;
@@ -630,13 +671,13 @@ namespace Game.NomadWorkshop.Foundation
             if (data.Blueprints.Count > 0)
                 throw new NotSupportedException(
                     "当前 Foundation 还没有蓝图执行器，不能静默丢弃检查点中的未完成蓝图。");
-            if (data.Residents.Count != 1 ||
-                !string.Equals(
-                    data.Residents[0].ResidentId,
-                    ResidentStableId,
-                    StringComparison.Ordinal))
-                throw new NotSupportedException(
-                    $"当前 Foundation 只支持单居民 {ResidentStableId} 的运行检查点。");
+            if (data.Residents.Count < 1 || data.Residents.Count > 3)
+                throw new NotSupportedException("当前 Foundation 支持一至三名居民的检查点。");
+            var savedResidents = new Dictionary<string, NomadResidentSaveData>(StringComparer.Ordinal);
+            foreach (var savedResident in data.Residents) savedResidents.Add(savedResident.ResidentId, savedResident);
+            for (var index = 1; index <= savedResidents.Count; index++)
+                if (!savedResidents.ContainsKey($"resident-{index:00}"))
+                    throw new NotSupportedException("当前 Foundation 居民身份必须从 resident-01 连续编号，不能丢弃陌生居民。");
             if (data.Vehicle.MapXCentimeters != 0 ||
                 data.Vehicle.MapZCentimeters != 0 ||
                 !string.IsNullOrEmpty(data.Vehicle.CurrentRegionId) ||
@@ -645,22 +686,15 @@ namespace Game.NomadWorkshop.Foundation
                 data.Vehicle.FuelMilliUnits != 0 ||
                 data.Vehicle.IsTraveling)
                 throw new NotSupportedException(
-                    "当前甲板 Foundation 尚未接入宏观旅途执行器，不能静默丢弃车辆地图状态。");
-
-            NomadResidentSaveData resident = data.Residents[0];
-            if (resident.ActiveAction != null)
-                throw new NotSupportedException(
-                    "当前 Foundation 只恢复到最近的安全业务边界，尚不能从半个居民行动继续；" +
-                    "拒绝静默丢弃 ActiveAction。");
-            if (resident.HungerPermille != 0 ||
-                resident.BodyHygieneDeficitPermille != 0 ||
-                resident.HandContaminationPermille != 0 ||
-                resident.MotionSicknessPermille != 0)
-                throw new NotSupportedException(
-                    "当前 Foundation 尚未接入饥饿、卫生或晕车运行状态，不能静默丢弃这些值。");
+                    "当前 Foundation 使用有限路线 Journey，不能静默丢弃其他宏观地图字段。");
+            // 在重建当前世界之前验证路线身份 / 参数；不能把陌生路线的位置套用到本地路线。
+            using (var journeyValidation = new NomadJourneySession(FoundationRoute, 0L))
+                journeyValidation.Restore(ResolveCheckpointJourney(data.Vehicle));
+            ResolveStopWater(data.Stop);
 
             var validationLedger = deckLayout.CreatePlacementLedger();
             var worldItemValidationLedger = new PlacementRegionLedger();
+            RegisterStopSupplyRegion(worldItemValidationLedger);
             var facilityFunctions = new Dictionary<string, NomadFacilityFunction>(
                 StringComparer.Ordinal);
             var facilityDefinitionsByInstance =
@@ -714,19 +748,6 @@ namespace Game.NomadWorkshop.Foundation
                 inventories.Add(inventory.InventoryId, inventory);
             }
 
-            if (!string.Equals(
-                    resident.PersonalInventoryId,
-                    ResidentPersonalInventoryId,
-                    StringComparison.Ordinal))
-                throw new NotSupportedException(
-                    $"当前 Foundation 需要随身库存 {ResidentPersonalInventoryId}。");
-            NomadInventorySaveData personal = RequireInventory(
-                inventories,
-                ResidentPersonalInventoryId,
-                ResourceMeasure.Item);
-            if (personal.Contents.Count > 0)
-                throw new NotSupportedException(
-                    "当前 Foundation 尚未接入随身物品执行器，不能静默丢弃随身库存内容。");
             NomadInventorySaveData vehicleWater = RequireInventory(
                 inventories,
                 VehicleWaterInventoryId,
@@ -735,50 +756,21 @@ namespace Game.NomadWorkshop.Foundation
                 inventories,
                 WaterCanInventoryId,
                 ResourceMeasure.Milliliter);
-            NomadInventorySaveData toiletHolding = RequireInventory(
-                inventories,
-                ToiletHoldingInventoryId,
-                ResourceMeasure.Milliliter);
-            NomadInventorySaveData bodyWater = RequireInventory(
-                inventories,
-                ResidentBodyWaterInventoryId,
-                ResourceMeasure.Milliliter);
-            NomadInventorySaveData bladder = RequireInventory(
-                inventories,
-                ResidentBladderInventoryId,
-                ResourceMeasure.Milliliter);
-            if (vehicleWater.CapacityBaseUnits <= 0 ||
-                waterCan.CapacityBaseUnits <= 0 ||
-                toiletHolding.CapacityBaseUnits <= 0 ||
-                bodyWater.CapacityBaseUnits <= 0 ||
-                bladder.CapacityBaseUnits <= 0)
-                throw new InvalidOperationException(
-                    "Foundation 的车辆水箱、水罐、厕所、体内水和膀胱容量都必须大于零。");
+            if (vehicleWater.CapacityBaseUnits <= 0 || waterCan.CapacityBaseUnits <= 0)
+                throw new InvalidOperationException("车辆水箱与水罐容量必须大于零。");
 
             int vehicleWaterAmount = GetSingleResourceAmount(
                 vehicleWater,
                 NomadResourceIds.Water);
             int waterCanAmount = GetSingleResourceAmount(waterCan, NomadResourceIds.Water);
-            int toiletHoldingAmount = GetSingleResourceAmount(
-                toiletHolding,
-                NomadResourceIds.HumanWaste);
-            int bodyWaterAmount = GetSingleResourceAmount(bodyWater, NomadResourceIds.Water);
-            int bladderAmount = GetSingleResourceAmount(bladder, NomadResourceIds.HumanWaste);
-            long maximumPendingNanoliters = checked((long)bodyWaterAmount * 1_000_000L);
-            if (resident.WaterMetabolismPendingNanoliters > maximumPendingNanoliters)
-                throw new InvalidOperationException(
-                    "居民待提交水代谢量超过体内仍存在的水量。");
-
             var stations = new Dictionary<string, NomadInventorySaveData>(StringComparer.Ordinal);
             var consumedInventoryIds = new HashSet<string>(StringComparer.Ordinal)
-            {
-                ResidentPersonalInventoryId,
-                VehicleWaterInventoryId,
-                WaterCanInventoryId,
-                ToiletHoldingInventoryId,
-                ResidentBodyWaterInventoryId,
-                ResidentBladderInventoryId,
-            };
+                { VehicleWaterInventoryId, WaterCanInventoryId };
+            var residents = new List<FoundationResidentRestoreData>();
+            for (var index = 1; index <= savedResidents.Count; index++)
+                residents.Add(ValidateResidentForRestore(savedResidents[$"resident-{index:00}"], inventories, consumedInventoryIds));
+            Dictionary<string, NomadInventorySaveData> toilets = ResolveToiletInventoriesForRestore(
+                facilityFunctions, inventories, consumedInventoryIds);
             foreach (KeyValuePair<string, NomadFacilityFunction> facility in facilityFunctions)
             {
                 if (facility.Value != NomadFacilityFunction.DrinkingStation) continue;
@@ -802,17 +794,17 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             ValidateFoundationRandomStreams(data);
-            ToIntCursor(GetRandomStreamCursor(
-                data,
-                LeisureOutcomeRandomStreamId,
-                fallback: 0L), LeisureOutcomeRandomStreamId);
-            ToIntCursor(GetRandomStreamCursor(
-                data,
-                ResidentActionSequenceStreamId,
-                fallback: 1L), ResidentActionSequenceStreamId);
+            foreach (var resident in residents)
+            {
+                ToIntCursor(GetRandomStreamCursor(data, resident.Resident.ResidentId,
+                    LeisureOutcomeRandomStreamId, 0L), LeisureOutcomeRandomStreamId);
+                ToIntCursor(GetRandomStreamCursor(data, resident.Resident.ResidentId,
+                    ResidentActionSequenceStreamId, 1L), ResidentActionSequenceStreamId);
+            }
 
             ResolveWaterCanLocation(
                 waterCan.OwnerEntityId,
+                residents,
                 facilityFunctions,
                 out FoundationWaterCanLocation waterCanLocation,
                 out string waterCanAnchor);
@@ -837,7 +829,8 @@ namespace Game.NomadWorkshop.Foundation
                 data.WorldItems,
                 data.Facilities,
                 facilityDefinitionsByInstance,
-                worldItemValidationLedger);
+                worldItemValidationLedger,
+                !ResolveStopWater(data.Stop).SpareStockInitialized);
             if (waterCanLocation != FoundationWaterCanLocation.Resident &&
                 !worldItemValidationLedger.TryRestorePlacement(
                     WaterCanItemId,
@@ -849,23 +842,64 @@ namespace Game.NomadWorkshop.Foundation
                 throw new InvalidOperationException(
                     $"检查点水罐放置姿态无效：{waterCanPlacementFailure}。");
             return new FoundationRestoreData(
-                resident,
+                residents,
                 vehicleWater,
                 waterCan,
-                toiletHolding,
-                bodyWater,
-                bladder,
                 vehicleWaterAmount,
                 waterCanAmount,
-                toiletHoldingAmount,
-                bodyWaterAmount,
-                bladderAmount,
                 waterCanLocation,
                 waterCanAnchor,
                 waterCanRegionId,
                 waterCanLocalPose,
                 worldItems,
-                stations);
+                stations,
+                toilets);
+        }
+
+        private static FoundationResidentRestoreData ValidateResidentForRestore(
+            NomadResidentSaveData resident, IReadOnlyDictionary<string, NomadInventorySaveData> inventories,
+            ISet<string> consumed)
+        {
+            if (resident.ActiveAction != null)
+                throw new NotSupportedException(
+                    "当前 Foundation 只恢复到最近的安全业务边界，尚不能从半个居民行动继续；" +
+                    "拒绝静默丢弃 ActiveAction。");
+            if (resident.HungerPermille != 0 ||
+                resident.BodyHygieneDeficitPermille != 0 ||
+                resident.HandContaminationPermille != 0 ||
+                resident.MotionSicknessPermille != 0)
+                throw new NotSupportedException(
+                    "当前 Foundation 尚未接入饥饿、卫生或晕车运行状态，不能静默丢弃这些值。");
+
+            string personalId = $"{resident.ResidentId}:personal";
+            if (!string.Equals(
+                    resident.PersonalInventoryId,
+                    personalId,
+                    StringComparison.Ordinal))
+                throw new NotSupportedException(
+                    $"当前 Foundation 需要随身库存 {personalId}。");
+            NomadInventorySaveData personal = RequireInventory(
+                inventories,
+                personalId,
+                ResourceMeasure.Item);
+            if (personal.Contents.Count > 0)
+                throw new NotSupportedException(
+                    "当前 Foundation 尚未接入随身物品执行器，不能静默丢弃随身库存内容。");
+            var body = RequireInventory(inventories, $"{resident.ResidentId}:body-water", ResourceMeasure.Milliliter);
+            var bladder = RequireInventory(inventories, $"{resident.ResidentId}:bladder", ResourceMeasure.Milliliter);
+            foreach (var inventory in new[] { personal, body, bladder })
+            {
+                if (inventory.OwnerEntityId != resident.ResidentId)
+                    throw new InvalidOperationException($"居民库存 {inventory.InventoryId} 不属于 {resident.ResidentId}。");
+                consumed.Add(inventory.InventoryId);
+            }
+            if (body.CapacityBaseUnits <= 0 || bladder.CapacityBaseUnits <= 0)
+                throw new InvalidOperationException("居民体内水与膀胱容量必须大于零。");
+            int bodyAmount = GetSingleResourceAmount(body, NomadResourceIds.Water);
+            int bladderAmount = GetSingleResourceAmount(bladder, NomadResourceIds.HumanWaste);
+            if (resident.WaterMetabolismPendingNanoliters > checked((long)bodyAmount * 1_000_000L))
+                throw new InvalidOperationException("居民待提交水代谢量超过体内仍存在的水量。");
+            return new FoundationResidentRestoreData(resident, body, bladder, bodyAmount, bladderAmount);
         }
 
         private static void ValidateFoundationInventoryMetadata(
@@ -883,15 +917,12 @@ namespace Game.NomadWorkshop.Foundation
             }
         }
 
-        private static void ValidateFoundationRandomStreams(NomadWorkshopSaveData data)
+        private void ValidateFoundationRandomStreams(NomadWorkshopSaveData data)
         {
             for (var i = 0; i < data.RandomStreams.Count; i++)
             {
                 NomadRandomStreamSaveData stream = data.RandomStreams[i];
-                bool knownOwner = string.Equals(
-                    stream.OwnerEntityId,
-                    ResidentStableId,
-                    StringComparison.Ordinal);
+                bool knownOwner = data.Residents.Exists(resident => resident.ResidentId == stream.OwnerEntityId);
                 bool knownStream = string.Equals(
                                        stream.StreamId,
                                        ResidentDecisionRandomStreamId,
@@ -1023,19 +1054,20 @@ namespace Game.NomadWorkshop.Foundation
         private string ResolveWaterCanSaveOwner()
         {
             if (_waterCanLocation == FoundationWaterCanLocation.Resident)
-                return ResidentStableId;
+                return _waterCanCarrierId;
             if (string.IsNullOrWhiteSpace(_waterCanAnchorFacilityInstanceId))
                 throw new InvalidOperationException("非携带状态的水罐缺少精确设施锚点。");
             return _waterCanAnchorFacilityInstanceId;
         }
 
-        private static void ResolveWaterCanLocation(
+        private void ResolveWaterCanLocation(
             string ownerEntityId,
+            List<FoundationResidentRestoreData> residents,
             IReadOnlyDictionary<string, NomadFacilityFunction> facilityFunctions,
             out FoundationWaterCanLocation location,
             out string anchor)
         {
-            if (string.Equals(ownerEntityId, ResidentStableId, StringComparison.Ordinal))
+            if (residents.Exists(resident => resident.Resident.ResidentId == ownerEntityId))
             {
                 location = FoundationWaterCanLocation.Resident;
                 anchor = string.Empty;
@@ -1088,7 +1120,7 @@ namespace Game.NomadWorkshop.Foundation
             return false;
         }
 
-        private static NomadRandomStreamSaveData CreateRandomStream(
+        private NomadRandomStreamSaveData CreateRandomStream(
             string streamId,
             long nextEventSequence) => new()
         {
@@ -1097,8 +1129,12 @@ namespace Game.NomadWorkshop.Foundation
             NextEventSequence = nextEventSequence,
         };
 
+        private long GetRandomStreamCursor(NomadWorkshopSaveData data, string streamId, long fallback) =>
+            GetRandomStreamCursor(data, _resident.StableId, streamId, fallback);
+
         private static long GetRandomStreamCursor(
             NomadWorkshopSaveData data,
+            string residentId,
             string streamId,
             long fallback)
         {
@@ -1107,7 +1143,7 @@ namespace Game.NomadWorkshop.Foundation
                 NomadRandomStreamSaveData stream = data.RandomStreams[i];
                 if (string.Equals(
                         stream.OwnerEntityId,
-                        ResidentStableId,
+                        residentId,
                         StringComparison.Ordinal) &&
                     string.Equals(stream.StreamId, streamId, StringComparison.Ordinal))
                     return stream.NextEventSequence;
@@ -1148,7 +1184,7 @@ namespace Game.NomadWorkshop.Foundation
         private void EnsureCheckpointRuntimeReady()
         {
             if (!_initialized || _model == null || _navigation == null ||
-                _residentWaterCycle == null || _residentWellbeing == null)
+                _resident.WaterCycle == null || _resident.Wellbeing == null)
                 throw new InvalidOperationException("Foundation 尚未完成初始化，不能捕获或恢复运行检查点。");
         }
 
@@ -1195,63 +1231,61 @@ namespace Game.NomadWorkshop.Foundation
             return restored;
         }
 
+        private sealed class FoundationResidentRestoreData
+        {
+            internal FoundationResidentRestoreData(NomadResidentSaveData resident, NomadInventorySaveData bodyWater,
+                NomadInventorySaveData bladder, int bodyWaterAmount, int bladderAmount)
+            { Resident = resident; BodyWater = bodyWater; Bladder = bladder;
+                BodyWaterAmount = bodyWaterAmount; BladderAmount = bladderAmount; }
+            internal NomadResidentSaveData Resident { get; }
+            internal NomadInventorySaveData BodyWater { get; }
+            internal NomadInventorySaveData Bladder { get; }
+            internal int BodyWaterAmount { get; }
+            internal int BladderAmount { get; }
+        }
+
         private sealed class FoundationRestoreData
         {
             public FoundationRestoreData(
-                NomadResidentSaveData resident,
+                List<FoundationResidentRestoreData> residents,
                 NomadInventorySaveData vehicleWater,
                 NomadInventorySaveData waterCan,
-                NomadInventorySaveData toiletHolding,
-                NomadInventorySaveData bodyWater,
-                NomadInventorySaveData bladder,
                 int vehicleWaterAmount,
                 int waterCanAmount,
-                int toiletHoldingAmount,
-                int bodyWaterAmount,
-                int bladderAmount,
                 FoundationWaterCanLocation waterCanLocation,
                 string waterCanAnchor,
                 string waterCanRegionId,
                 PlacementRegionPose waterCanLocalPose,
                 List<NomadWorldItemSaveData> worldItems,
-                Dictionary<string, NomadInventorySaveData> stationInventories)
+                Dictionary<string, NomadInventorySaveData> stationInventories,
+                Dictionary<string, NomadInventorySaveData> toiletInventories)
             {
-                Resident = resident;
+                Residents = residents;
                 VehicleWater = vehicleWater;
                 WaterCan = waterCan;
-                ToiletHolding = toiletHolding;
-                BodyWater = bodyWater;
-                Bladder = bladder;
                 VehicleWaterAmount = vehicleWaterAmount;
                 WaterCanAmount = waterCanAmount;
-                ToiletHoldingAmount = toiletHoldingAmount;
-                BodyWaterAmount = bodyWaterAmount;
-                BladderAmount = bladderAmount;
                 WaterCanLocation = waterCanLocation;
                 WaterCanAnchor = waterCanAnchor;
                 WaterCanRegionId = waterCanRegionId;
                 WaterCanLocalPose = waterCanLocalPose;
                 WorldItems = worldItems;
                 StationInventories = stationInventories;
+                ToiletInventories = toiletInventories;
             }
 
-            public NomadResidentSaveData Resident { get; }
+            public List<FoundationResidentRestoreData> Residents { get; }
             public NomadInventorySaveData VehicleWater { get; }
             public NomadInventorySaveData WaterCan { get; }
-            public NomadInventorySaveData ToiletHolding { get; }
-            public NomadInventorySaveData BodyWater { get; }
-            public NomadInventorySaveData Bladder { get; }
             public int VehicleWaterAmount { get; }
             public int WaterCanAmount { get; }
-            public int ToiletHoldingAmount { get; }
-            public int BodyWaterAmount { get; }
-            public int BladderAmount { get; }
             public FoundationWaterCanLocation WaterCanLocation { get; }
             public string WaterCanAnchor { get; }
             public string WaterCanRegionId { get; }
             public PlacementRegionPose WaterCanLocalPose { get; }
             public List<NomadWorldItemSaveData> WorldItems { get; }
             public Dictionary<string, NomadInventorySaveData> StationInventories { get; }
+            public Dictionary<string, NomadInventorySaveData> ToiletInventories { get; }
         }
     }
 }

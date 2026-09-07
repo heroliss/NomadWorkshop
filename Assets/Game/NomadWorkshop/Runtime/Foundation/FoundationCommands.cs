@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Game.Framework.Command;
 using Game.NomadWorkshop.Simulation;
 using R3;
+using ObservableCollections;
 using UnityEngine;
 
 namespace Game.NomadWorkshop.Foundation
@@ -10,7 +11,27 @@ namespace Game.NomadWorkshop.Foundation
     public readonly struct FoundationReadModel
     {
         public readonly ReadOnlyReactiveProperty<bool> IsReady;
+        public readonly ReadOnlyReactiveProperty<long> JourneyPositionMicrometers;
+        public readonly ReadOnlyReactiveProperty<int> StopWaterMilliliters;
+        public readonly ReadOnlyReactiveProperty<bool> StopWaterRequested;
+        public readonly ReadOnlyReactiveProperty<bool> StopWaterActive;
+        public readonly ReadOnlyReactiveProperty<int> StopWasteMilliliters;
+        public readonly ReadOnlyReactiveProperty<int> StopWasteCapacityMilliliters;
+        public readonly ReadOnlyReactiveProperty<bool> StopWasteRequested;
+        public readonly ReadOnlyReactiveProperty<bool> StopWasteActive;
+        public readonly ReadOnlyReactiveProperty<string> CarriedWasteBucketFacilityId;
+        public readonly ReadOnlyReactiveProperty<int> StopSpareCount;
+        public readonly ReadOnlyReactiveProperty<bool> StopSpareRequested;
+        public readonly ReadOnlyReactiveProperty<bool> StopSpareActive;
+        public readonly ReadOnlyReactiveProperty<int> CarriedWasteMilliliters;
+        public readonly ReadOnlyReactiveProperty<string> StopWorkFeedback;
+        public readonly ReadOnlyReactiveProperty<bool> StopAccessOpen;
+        public readonly ReadOnlyReactiveProperty<long> JourneyFuelPicoliters;
+        public readonly ReadOnlyReactiveProperty<NomadJourneyEndpoint> JourneyDestination;
+        public readonly ReadOnlyReactiveProperty<NomadJourneyStatus> JourneyStatus;
         public readonly ReadOnlyReactiveProperty<bool> IsPaused;
+        public readonly ReadOnlyReactiveProperty<bool> CheckpointBusy;
+        public readonly ReadOnlyReactiveProperty<string> CheckpointFeedback;
         public readonly ReadOnlyReactiveProperty<float> SimulationSpeed;
         public readonly ReadOnlyReactiveProperty<long> SimulationTick;
         public readonly ReadOnlyReactiveProperty<long> LifeDay;
@@ -33,55 +54,55 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> FacilityInventoryRevision;
         public readonly ReadOnlyReactiveProperty<int> FacilityConditionRevision;
         public readonly ReadOnlyReactiveProperty<int> WorldItemPlacementRevision;
-        public readonly ReadOnlyReactiveProperty<FoundationResidentPhase> ResidentPhase;
-        public readonly ReadOnlyReactiveProperty<Vector3> ResidentLocalPosition;
-        public readonly ReadOnlyReactiveProperty<float> ResidentLocalYawDegrees;
-        public readonly ReadOnlyReactiveProperty<float> RemainingPathMeters;
-        public readonly ReadOnlyReactiveProperty<int> RemainingPathCorners;
-        public readonly ReadOnlyReactiveProperty<string> ActivePathSummary;
-        public readonly ReadOnlyReactiveProperty<bool> ResidentCarryingWater;
         public readonly ReadOnlyReactiveProperty<FoundationWaterCanLocation> WaterCanLocation;
         public readonly ReadOnlyReactiveProperty<string> WaterCanAnchorFacilityInstanceId;
         public readonly ReadOnlyReactiveProperty<FoundationItemPlacementState> WaterCanPlacement;
-        public readonly ReadOnlyReactiveProperty<FoundationCarriedWorldItemState>
-            ResidentCarriedWorldItem;
         public readonly ReadOnlyReactiveProperty<int> WaterCanWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> WaterCanCapacityMilliliters;
-        public readonly ReadOnlyReactiveProperty<FoundationActionPlanProjection> LatestActionPlan;
-        public readonly ReadOnlyReactiveProperty<float> ResidentThirst;
-        public readonly ReadOnlyReactiveProperty<float> ResidentHealth;
-        public readonly ReadOnlyReactiveProperty<float> ResidentEntertainment;
-        public readonly ReadOnlyReactiveProperty<float> ResidentMood;
-        public readonly ReadOnlyReactiveProperty<float> ResidentFatigue;
-        public readonly ReadOnlyReactiveProperty<float> ResidentStress;
-        public readonly ReadOnlyReactiveProperty<float> ResidentWorkEfficiency;
         public readonly ReadOnlyReactiveProperty<int> VehicleWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> VehicleWaterCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<int> DrinkingStationWaterMilliliters;
         public readonly ReadOnlyReactiveProperty<int> DrinkingStationCapacityMilliliters;
-        public readonly ReadOnlyReactiveProperty<int> BodyWaterMilliliters;
-        public readonly ReadOnlyReactiveProperty<int> BodyWaterCapacityMilliliters;
-        public readonly ReadOnlyReactiveProperty<int> BladderWasteMilliliters;
-        public readonly ReadOnlyReactiveProperty<int> BladderCapacityMilliliters;
         public readonly ReadOnlyReactiveProperty<int> ToiletHoldingWasteMilliliters;
         public readonly ReadOnlyReactiveProperty<int> ToiletHoldingCapacityMilliliters;
-        public readonly ReadOnlyReactiveProperty<float> ActionProgress;
-        public readonly ReadOnlyReactiveProperty<int> CompletedDrinkCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedToiletUseCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedLeisureCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedDaydreamCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedWanderCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedGroundRestCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedHobbyCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedWorldItemMoveCount;
-        public readonly ReadOnlyReactiveProperty<int> CompletedWaterTankRepairCount;
-        public readonly ReadOnlyReactiveProperty<string> CurrentTask;
-        public readonly ReadOnlyReactiveProperty<string> LastBlocker;
+
+        public readonly FoundationResidentReadModel PrimaryResident;
+        public readonly IReadOnlyObservableList<FoundationResidentReadModel> Residents;
+        public readonly ReadOnlyReactiveProperty<string> WaterCanCarrierId;
+        public readonly ReadOnlyReactiveProperty<string> WasteBucketCarrierId;
+        public readonly ReadOnlyReactiveProperty<string> DepartureFeedback;
+        public readonly ReadOnlyReactiveProperty<string> BuildFeedback;
 
         public FoundationReadModel(NomadFoundationModel model)
         {
+            PrimaryResident = new FoundationResidentReadModel(model.PrimaryResident);
+            Residents = model.Residents;
+            WaterCanCarrierId = model.WaterCanCarrierId;
+            WasteBucketCarrierId = model.WasteBucketCarrierId;
+            DepartureFeedback = model.DepartureFeedback;
+            BuildFeedback = model.BuildFeedback;
             IsReady = model.IsReady;
+            JourneyPositionMicrometers = model.JourneyPositionMicrometers;
+            StopWaterMilliliters = model.StopWaterMilliliters;
+            StopWaterRequested = model.StopWaterRequested;
+            StopWaterActive = model.StopWaterActive;
+            StopWasteMilliliters = model.StopWasteMilliliters;
+            StopWasteCapacityMilliliters = model.StopWasteCapacityMilliliters;
+            StopWasteRequested = model.StopWasteRequested;
+            StopWasteActive = model.StopWasteActive;
+            CarriedWasteBucketFacilityId = model.CarriedWasteBucketFacilityId;
+            StopSpareCount = model.StopSpareCount;
+            StopSpareRequested = model.StopSpareRequested;
+            StopSpareActive = model.StopSpareActive;
+            CarriedWasteMilliliters = model.CarriedWasteMilliliters;
+            StopWorkFeedback = model.StopWorkFeedback;
+            StopAccessOpen = model.StopAccessOpen;
+            JourneyFuelPicoliters = model.JourneyFuelPicoliters;
+            JourneyDestination = model.JourneyDestination;
+            JourneyStatus = model.JourneyStatus;
             IsPaused = model.IsPaused;
+            CheckpointBusy = model.CheckpointBusy;
+            CheckpointFeedback = model.CheckpointFeedback;
             SimulationSpeed = model.SimulationSpeed;
             SimulationTick = model.SimulationTick;
             LifeDay = model.LifeDay;
@@ -104,49 +125,17 @@ namespace Game.NomadWorkshop.Foundation
             FacilityInventoryRevision = model.FacilityInventoryRevision;
             FacilityConditionRevision = model.FacilityConditionRevision;
             WorldItemPlacementRevision = model.WorldItemPlacementRevision;
-            ResidentPhase = model.ResidentPhase;
-            ResidentLocalPosition = model.ResidentLocalPosition;
-            ResidentLocalYawDegrees = model.ResidentLocalYawDegrees;
-            RemainingPathMeters = model.RemainingPathMeters;
-            RemainingPathCorners = model.RemainingPathCorners;
-            ActivePathSummary = model.ActivePathSummary;
-            ResidentCarryingWater = model.ResidentCarryingWater;
             WaterCanLocation = model.WaterCanLocation;
             WaterCanAnchorFacilityInstanceId = model.WaterCanAnchorFacilityInstanceId;
             WaterCanPlacement = model.WaterCanPlacement;
-            ResidentCarriedWorldItem = model.ResidentCarriedWorldItem;
             WaterCanWaterMilliliters = model.WaterCanWaterMilliliters;
             WaterCanCapacityMilliliters = model.WaterCanCapacityMilliliters;
-            LatestActionPlan = model.LatestActionPlan;
-            ResidentThirst = model.ResidentThirst;
-            ResidentHealth = model.ResidentHealth;
-            ResidentEntertainment = model.ResidentEntertainment;
-            ResidentMood = model.ResidentMood;
-            ResidentFatigue = model.ResidentFatigue;
-            ResidentStress = model.ResidentStress;
-            ResidentWorkEfficiency = model.ResidentWorkEfficiency;
             VehicleWaterMilliliters = model.VehicleWaterMilliliters;
             VehicleWaterCapacityMilliliters = model.VehicleWaterCapacityMilliliters;
             DrinkingStationWaterMilliliters = model.DrinkingStationWaterMilliliters;
             DrinkingStationCapacityMilliliters = model.DrinkingStationCapacityMilliliters;
-            BodyWaterMilliliters = model.BodyWaterMilliliters;
-            BodyWaterCapacityMilliliters = model.BodyWaterCapacityMilliliters;
-            BladderWasteMilliliters = model.BladderWasteMilliliters;
-            BladderCapacityMilliliters = model.BladderCapacityMilliliters;
             ToiletHoldingWasteMilliliters = model.ToiletHoldingWasteMilliliters;
             ToiletHoldingCapacityMilliliters = model.ToiletHoldingCapacityMilliliters;
-            ActionProgress = model.ActionProgress;
-            CompletedDrinkCount = model.CompletedDrinkCount;
-            CompletedToiletUseCount = model.CompletedToiletUseCount;
-            CompletedLeisureCount = model.CompletedLeisureCount;
-            CompletedDaydreamCount = model.CompletedDaydreamCount;
-            CompletedWanderCount = model.CompletedWanderCount;
-            CompletedGroundRestCount = model.CompletedGroundRestCount;
-            CompletedHobbyCount = model.CompletedHobbyCount;
-            CompletedWorldItemMoveCount = model.CompletedWorldItemMoveCount;
-            CompletedWaterTankRepairCount = model.CompletedWaterTankRepairCount;
-            CurrentTask = model.CurrentTask;
-            LastBlocker = model.LastBlocker;
         }
     }
 
@@ -155,6 +144,44 @@ namespace Game.NomadWorkshop.Foundation
     {
         public FoundationReadModel Execute(ICommandContext ctx) =>
             new(ctx.GetModel<NomadFoundationModel>());
+    }
+
+    /// <summary>请求一次有限水源取水，或召回取水者；返回是否接受意图，不直接转移资源。</summary>
+    [Description("派出取水者或召回")]
+    public readonly struct RequestFoundationStopWaterCommand : ICommand<bool>
+    {
+        private readonly bool _collect;
+        public RequestFoundationStopWaterCommand(bool collect) => _collect = collect;
+        public bool Execute(ICommandContext ctx) => ctx.GetSystem<NomadFoundationSystem>().RequestStopWater(_collect);
+    }
+
+    /// <summary>请求一次整桶清运或召回；返回是否接受意图，倾倒只能在实际接收点发生。</summary>
+    [Description("清运旱厕污物或召回")]
+    public readonly struct RequestFoundationStopWasteCommand : ICommand<bool>
+    {
+        private readonly bool _dispose;
+        public RequestFoundationStopWasteCommand(bool dispose) => _dispose = dispose;
+        public bool Execute(ICommandContext ctx) => ctx.GetSystem<NomadFoundationSystem>().RequestStopWaste(_dispose);
+    }
+
+    /// <summary>请求一次有限备件往返或召回；物品只在居民到位后交接。</summary>
+    [Description("派遣或召回驿站备件补给者")]
+    public readonly struct RequestFoundationStopSpareCommand : ICommand<bool>
+    {
+        private readonly bool _collect;
+        public RequestFoundationStopSpareCommand(bool collect) => _collect = collect;
+        public bool Execute(ICommandContext ctx) => ctx.GetSystem<NomadFoundationSystem>().RequestStopSpare(_collect);
+    }
+
+    /// <summary>选择首段路线端点或取消目标；不会直接授予驾驶权或改变居民位置。</summary>
+    [Description("设定旅途目标")]
+    public readonly struct SetFoundationJourneyDestinationCommand : ICommand
+    {
+        private readonly NomadJourneyEndpoint _destination;
+        public SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint destination) =>
+            _destination = destination;
+        public void Execute(ICommandContext ctx) =>
+            ctx.GetSystem<NomadFoundationSystem>().SetJourneyDestination(_destination);
     }
 
     [Description("读取已提交设施快照")]
@@ -199,11 +226,20 @@ namespace Game.NomadWorkshop.Foundation
     [Description("启动首只杯具的原子拿取、携带与放下验证")]
     public readonly struct TryStartFoundationCupMoveCommand : ICommand<bool>
     {
+        private readonly string _residentId;
+
+        /// <summary>指定执行居民；省略时保留首位居民的开发验证入口。</summary>
+        public TryStartFoundationCupMoveCommand(string residentId) => _residentId = residentId;
+
         public bool Execute(ICommandContext ctx) =>
-            ctx.GetSystem<NomadFoundationSystem>().TryStartCupMoveHarness();
+            ctx.GetSystem<NomadFoundationSystem>().TryStartCupMoveHarness(_residentId);
     }
 
-    [Description("暂停态按固定毫秒步长运行 Foundation 长时模拟并返回结构化证据")]
+    /// <summary>
+    /// 暂停态运行生产固定步并逐步审计。总时长须为 10 ms 的正整数倍；输入分块可为
+    /// 10–1000 ms 的任意整数，不改变内部业务步；预算上限按实际业务步数计算。
+    /// </summary>
+    [Description("暂停态按统一业务步运行 Foundation 长时模拟并返回结构化证据")]
     public readonly struct RunFoundationSoakHarnessCommand :
         ICommand<FoundationSoakRunResult>
     {

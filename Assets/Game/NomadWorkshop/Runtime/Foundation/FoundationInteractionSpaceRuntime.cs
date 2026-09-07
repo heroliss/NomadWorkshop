@@ -6,7 +6,8 @@ namespace Game.NomadWorkshop.Foundation
 {
     /// <summary>
     /// Foundation 设施停靠空间的运行时所有者：从设施定义重建 committed / preview 拓扑，生成 View 掩码，
-    /// 并把一个空间的全部 Slot 键作为原子租约占用。System 只决定行动和建造时机，不接触聚类细节。
+    /// 并把一个空间的全部 Slot 键作为原子租约占用。每位居民持有自己的租约，互不重叠的空间可并行使用。
+    /// 单线程调用；释放租约不会销毁共享拓扑，销毁拓扑会撤销全部租约。
     /// </summary>
     public sealed class FoundationInteractionSpaceRuntime : IDisposable
     {
@@ -15,9 +16,8 @@ namespace Game.NomadWorkshop.Foundation
         private readonly ReservationLedger _reservations = new();
         private readonly List<InteractionSpaceSlot> _committedSlots = new();
         private readonly List<InteractionSpaceSlot> _previewSlots = new();
-        private ReservationLease _activeLease;
-        private InteractionSlotAddress _activeSlot;
-        private bool _hasActiveSlot;
+        private readonly Dictionary<ulong, FoundationInteractionSpaceLease> _leases = new();
+        private bool _disposed;
 
         public FoundationInteractionSpaceRuntime(int mergeDistanceMillimeters)
         {
@@ -25,24 +25,22 @@ namespace Game.NomadWorkshop.Foundation
             _preview = new InteractionSpaceTopology(mergeDistanceMillimeters);
         }
 
-        public bool HasActiveLease => _activeLease != null;
+        public int ActiveLeaseCount => _leases.Count;
 
         /// <summary>
-        /// 设施集合改变后重建正式拓扑。若居民正占用一个 Slot，可把旧地址迁移到新聚类后的整组键；
-        /// 返回 false 表示旧 Slot 已消失或新空间被其他居民占用。
+        /// 设施集合改变后重建正式拓扑。保留仍可独占的旧地址与句柄；消失的地址和合并后互相冲突的
+        /// 所有占用一起撤销，避免设施枚举顺序决定谁抢到位置。调用方随后检查 IsActive 并停止失效行动。
+        /// 不保留时撤销所有租约，适用于读取检查点；不恢复任何路径或行动。
         /// </summary>
         public bool RebuildCommitted(
             IReadOnlyList<FoundationFacilityState> facilities,
             IReadOnlyDictionary<string, NomadFacilityDefinition> definitions,
-            bool reacquireActiveSpace,
-            ulong activeOwnerId)
+            bool reacquireActiveSpace)
         {
+            ThrowIfDisposed();
             if (facilities == null) throw new ArgumentNullException(nameof(facilities));
             if (definitions == null) throw new ArgumentNullException(nameof(definitions));
 
-            bool restore = reacquireActiveSpace && _hasActiveSlot;
-            InteractionSlotAddress previous = _activeSlot;
-            Release();
             _committedSlots.Clear();
             for (var i = 0; i < facilities.Count; i++)
             {
@@ -58,23 +56,49 @@ namespace Game.NomadWorkshop.Foundation
             }
             _committed.Rebuild(_committedSlots);
 
-            if (!restore) return true;
-            if (!_committed.TryGetSpace(previous, out InteractionSpace space) ||
-                !_reservations.TryAcquire(
-                    activeOwnerId,
-                    space.ReservationKeys,
-                    out _activeLease))
-                return false;
+            var previous = new List<FoundationInteractionSpaceLease>(_leases.Values);
+            var keyUseCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (FoundationInteractionSpaceLease lease in previous)
+            {
+                lease.ReleaseReservation();
+                if (!reacquireActiveSpace ||
+                    !_committed.TryGetSpace(lease.Slot, out InteractionSpace space))
+                    continue;
+                foreach (string key in space.ReservationKeys)
+                {
+                    keyUseCounts.TryGetValue(key, out int count);
+                    keyUseCounts[key] = count + 1;
+                }
+            }
 
-            _activeSlot = previous;
-            _hasActiveSlot = true;
-            return true;
+            bool allRetained = true;
+            foreach (FoundationInteractionSpaceLease lease in previous)
+            {
+                bool retain = reacquireActiveSpace &&
+                              _committed.TryGetSpace(lease.Slot, out _);
+                if (retain)
+                {
+                    _committed.TryGetSpace(lease.Slot, out InteractionSpace space);
+                    foreach (string key in space.ReservationKeys)
+                        if (keyUseCounts[key] > 1) retain = false;
+                    if (retain && _reservations.TryAcquire(
+                            lease.OwnerId, space.ReservationKeys, out ReservationLease reservation))
+                    {
+                        lease.ReplaceReservation(reservation);
+                        continue;
+                    }
+                }
+                lease.Dispose();
+                allRetained = false;
+            }
+            return allRetained;
         }
 
         public void RebuildPreview(
             in ContinuousFacilityPlacementRequest candidate,
             NomadFacilityDefinition candidateDefinition)
         {
+            ThrowIfDisposed();
             if (candidateDefinition == null)
                 throw new ArgumentNullException(nameof(candidateDefinition));
             _previewSlots.Clear();
@@ -128,36 +152,48 @@ namespace Game.NomadWorkshop.Foundation
         }
 
         public bool IsAvailable(in InteractionSlotAddress address) =>
-            _committed.TryGetSpace(address, out InteractionSpace space) &&
+            !_disposed && _committed.TryGetSpace(address, out InteractionSpace space) &&
             !IsOccupied(space);
 
-        public bool TryAcquire(ulong ownerId, in InteractionSpaceSlot slot)
+        /// <summary>同一居民至多占用一个空间；成功句柄由居民行动负责释放，失败不产生部分预留。</summary>
+        public bool TryAcquire(
+            ulong ownerId, in InteractionSpaceSlot slot, out FoundationInteractionSpaceLease lease)
         {
-            if (_activeLease != null ||
+            ThrowIfDisposed();
+            lease = null;
+            if (_leases.ContainsKey(ownerId) ||
                 !_committed.TryGetSpace(slot.Address, out InteractionSpace space) ||
                 !_reservations.TryAcquire(
                     ownerId,
                     space.ReservationKeys,
-                    out _activeLease))
+                    out ReservationLease reservation))
                 return false;
 
-            _activeSlot = slot.Address;
-            _hasActiveSlot = true;
+            lease = new FoundationInteractionSpaceLease(this, ownerId, slot.Address, reservation);
+            _leases.Add(ownerId, lease);
             return true;
         }
 
-        /// <summary>释放当前居民占用；返回值可用于决定是否刷新 Inspector / 建造诊断投影。</summary>
-        public bool Release()
+        internal void Release(FoundationInteractionSpaceLease lease)
         {
-            bool changed = _activeLease != null || _hasActiveSlot;
-            _activeLease?.Dispose();
-            _activeLease = null;
-            _activeSlot = default;
-            _hasActiveSlot = false;
-            return changed;
+            if (_leases.TryGetValue(lease.OwnerId, out FoundationInteractionSpaceLease current) &&
+                ReferenceEquals(current, lease))
+                _leases.Remove(lease.OwnerId);
         }
 
-        public void Dispose() => Release();
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            foreach (FoundationInteractionSpaceLease lease in
+                     new List<FoundationInteractionSpaceLease>(_leases.Values))
+                lease.Dispose();
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(FoundationInteractionSpaceRuntime));
+        }
 
         public static InteractionSpaceSlot ResolveSlot(
             in FoundationFacilityState facility,
@@ -237,6 +273,48 @@ namespace Game.NomadWorkshop.Foundation
                     return true;
             }
             return false;
+        }
+    }
+
+    /// <summary>
+    /// 居民独占的设施交互空间句柄。拓扑重建可撤销它；旧句柄释放幂等，不能释放后来者的占用。
+    /// IsActive 只表示空间仍有效，是否继续工作由居民执行层决定。
+    /// </summary>
+    public sealed class FoundationInteractionSpaceLease : IDisposable
+    {
+        private FoundationInteractionSpaceRuntime _runtime;
+        private ReservationLease _reservation;
+
+        internal FoundationInteractionSpaceLease(
+            FoundationInteractionSpaceRuntime runtime,
+            ulong ownerId,
+            InteractionSlotAddress slot,
+            ReservationLease reservation)
+        {
+            _runtime = runtime;
+            OwnerId = ownerId;
+            Slot = slot;
+            _reservation = reservation;
+        }
+
+        public ulong OwnerId { get; }
+        public InteractionSlotAddress Slot { get; }
+        public bool IsActive => _runtime != null && _reservation is { IsReleased: false };
+
+        internal void ReleaseReservation()
+        {
+            _reservation?.Dispose();
+            _reservation = null;
+        }
+
+        internal void ReplaceReservation(ReservationLease reservation) => _reservation = reservation;
+
+        public void Dispose()
+        {
+            FoundationInteractionSpaceRuntime runtime = _runtime;
+            _runtime = null;
+            ReleaseReservation();
+            runtime?.Release(this);
         }
     }
 }

@@ -3,24 +3,36 @@ using System;
 namespace Game.NomadWorkshop.Simulation
 {
     /// <summary>
-    /// 将真实帧时长和模拟倍率累加为唯一的整数毫秒 Tick。小于 1 ms 的余量会跨帧保留，
-    /// 因而高帧率不会逐帧丢失时间；暂停由调用方停止推进，存档只需保存
-    /// <see cref="SimulationTick"/>，不保存与帧边界有关的小数余量。
+    /// 把墙钟预算与已经执行的模拟 Tick 分开。帧率和倍率只改变可执行的固定步数量，
+    /// 不改变每次业务步长。调用方逐步提交并执行业务，可限制每帧追赶量而不丢失预算；
+    /// 暂停时不入账、不取步，存档只保存已经提交的 <see cref="SimulationTick"/>。
     /// </summary>
     public sealed class NomadSimulationClock
     {
-        private decimal _fractionalMilliseconds;
+        private decimal _pendingMilliseconds;
 
-        public NomadSimulationClock(long simulationTick = 0) => Restore(simulationTick);
+        public NomadSimulationClock(long simulationTick = 0, int stepMilliseconds = 1)
+        {
+            if (stepMilliseconds <= 0)
+                throw new ArgumentOutOfRangeException(nameof(stepMilliseconds));
+            StepMilliseconds = stepMilliseconds;
+            Restore(simulationTick);
+        }
 
         /// <summary>从本局起点累计的统一模拟毫秒；这是日历、需求和作业的共同时间真值。</summary>
         public long SimulationTick { get; private set; }
 
+        /// <summary>本时钟固定的业务步长；恢复旧存档时以保存 Tick 为起点继续，不重新对齐取整。</summary>
+        public int StepMilliseconds { get; }
+
+        /// <summary>尚未执行的墙钟预算，包含亚毫秒余量与长帧欠账；它不是已经发生的游戏时间。</summary>
+        public decimal PendingMilliseconds => _pendingMilliseconds;
+
         /// <summary>
-        /// 推进一次真实帧时长，返回本次实际提交给模拟层的整数毫秒。
-        /// 乘倍率后的不足 1 ms 部分留待后续帧，不会让每帧取整造成系统性变慢。
+        /// 累计真实帧时长，但不提前推进 Tick。倍率只作用于本次新预算；已经积压的时间
+        /// 不会在变速时再乘一遍。随后通过 TryAdvanceStep 逐步执行；非法输入不修改状态。
         /// </summary>
-        public long Advance(float realDeltaSeconds, float simulationSpeed)
+        public void AccumulateFrame(float realDeltaSeconds, float simulationSpeed)
         {
             if (float.IsNaN(realDeltaSeconds) ||
                 float.IsInfinity(realDeltaSeconds) ||
@@ -36,38 +48,40 @@ namespace Game.NomadWorkshop.Simulation
                     "模拟倍率必须是非负有限值。");
 
             decimal scaledMilliseconds =
-                (decimal)realDeltaSeconds * (decimal)simulationSpeed * 1000m +
-                _fractionalMilliseconds;
-            decimal wholeMilliseconds = decimal.Floor(scaledMilliseconds);
-            if (wholeMilliseconds > long.MaxValue - SimulationTick)
+                checked((decimal)realDeltaSeconds * (decimal)simulationSpeed * 1000m +
+                        _pendingMilliseconds);
+            if (scaledMilliseconds > long.MaxValue - SimulationTick)
                 throw new OverflowException("统一模拟毫秒超过 Int64 可表示范围。");
 
-            long deltaMilliseconds = (long)wholeMilliseconds;
-            SimulationTick = checked(SimulationTick + deltaMilliseconds);
-            _fractionalMilliseconds = scaledMilliseconds - wholeMilliseconds;
-            return deltaMilliseconds;
+            _pendingMilliseconds = scaledMilliseconds;
         }
 
         /// <summary>
-        /// 为测试、离线跑数和语义快进提交精确的整数模拟毫秒。它与真实帧入口共享
-        /// <see cref="SimulationTick"/>，但不清除已累计的亚毫秒墙钟余量；因此暂停后运行
-        /// Harness 再恢复实时帧，不会悄悄吞掉先前不足 1 ms 的时间。
+        /// 预算足够时提交恰好一个固定步；返回 true 后调用方必须立即执行该业务步，
+        /// 再取下一步。没有预算时 Tick 不动，调用方可在任意步边界结束本帧追赶。
         /// </summary>
-        public long AdvanceMilliseconds(long deltaMilliseconds)
+        public bool TryAdvanceStep()
         {
-            if (deltaMilliseconds < 0)
-                throw new ArgumentOutOfRangeException(
-                    nameof(deltaMilliseconds),
-                    "精确模拟步长必须是非负毫秒。 ");
-            if (deltaMilliseconds > long.MaxValue - SimulationTick)
-                throw new OverflowException("统一模拟毫秒超过 Int64 可表示范围。 ");
-
-            SimulationTick = checked(SimulationTick + deltaMilliseconds);
-            return deltaMilliseconds;
+            if (_pendingMilliseconds < StepMilliseconds) return false;
+            SimulationTick = checked(SimulationTick + StepMilliseconds);
+            _pendingMilliseconds -= StepMilliseconds;
+            return true;
         }
 
         /// <summary>
-        /// 从存档 Tick 或确定性起点恢复时钟。帧内小数余量不是业务真值，加载后从零重新累计。
+        /// 暂停态 Harness 提交一个同样大小的业务步，不消费实时墙钟预算。调用方仍须立即
+        /// 执行生产模拟；不能把大段时长一次提交。保留余量使退出 Harness 后实时模式可继续。
+        /// </summary>
+        public void AdvanceHarnessStep()
+        {
+            if (StepMilliseconds > long.MaxValue - SimulationTick - _pendingMilliseconds)
+                throw new OverflowException("统一模拟毫秒及待处理预算超过 Int64 可表示范围。");
+            SimulationTick = checked(SimulationTick + StepMilliseconds);
+        }
+
+        /// <summary>
+        /// 从存档 Tick 或确定性起点恢复时钟。所有未执行墙钟预算均清空，避免把读档前的
+        /// 长帧欠账施加到新世界。旧存档 Tick 不需要整除新步长。
         /// </summary>
         public void Restore(long simulationTick)
         {
@@ -77,7 +91,7 @@ namespace Game.NomadWorkshop.Simulation
                     "统一模拟毫秒不能为负数。");
 
             SimulationTick = simulationTick;
-            _fractionalMilliseconds = 0m;
+            _pendingMilliseconds = 0m;
         }
     }
 

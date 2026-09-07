@@ -29,6 +29,7 @@ namespace Game.NomadWorkshop.Foundation
         public Vector3 WanderTarget { get; set; }
         public string WanderLabel { get; set; } = string.Empty;
         public string WorldItemId { get; set; } = string.Empty;
+        public long JourneyDestinationRevision { get; set; }
     }
 
     internal enum FoundationResidentDecisionKind
@@ -41,5 +42,9 @@ namespace Game.NomadWorkshop.Foundation
         GroundRest,
         Hobby,
         RepairWaterTank,
+        Drive,
+        StopWater,
+        StopWaste,
+        StopSpare,
     }
 }

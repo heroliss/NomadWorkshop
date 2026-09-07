@@ -9,7 +9,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     /// </summary>
     public static class NomadWorkshopSaveSchema
     {
-        public const int CurrentVersion = 4;
+        public const int CurrentVersion = 9;
         public const int DefaultEntertainmentPermille = 680;
         public const int DefaultMoodPermille = 700;
         public const int DefaultHealthPermille = 1000;
@@ -134,6 +134,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         /// </summary>
         public long SimulationTick;
         public NomadVehicleSaveData Vehicle = new();
+        public NomadStopSaveData Stop;
         public List<NomadFacilitySaveData> Facilities = new();
         public List<NomadBlueprintSaveData> Blueprints = new();
         public List<NomadWorldItemSaveData> WorldItems = new();
@@ -165,6 +166,8 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public int TravelProgressPermille;
         public int FuelMilliUnits;
         public bool IsTraveling;
+        // Journey 存在时，它是有限路线的唯一真值；旧宏观字段仍供其他 Adapter 使用。
+        public NomadJourneySaveData Journey;
     }
 
     /// <summary>一个已提交设施的持久真值。门动画等瞬时表现不在这里重复保存。</summary>
@@ -371,9 +374,13 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             ValidateRange(data.Vehicle.TravelProgressPermille, nameof(data.Vehicle.TravelProgressPermille));
             if (data.Vehicle.FuelMilliUnits < 0)
                 throw new InvalidOperationException("车辆燃料不能为负数。");
+            if (data.Vehicle.Journey is { IsEmpty: false })
+                data.Vehicle.Journey.ToValidatedSnapshot();
+            if (data.Stop is { IsEmpty: false }) data.Stop.Validate();
 
             RequireCollections(data);
             var entityIds = new HashSet<string>(StringComparer.Ordinal);
+            if (data.Stop is { IsEmpty: false }) entityIds.Add("site:" + data.Stop.SiteId);
             ValidateFacilities(data.Facilities, entityIds, data.SimulationTick);
             ValidateBlueprints(data.Blueprints, entityIds);
             ValidateWorldItems(data.WorldItems, entityIds);
@@ -489,6 +496,34 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                         }
 
                         data.Version = 4;
+                        break;
+                    case 4:
+                        // v4 的 Foundation 尚无旅途。由运行 Adapter 为缺省旅途提供初始地点和燃料；
+                        // 保留旧宏观字段，不支持它们的 Adapter 仍须拒绝，不能偷偷重置非空进度。
+                        if (data.Vehicle != null) data.Vehicle.Journey = null;
+                        data.Version = 5;
+                        break;
+                    case 5:
+                        // 厕所库存归属依赖设施定义；由 Foundation Adapter 校验并迁移旧共享桶，
+                        // 通用协议保留全部库存原文，不猜测哪种自定义设施是厕所。
+                        data.Version = 6;
+                        break;
+                    case 6:
+                        data.Stop = null;
+                        data.Version = 7;
+                        break;
+                    case 7:
+                        if (data.Stop is { IsEmpty: false })
+                        {
+                            data.Stop.WasteMilliliters = 0;
+                            data.Stop.WasteCapacityMilliliters = 24_000;
+                            data.Stop.WasteDisposalRequested = false;
+                        }
+                        data.Version = 8;
+                        break;
+                    case 8:
+                        // 地点实体物品由 Foundation 按定义建立；旧 JSON 缺失的初始化标记为 false。
+                        data.Version = 9;
                         break;
                     default:
                         throw new NotSupportedException(

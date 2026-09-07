@@ -2,8 +2,8 @@ using System.Collections.Generic;
 using Game.Framework.Model;
 using Game.NomadWorkshop.Simulation;
 using R3;
+using ObservableCollections;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace Game.NomadWorkshop.Foundation
 {
@@ -14,7 +14,30 @@ namespace Game.NomadWorkshop.Foundation
     public sealed class NomadFoundationModel : MonoModelBase
     {
         [field: SerializeField] public RP<bool> IsReady { get; private set; } = new(false);
+        [field: Header("首段旅途（运行时只读观察）")]
+        [field: SerializeField] public RP<long> JourneyPositionMicrometers { get; private set; } = new(0L);
+        [field: SerializeField] public RP<int> StopWaterMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<bool> StopWaterRequested { get; private set; } = new(false);
+        [field: SerializeField] public RP<bool> StopWaterActive { get; private set; } = new(false);
+        [field: SerializeField] public RP<int> StopWasteMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<int> StopWasteCapacityMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<bool> StopWasteRequested { get; private set; } = new(false);
+        [field: SerializeField] public RP<bool> StopWasteActive { get; private set; } = new(false);
+        [field: SerializeField] public RP<string> CarriedWasteBucketFacilityId { get; private set; } = new(string.Empty);
+        [field: SerializeField] public RP<int> CarriedWasteMilliliters { get; private set; } = new(0);
+        [field: SerializeField] public RP<string> StopWorkFeedback { get; private set; } = new(string.Empty);
+        [field: SerializeField] public RP<int> StopSpareCount { get; private set; } = new(0);
+        [field: SerializeField] public RP<bool> StopSpareRequested { get; private set; } = new(false);
+        [field: SerializeField] public RP<bool> StopSpareActive { get; private set; } = new(false);
+        [field: SerializeField] public RP<bool> StopAccessOpen { get; private set; } = new(false);
+        [field: SerializeField] public RP<long> JourneyFuelPicoliters { get; private set; } = new(0L);
+        [field: SerializeField] public RP<NomadJourneyEndpoint> JourneyDestination { get; private set; } =
+            new(NomadJourneyEndpoint.None);
+        [field: SerializeField] public RP<NomadJourneyStatus> JourneyStatus { get; private set; } =
+            new(NomadJourneyStatus.NoDestination);
         [field: SerializeField] public RP<bool> IsPaused { get; private set; } = new(false);
+        [field: SerializeField] public RP<bool> CheckpointBusy { get; private set; } = new(false);
+        [field: SerializeField] public RP<string> CheckpointFeedback { get; private set; } = new("手动保存旅程，下次可从这里继续。");
         [field: SerializeField] public RP<float> SimulationSpeed { get; private set; } = new(1f);
         [field: Header("统一模拟时钟（运行时只读观察）")]
         [field: SerializeField, Tooltip("从本局起点累计的唯一模拟毫秒；暂停时不增长，需求、动作与日历都由它推进。")]
@@ -56,69 +79,49 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField, Tooltip("已落位世界物品投影的版本；区域账本变化后递增。")]
         public RP<int> WorldItemPlacementRevision { get; private set; } = new(0);
 
-        [Header("居民与物质链（运行时只读观察）")]
-        [field: SerializeField] public RP<FoundationResidentPhase> ResidentPhase { get; private set; } =
-            new(FoundationResidentPhase.WaitingForFacility);
-        [field: SerializeField] public RP<Vector3> ResidentLocalPosition { get; private set; } = new(Vector3.zero);
-        [field: SerializeField] public RP<float> ResidentLocalYawDegrees { get; private set; } = new(0f);
-        [field: SerializeField] public RP<float> RemainingPathMeters { get; private set; } = new(0f);
-        [field: SerializeField] public RP<int> RemainingPathCorners { get; private set; } = new(0);
-        [field: SerializeField] public RP<string> ActivePathSummary { get; private set; } = new(string.Empty);
-        [field: SerializeField] public RP<bool> ResidentCarryingWater { get; private set; } = new(false);
         [field: SerializeField] public RP<FoundationWaterCanLocation> WaterCanLocation { get; private set; } =
             new(FoundationWaterCanLocation.VehicleWaterTank);
         [field: SerializeField, Tooltip("水罐不在居民手中时所依附的精确设施实例；不能只靠设施类型猜测。")]
         public RP<string> WaterCanAnchorFacilityInstanceId { get; private set; } = new(string.Empty);
         [field: SerializeField, Tooltip("水罐在设施放置区域中的精确局部姿态；居民携带时为空。")]
         public RP<FoundationItemPlacementState> WaterCanPlacement { get; private set; } = new(default);
-        [field: SerializeField, Tooltip("居民手中普通世界物品的短暂表现投影；存档仍回退到移动事务来源。")]
-        public RP<FoundationCarriedWorldItemState> ResidentCarriedWorldItem { get; private set; } =
-            new(default);
         [field: SerializeField] public RP<int> WaterCanWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> WaterCanCapacityMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<FoundationActionPlanProjection> LatestActionPlan { get; private set; } =
-            new(FoundationActionPlanProjection.None);
-        [field: SerializeField, Tooltip("口渴缺口，0 表示不渴，1 表示达到危险上限。")]
-        public RP<float> ResidentThirst { get; private set; } = new(0f);
-        [field: SerializeField, Tooltip("正向健康值，1 表示健康，0 表示死亡；严重缺水会平滑加速损害健康。")]
-        public RP<float> ResidentHealth { get; private set; } = new(1f);
-        [field: FormerlySerializedAs("<ResidentRecreation>k__BackingField")]
-        [field: SerializeField, Tooltip("正向娱乐满足度，0 表示极度无聊，1 表示兴趣得到充分满足；普通发呆和闲逛不会补充它。")]
-        public RP<float> ResidentEntertainment { get; private set; } = new(0f);
-        [field: SerializeField, Tooltip("正向心情值，0 表示极差，1 表示极好；娱乐不足、疲劳和压力会连续影响它。")]
-        public RP<float> ResidentMood { get; private set; } = new(0f);
-        [field: SerializeField, Tooltip("疲劳负担，0 表示精力充足，1 表示极度疲劳。玩家界面会反向显示为精力。")]
-        public RP<float> ResidentFatigue { get; private set; } = new(0f);
-        [field: SerializeField, Tooltip("压力负担，0 表示平静，1 表示压力极高；缺水、憋尿、阻塞与疲劳都会增加它。")]
-        public RP<float> ResidentStress { get; private set; } = new(0f);
-        [field: SerializeField, Tooltip("当前状态下的预期工作速度乘数；100% 为标准人力，具体工作开始时还会固定采样少量个人波动。")]
-        public RP<float> ResidentWorkEfficiency { get; private set; } = new(1f);
         [field: SerializeField] public RP<int> VehicleWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> VehicleWaterCapacityMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> DrinkingStationWaterMilliliters { get; private set; } = new(0);
         [field: SerializeField] public RP<int> DrinkingStationCapacityMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> BodyWaterMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> BodyWaterCapacityMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> BladderWasteMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> BladderCapacityMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> ToiletHoldingWasteMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> ToiletHoldingCapacityMilliliters { get; private set; } = new(0);
-        [field: SerializeField] public RP<float> ActionProgress { get; private set; } = new(0f);
-        [field: SerializeField] public RP<int> CompletedDrinkCount { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> CompletedToiletUseCount { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> CompletedLeisureCount { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> CompletedDaydreamCount { get; private set; } = new(0);
-        [field: SerializeField] public RP<int> CompletedWanderCount { get; private set; } = new(0);
-        [field: SerializeField, Tooltip("缺少床椅时在地面完成的低质量恢复次数。")]
-        public RP<int> CompletedGroundRestCount { get; private set; } = new(0);
-        [field: SerializeField, Tooltip("已完成的真实爱好次数；与只恢复疲劳/压力的基础休整分开观察。")]
-        public RP<int> CompletedHobbyCount { get; private set; } = new(0);
-        [field: SerializeField, Tooltip("已由居民完成原子拿起与放下的普通世界物品次数。")]
-        public RP<int> CompletedWorldItemMoveCount { get; private set; } = new(0);
-        [field: SerializeField, Tooltip("居民实际拿取并消耗维修包、在故障功能点完成的水箱维修次数。")]
-        public RP<int> CompletedWaterTankRepairCount { get; private set; } = new(0);
-        [field: SerializeField] public RP<string> CurrentTask { get; private set; } = new("等待初始化");
-        [field: SerializeField] public RP<string> LastBlocker { get; private set; } = new(string.Empty);
+        [field: SerializeField, Tooltip("全部旱厕污物桶的总量，含携带中但尚未倾倒的桶；容器身份与位置分别投影。")]
+        public RP<int> ToiletHoldingWasteMilliliters { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("全部已建旱厕实例的容量总和；未建厕所时为 0。")]
+        public RP<int> ToiletHoldingCapacityMilliliters { get; private set; } = new(0);
+
+        /// <summary>首位居民的独立记录；复位与读取保留记录及其属性身份，执行器只重建瞬时行动。</summary>
+        [field: SerializeField]
+        public FoundationResidentModelState PrimaryResident { get; private set; } = new("resident-01", 0xF01UL);
+
+        private readonly ObservableList<FoundationResidentReadModel> residents = new();
+        internal IReadOnlyObservableList<FoundationResidentReadModel> Residents => residents;
+
+        internal void EnsureResidentCount(int count)
+        {
+            if (count < 1 || count > 3) throw new System.ArgumentOutOfRangeException(nameof(count));
+            if (residents.Count == 0) residents.Add(new FoundationResidentReadModel(PrimaryResident));
+            while (residents.Count > count) residents.RemoveAt(residents.Count - 1);
+            while (residents.Count < count)
+            {
+                int index = residents.Count + 1;
+                residents.Add(new FoundationResidentReadModel(
+                    new FoundationResidentModelState($"resident-{index:00}", 0xF00UL + (ulong)index)));
+            }
+        }
+
+        [field: SerializeField] public RP<string> WaterCanCarrierId { get; private set; } = new(string.Empty);
+        [field: SerializeField] public RP<string> WasteBucketCarrierId { get; private set; } = new(string.Empty);
+        [field: SerializeField] public RP<string> DepartureFeedback { get; private set; } = new(string.Empty);
+
+        /// <summary>世界建造事务的反馈，不覆盖任何居民正在执行的任务或个人阻塞。</summary>
+        [field: SerializeField] public RP<string> BuildFeedback { get; private set; } = new(string.Empty);
 
         [SerializeField] private List<FoundationFacilityState> facilities = new();
         [SerializeField] private List<FoundationFacilityAccessState> facilityAccess = new();

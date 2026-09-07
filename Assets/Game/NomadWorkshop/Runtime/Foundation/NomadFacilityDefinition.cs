@@ -14,6 +14,7 @@ namespace Game.NomadWorkshop.Foundation
         Toilet,
         Storage,
         HobbyPoint,
+        DriverStation,
     }
 
     /// <summary>一个可由 Inspector 编辑、运行时转换为纯模拟有向矩形的占地部件。</summary>

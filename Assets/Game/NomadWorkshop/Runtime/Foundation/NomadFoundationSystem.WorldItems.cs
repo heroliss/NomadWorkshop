@@ -7,43 +7,51 @@ namespace Game.NomadWorkshop.Foundation
 {
     public sealed partial class NomadFoundationSystem
     {
-        private PlacementRegionMoveLease _activeWorldItemMove;
 
         /// <summary>
         /// 开发期最小验证入口：让居民把首只杯子移到另一座兼容设施，若不存在则在同一台面换位。
         /// 它只验证通用空间事务和执行器，不把“反复整理杯子”冒充正式 Utility AI 需求。
         /// </summary>
-        public bool TryStartCupMoveHarness()
+        public bool TryStartCupMoveHarness(string residentId = null)
+        {
+            if (_checkpointOperation != null) return false;
+            FoundationResidentExecution resident = residentId == null ? _resident : FindResident(residentId);
+            if (resident == null) return false;
+            using var scope = UseResident(resident);
+            return TryStartResidentCupMoveHarness();
+        }
+
+        private bool TryStartResidentCupMoveHarness()
         {
             if (!_initialized || _model == null || _worldItemPlacementLedger == null)
                 return false;
-            if (!_residentWellbeing.IsAlive)
+            if (!_resident.Wellbeing.IsAlive)
             {
-                _model.LastBlocker.Value = "ResidentDied · 死亡居民不能拿取世界物品";
+                _resident.State.LastBlocker.Value = "ResidentDied · 死亡居民不能拿取世界物品";
                 return false;
             }
             if (_model.BuildTransactionPhase.Value != FoundationBuildTransactionPhase.Idle ||
-                _residentPhase is not (FoundationResidentPhase.Idle or
+                _resident.Phase is not (FoundationResidentPhase.Idle or
                     FoundationResidentPhase.WaitingForFacility) ||
-                _activeWorldItemMove != null ||
-                _activeHaul != null ||
-                _activeResidentAction != null)
+                _resident.ActiveWorldItemMove != null ||
+                _resident.ActiveHaul != null ||
+                _resident.ActiveWaterAction != null)
             {
-                _model.LastBlocker.Value = "ActionBusy · 等待当前居民或建造事务回到安全边界";
+                _resident.State.LastBlocker.Value = "ActionBusy · 等待当前居民或建造事务回到安全边界";
                 return false;
             }
             if (!_worldItemPlacementLedger.TryGetPlacement(
                     StarterCupItemId,
                     out PlacementRegionItem sourcePlacement))
             {
-                _model.LastBlocker.Value = "ItemNotLocated · 请先建造带台面的野战厨房";
+                _resident.State.LastBlocker.Value = "ItemNotLocated · 请先建造带台面的野战厨房";
                 return false;
             }
             if (!TryFindFacilityState(
                     sourcePlacement.Region.OwnerEntityId,
                     out FoundationFacilityState sourceFacility))
             {
-                _model.LastBlocker.Value =
+                _resident.State.LastBlocker.Value =
                     $"OwnerMissing · 杯具支撑设施 {sourcePlacement.Region.OwnerEntityId} 不存在";
                 return false;
             }
@@ -53,24 +61,24 @@ namespace Game.NomadWorkshop.Foundation
                     out FoundationFacilityState destinationFacility,
                     out PlacementRegionFailure failure))
             {
-                _model.LastBlocker.Value =
+                _resident.State.LastBlocker.Value =
                     $"{failure} · 没有可为 {StarterCupItemId} 联合预留的目标台面姿态";
                 return false;
             }
 
-            _activeWorldItemMove = move;
-            _model.LastBlocker.Value = string.Empty;
+            _resident.ActiveWorldItemMove = move;
+            _resident.State.LastBlocker.Value = string.Empty;
             TryBeginMove(
                 FoundationResidentPhase.MovingToWorldItemSource,
                 $"杯具事务已锁定来源与目标：前往 {sourceFacility.InstanceId} 拿取",
                 sourceFacility,
                 allowAlternativeFacility: false,
                 interactionGroupId: KitchenInteractionGroupId);
-            if (_activeWorldItemMove == null)
+            if (_resident.ActiveWorldItemMove == null)
                 return false;
 
             // 目标设施已被空间事务锁定，随后即使路径重试也不再临时换成另一个台面。
-            _model.CurrentTask.Value += $" → 目标 {destinationFacility.InstanceId}";
+            _resident.State.CurrentTask.Value += $" → 目标 {destinationFacility.InstanceId}";
             return true;
         }
 
@@ -127,8 +135,8 @@ namespace Game.NomadWorkshop.Foundation
         private void CompleteWorldItemPickup()
         {
             PlacementRegionFailure failure = PlacementRegionFailure.InvalidRequest;
-            if (_activeWorldItemMove == null ||
-                !_activeWorldItemMove.TryPickUp(out failure))
+            if (_resident.ActiveWorldItemMove == null ||
+                !_resident.ActiveWorldItemMove.TryPickUp(out failure))
             {
                 Block(
                     $"杯具拿取事务已经失效：{failure}",
@@ -136,13 +144,13 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            PlacementRegionItem source = _activeWorldItemMove.Source;
-            _model.ResidentCarriedWorldItem.Value = new FoundationCarriedWorldItemState(
+            PlacementRegionItem source = _resident.ActiveWorldItemMove.Source;
+            _resident.State.ResidentCarriedWorldItem.Value = new FoundationCarriedWorldItemState(
                 source.ItemId,
                 source.Footprint.DefinitionId);
             PublishWorldItemPlacements();
 
-            PlacementRegionItem destination = _activeWorldItemMove.Destination;
+            PlacementRegionItem destination = _resident.ActiveWorldItemMove.Destination;
             if (string.Equals(
                     source.Region.OwnerEntityId,
                     destination.Region.OwnerEntityId,
@@ -174,7 +182,7 @@ namespace Game.NomadWorkshop.Foundation
 
         private void CompleteWorldItemPlacement()
         {
-            PlacementRegionMoveLease move = _activeWorldItemMove;
+            PlacementRegionMoveLease move = _resident.ActiveWorldItemMove;
             PlacementRegionItem placement = null;
             PlacementRegionFailure failure = PlacementRegionFailure.InvalidRequest;
             if (move == null ||
@@ -188,26 +196,16 @@ namespace Game.NomadWorkshop.Foundation
                 return;
             }
 
-            _activeWorldItemMove = null;
-            _model.ResidentCarriedWorldItem.Value = default;
+            _resident.ActiveWorldItemMove = null;
+            _resident.State.ResidentCarriedWorldItem.Value = default;
             PublishWorldItemPlacements();
-            _model.CompletedWorldItemMoveCount.Value++;
-            _model.LastBlocker.Value = string.Empty;
+            _resident.State.CompletedWorldItemMoveCount.Value++;
+            _resident.State.LastBlocker.Value = string.Empty;
             ReleaseActiveInteractionSpace(publishProjection: true);
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 $"杯具已原子放到 {placement.Region.OwnerEntityId}/{placement.Region.LocalRegionId}");
-            _residentDecisionRetryRemaining = Mathf.Max(0.1f, residentDecisionRetrySeconds);
-        }
-
-        private void CancelActiveWorldItemMove()
-        {
-            if (_activeWorldItemMove == null) return;
-            _activeWorldItemMove.Dispose();
-            _activeWorldItemMove = null;
-            if (_model != null)
-                _model.ResidentCarriedWorldItem.Value = default;
-            PublishWorldItemPlacements();
+            _resident.DecisionRetryRemaining = Mathf.Max(0.1f, residentDecisionRetrySeconds);
         }
 
         private bool TryFindFacilityState(

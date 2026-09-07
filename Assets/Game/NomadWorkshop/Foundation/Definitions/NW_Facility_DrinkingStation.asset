@@ -33,6 +33,12 @@ MonoBehaviour:
     - slotId: right
       localPositionMeters: {x: 0.24, y: -0.78}
       localYawDegrees: 0
+  - groupId: water-can-access
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: side
+      localPositionMeters: {x: 1.22, y: -0.17}
+      localYawDegrees: 270
   placementRegions:
   - regionId: water-can-parking
     localCenterMeters: {x: 0.72, y: 0}

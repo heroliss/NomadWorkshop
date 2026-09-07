@@ -187,6 +187,7 @@ namespace Game.NomadWorkshop.Foundation
 
         internal bool ForcePrimaryWaterTankFault()
         {
+            if (_checkpointOperation != null) return false;
             if (!TryGetPrimaryWaterTankCondition(
                     out FoundationFacilityState waterTank,
                     out FacilityConditionCycle condition))
@@ -208,37 +209,41 @@ namespace Game.NomadWorkshop.Foundation
                     out FacilityConditionCycle condition))
                 return false;
             SettleCondition(condition, NomadFacilityFunction.VehicleWaterTank);
-            bool interruptedResidentRepair = string.Equals(
-                _activeRepairTargetFacilityInstanceId,
-                waterTank.InstanceId,
-                StringComparison.Ordinal);
-            if (interruptedResidentRepair)
-            {
-                // 开发 Harness 允许跳过正式维修链，但不能只拿走 Lease 后留下旧路径 / 阶段。
-                // 整体撤销会把已拿起的维修包恢复到精确托盘来源，并释放功能点容量。
-                ReleaseActiveTasks();
-                ClearActivePath();
-                _phaseDuration = 0f;
-                _phaseRemaining = 0f;
-            }
             if (!condition.Repair()) return false;
-
-            string diagnosticPrefix = BuildWaterTankFaultDiagnostic(waterTank.InstanceId);
-            if (_model.LastBlocker.Value.StartsWith(
-                    diagnosticPrefix,
-                    StringComparison.Ordinal) ||
-                _model.LastBlocker.Value.Contains(
-                    "出水阀卡滞",
-                    StringComparison.Ordinal))
-                _model.LastBlocker.Value = string.Empty;
-            _lastPublishedDecisionDiagnostic = string.Empty;
-            _residentDecisionRetryRemaining = 0f;
-            if (interruptedResidentRepair)
+            foreach (var resident in _residents)
             {
-                PublishCurrentFacilityAccessProjection();
-                SetResidentPhase(
-                    FoundationResidentPhase.Idle,
-                    "Harness 已瞬时修复水箱；居民维修已取消，实体备件已放回托盘");
+                using var scope = UseResident(resident);
+                bool interruptedResidentRepair = string.Equals(
+                    _resident.ActiveRepairTargetFacilityInstanceId,
+                    waterTank.InstanceId,
+                    StringComparison.Ordinal);
+                if (interruptedResidentRepair)
+                {
+                    // 开发 Harness 允许跳过正式维修链，但不能只拿走 Lease 后留下旧路径 / 阶段。
+                    // 整体撤销会把已拿起的维修包恢复到精确托盘来源，并释放功能点容量。
+                    ReleaseActiveTasks();
+                    ClearActivePath();
+                    _resident.PhaseDuration = 0f;
+                    _resident.PhaseRemaining = 0f;
+                }
+
+                string diagnosticPrefix = BuildWaterTankFaultDiagnostic(waterTank.InstanceId);
+                if (_resident.State.LastBlocker.Value.StartsWith(
+                        diagnosticPrefix,
+                        StringComparison.Ordinal) ||
+                    _resident.State.LastBlocker.Value.Contains(
+                        "出水阀卡滞",
+                        StringComparison.Ordinal))
+                    _resident.State.LastBlocker.Value = string.Empty;
+                _resident.LastPublishedDecisionDiagnostic = string.Empty;
+                _resident.DecisionRetryRemaining = 0f;
+                if (interruptedResidentRepair)
+                {
+                    PublishCurrentFacilityAccessProjection();
+                    SetResidentPhase(
+                        FoundationResidentPhase.Idle,
+                        "Harness 已瞬时修复水箱；居民维修已取消，实体备件已放回托盘");
+                }
             }
             WriteFacilityConditionProjection();
             return true;
@@ -302,16 +307,20 @@ namespace Game.NomadWorkshop.Foundation
             string facilityInstanceId,
             FacilityFaultKind fault)
         {
-            if (fault != FacilityFaultKind.OutletValveJammed ||
-                _activeHaul == null ||
-                _activeHaul.State != HaulTaskState.Reserved ||
+            if (fault != FacilityFaultKind.OutletValveJammed) return;
+            foreach (var resident in _residents)
+            {
+                using var scope = UseResident(resident);
+                if (_resident.ActiveHaul == null ||
+                _resident.ActiveHaul.State != HaulTaskState.Reserved ||
                 !string.Equals(
                     facilityInstanceId,
-                    _activeWaterSourceFacilityInstanceId,
+                    _resident.ActiveWaterSourceFacilityInstanceId,
                     StringComparison.Ordinal))
-                return;
+                    continue;
 
-            CancelPendingWaterHaulForFault(facilityInstanceId);
+                CancelPendingWaterHaulForFault(facilityInstanceId);
+            }
         }
 
         private void CancelPendingWaterHaulForFault(string facilityInstanceId)
@@ -319,9 +328,9 @@ namespace Game.NomadWorkshop.Foundation
             ReleaseActiveTasks();
             ClearActivePath();
             PublishCurrentFacilityAccessProjection();
-            _residentDecisionRetryRemaining = 0f;
+            _resident.DecisionRetryRemaining = 0f;
             string diagnostic = BuildWaterTankFaultDiagnostic(facilityInstanceId);
-            _model.LastBlocker.Value = diagnostic;
+            _resident.State.LastBlocker.Value = diagnostic;
             SetResidentPhase(
                 FoundationResidentPhase.Idle,
                 "车辆水箱出水阀在取水前卡滞；已安全释放预留并重新决策");
