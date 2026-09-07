@@ -1,0 +1,259 @@
+{
+  "version": "0.1.1",
+  "status": "passed-export",
+  "blenderVersion": "5.2.1 LTS",
+  "atlasSize": 2048,
+  "assets": [
+    {
+      "name": "NW9_Kitchen",
+      "source": {
+        "meshCount": 8,
+        "triangles": 16808,
+        "degenerateTriangles": 0,
+        "vertices": 8705,
+        "uvComplete": true,
+        "boundsBlender": [
+          2.0850000381469727,
+          0.9269999861717224,
+          1.6850000619888306
+        ],
+        "minimumBlender": [
+          -1.0425000190734863,
+          -0.47199997305870056,
+          -1.1920928955078125e-07
+        ],
+        "maximumBlender": [
+          1.0425000190734863,
+          0.45500001311302185,
+          1.684999942779541
+        ],
+        "pivots": {
+          "NW9_Kitchen": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW9_Kitchen_AxisForward": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "NW9_Kitchen_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW9_Kitchen_AxisUp": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "NW9_Kitchen_CookPoint": [
+            0.6499999761581421,
+            0.10999999940395355,
+            1.0049999952316284
+          ],
+          "NW9_Kitchen_Countertop": [
+            0.0,
+            -0.07999999821186066,
+            0.9700000286102295
+          ],
+          "NW9_Kitchen_Door_Center": [
+            -0.3050000071525574,
+            -0.41999998688697815,
+            0.5099999904632568
+          ],
+          "NW9_Kitchen_Door_Left": [
+            -0.9549999833106995,
+            -0.41999998688697815,
+            0.5099999904632568
+          ],
+          "NW9_Kitchen_Door_Right": [
+            0.9549999833106995,
+            -0.41999998688697815,
+            0.5099999904632568
+          ],
+          "NW9_Kitchen_Pot": [
+            0.6499999761581421,
+            0.1899999976158142,
+            1.0049999952316284
+          ],
+          "NW9_Kitchen_PotLid": [
+            0.6499999761581421,
+            0.1899999976158142,
+            1.159999966621399
+          ],
+          "NW9_Kitchen_TaskLamp": [
+            0.0,
+            0.1899999976158142,
+            1.465000033378601
+          ]
+        },
+        "parts": [
+          "NW9_Kitchen",
+          "NW9_Kitchen_AxisForward",
+          "NW9_Kitchen_AxisRight",
+          "NW9_Kitchen_AxisUp",
+          "NW9_Kitchen_CookPoint",
+          "NW9_Kitchen_Countertop",
+          "NW9_Kitchen_Door_Center",
+          "NW9_Kitchen_Door_Left",
+          "NW9_Kitchen_Door_Right",
+          "NW9_Kitchen_Pot",
+          "NW9_Kitchen_PotLid",
+          "NW9_Kitchen_TaskLamp"
+        ]
+      },
+      "roundTrip": {
+        "meshCount": 8,
+        "triangles": 16808,
+        "degenerateTriangles": 0,
+        "vertices": 8705,
+        "uvComplete": true,
+        "boundsBlender": [
+          2.0850000381469727,
+          0.9270002245903015,
+          1.6850003039916714
+        ],
+        "minimumBlender": [
+          -1.0425000190734863,
+          -0.4719999432563782,
+          -2.4200284087783075e-07
+        ],
+        "maximumBlender": [
+          1.0425000190734863,
+          0.45500028133392334,
+          1.6850000619888306
+        ],
+        "pivots": {
+          "NW9_Kitchen": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW9_Kitchen_AxisUp": [
+            0.0,
+            1.6292068494294654e-07,
+            1.0
+          ],
+          "NW9_Kitchen_Pot": [
+            0.6499999761581421,
+            0.19000016152858734,
+            1.0049999952316284
+          ],
+          "NW9_Kitchen_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW9_Kitchen_Door_Center": [
+            -0.3050000071525574,
+            -0.419999897480011,
+            0.5100000500679016
+          ],
+          "NW9_Kitchen_TaskLamp": [
+            0.0,
+            0.1900002360343933,
+            1.465000033378601
+          ],
+          "NW9_Kitchen_AxisForward": [
+            0.0,
+            1.0,
+            -1.6292068494294654e-07
+          ],
+          "NW9_Kitchen_CookPoint": [
+            0.6499999761581421,
+            0.11000016331672668,
+            1.0049999952316284
+          ],
+          "NW9_Kitchen_Door_Right": [
+            0.9549999833106995,
+            -0.419999897480011,
+            0.5100000500679016
+          ],
+          "NW9_Kitchen_PotLid": [
+            0.6499999761581421,
+            0.19000019133090973,
+            1.159999966621399
+          ],
+          "NW9_Kitchen_Door_Left": [
+            -0.9549999833106995,
+            -0.419999897480011,
+            0.5100000500679016
+          ],
+          "NW9_Kitchen_Countertop": [
+            0.0,
+            -0.07999984174966812,
+            0.9700000286102295
+          ]
+        },
+        "parts": [
+          "NW9_Kitchen.001",
+          "NW9_Kitchen_AxisUp.001",
+          "NW9_Kitchen_Pot.001",
+          "NW9_Kitchen_AxisRight.001",
+          "NW9_Kitchen_Door_Center.001",
+          "NW9_Kitchen_TaskLamp.001",
+          "NW9_Kitchen_AxisForward.001",
+          "NW9_Kitchen_CookPoint.001",
+          "NW9_Kitchen_Door_Right.001",
+          "NW9_Kitchen_PotLid.001",
+          "NW9_Kitchen_Door_Left.001",
+          "NW9_Kitchen_Countertop.001"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "blender_nomad_kitchen.py",
+      "sha256": "f3ef156f045e3dc390deb0d701eab7fddb78e0291b9821acf89b383df62b1909"
+    },
+    {
+      "file": "blender_nomad_water_facilities.py",
+      "sha256": "bc182e8881ffec631112e5553f3029fe52c13f9f28cab051d7c41ec48c0f6bf1"
+    },
+    {
+      "file": "blender_nomad_vehicle_forms.py",
+      "sha256": "64a813aaa4a6f96b28f6df01453d2d0825d6d06a23bfcfeeeccd90f6d19b17db"
+    },
+    {
+      "file": "blender_nomad_form_study.py",
+      "sha256": "46e918bb14f4fde5d4ace6089f6cf7f44627cfa29318b8e50516be35f0d62a60"
+    },
+    {
+      "file": "blender_nomad_art_set.py",
+      "sha256": "ae09cbf9573493a013daeb64322f5336c53ef36ebe28a243c7f5b5220850c137"
+    },
+    {
+      "file": "blender_nomad_deck_cockpit.py",
+      "sha256": "c88be92d3cba5c5d1b63468fe8e86fb39da07de5284ebb033846bf685424890b"
+    },
+    {
+      "file": "blender_nomad_canopy.py",
+      "sha256": "8e8afb836ba1dc431858bd7013a440cb699c0fd8f60e1dee3f77c10c50a7814c"
+    }
+  ],
+  "files": [
+    {
+      "file": "kitchen-preview.png",
+      "sha256": "e0329c7b3e5c052353db14e70fa24b3ae1414ea8c4119f76d95a001e7f63e916"
+    },
+    {
+      "file": "NW9_Kitchen.fbx",
+      "sha256": "b9da8bf5670266f18dda29ce3783bb71a1070878a052fe4272d30e7a95c2033f"
+    },
+    {
+      "file": "NW9_Kitchen_Color.png",
+      "sha256": "7868d1c68779b6e21f981ec0a0a1961e032613983662f3dfdfdbf5f9a66512fa"
+    },
+    {
+      "file": "NW9_Kitchen_Normal.png",
+      "sha256": "fb226b57a33509e265dc30251d9ecc8ac50386fa86a137792ba9e2f7b43b60ae"
+    },
+    {
+      "file": "NW9_Kitchen_Surface.png",
+      "sha256": "1759b6d029551b35582b74f42c9dbab3a35787fe3ff017616740ab2a58b1e608"
+    }
+  ]
+}

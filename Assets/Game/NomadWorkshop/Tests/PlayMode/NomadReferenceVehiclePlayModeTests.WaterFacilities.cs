@@ -61,7 +61,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             context.ExecuteCommand(new RestoreFoundationCheckpointCommand(saved));
             yield return null; yield return null;
             var spaces = view.GetComponentsInChildren<FoundationFacilitySpaceAuthoring>();
-            Assert.That(spaces.Select(s => s.name).OrderBy(n => n),
+            Assert.That(spaces.Where(s => s.PlacementRegions.Any(r => r.id == "maintenance-tray") ||
+                    s.InteractionGroups.Any(g => g.GroupId == "drink-and-deliver")).Select(s => s.name).OrderBy(n => n),
                 Is.EqualTo(new[] { "NW8_Dispenser", "NW8_WaterTank" }));
             var source = spaces.Single(s => s.PlacementRegions.Any(r => r.id == "maintenance-tray"));
             var tray = source.PlacementRegions.Single(r => r.id == "maintenance-tray");
