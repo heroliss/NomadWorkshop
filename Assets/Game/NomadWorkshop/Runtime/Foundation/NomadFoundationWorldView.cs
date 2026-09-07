@@ -518,6 +518,7 @@ namespace Game.NomadWorkshop.Foundation
                 NomadFacilityDefinition definition = facilityDefinitions[i];
                 if (definition == null)
                     throw new MissingReferenceException($"WorldView 设施定义第 {i} 项为空。 ");
+                definition.ValidateModelSpaceSnapshot();
                 if (!_definitions.TryAdd(definition.Id, definition))
                     throw new InvalidOperationException($"WorldView 设施 id '{definition.Id}' 重复。 ");
                 if (definition.Prefab != null)
@@ -1160,7 +1161,8 @@ namespace Game.NomadWorkshop.Foundation
                 var root = new GameObject($"{definition.DisplayName} [{state.InstanceId}]").transform;
                 root.SetParent(_facilityRoot, false);
                 DeckPose pose = state.Pose;
-                root.localPosition = deckLayout.PoseToLocal(pose, 0.02f);
+                // 模型标记与物品支撑共用甲板原点；装饰抬高应在模型内部表达，不能偏移整个设施。
+                root.localPosition = deckLayout.PoseToLocal(pose);
                 root.localRotation = Quaternion.Euler(0f, (float)pose.YawDegrees, 0f);
                 Renderer[] bodyRenderers = _grayboxFactory.Build(root, definition);
                 if (definition.Function == NomadFacilityFunction.Toilet)

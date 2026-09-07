@@ -176,6 +176,8 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     {
         public string InstanceId = string.Empty;
         public string DefinitionId = string.Empty;
+        // 空值为尚未生成模型空间的旧档；是否兼容由拥有设施定义的 Adapter 在恢复前判定。
+        public string SpaceSignature = string.Empty;
         public QuantizedDeckPose Pose;
         // 旧版耐久 / 污染字段继续写入可读投影，供 v3 早期存档和外部工具兼容；
         // 精确继续事故轨迹必须使用下面的连续状态与风险积分字段。
@@ -579,6 +581,14 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                     throw new InvalidOperationException($"设施列表第 {i} 项为空。");
                 RequireUniqueId(facility.InstanceId, "设施实例", entityIds);
                 RequireId(facility.DefinitionId, "设施定义");
+                if (!string.IsNullOrEmpty(facility.SpaceSignature))
+                {
+                    if (facility.SpaceSignature.Length != 64)
+                        throw new InvalidOperationException($"设施 {facility.InstanceId} 的空间摘要长度无效。");
+                    foreach (char c in facility.SpaceSignature)
+                        if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f'))
+                            throw new InvalidOperationException($"设施 {facility.InstanceId} 的空间摘要必须为小写 SHA-256。");
+                }
                 ValidatePose(facility.Pose, $"设施 {facility.InstanceId}");
                 ValidateRange(facility.DurabilityPermille, $"设施 {facility.InstanceId} 耐久");
                 ValidateRange(facility.DirtPermille, $"设施 {facility.InstanceId} 污染");

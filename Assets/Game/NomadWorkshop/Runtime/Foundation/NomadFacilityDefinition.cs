@@ -310,7 +310,7 @@ namespace Game.NomadWorkshop.Foundation
     [CreateAssetMenu(
         fileName = "NW_Facility",
         menuName = "SSFramework/游牧工坊/设施定义")]
-    public sealed class NomadFacilityDefinition : ScriptableObject
+    public sealed partial class NomadFacilityDefinition : ScriptableObject
     {
         [Header("身份与能力")]
         [SerializeField, Tooltip("跨运行与存档稳定的设施定义 id；发布后不要随意改名。")]
@@ -503,6 +503,8 @@ namespace Game.NomadWorkshop.Foundation
             prototypeSize = configuredPrototypeSize;
             prototypeColor = configuredPrototypeColor;
             prefab = null;
+            generatedSpaceSignature = string.Empty;
+            legacySpaceSignature = string.Empty;
             OnValidate();
             CreateFootprint();
         }

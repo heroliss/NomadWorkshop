@@ -98,6 +98,7 @@ namespace Game.NomadWorkshop.Foundation
                 {
                     InstanceId = facility.InstanceId,
                     DefinitionId = facility.DefinitionId,
+                    SpaceSignature = _definitions[facility.DefinitionId].GeneratedSpaceSignature,
                     Pose = QuantizedDeckPose.FromDeckPose(facility.Pose),
                     DurabilityPermille = 1000 - condition.WearPermille,
                     DirtPermille = condition.DustPermille,
@@ -708,6 +709,7 @@ namespace Game.NomadWorkshop.Foundation
                     throw new NotSupportedException(
                         $"检查点设施 {facility.InstanceId} 使用当前版本不存在的定义 " +
                         $"{facility.DefinitionId}。");
+                definition.ValidateSavedSpaceSignature(facility.SpaceSignature);
                 var request = new ContinuousFacilityPlacementRequest(
                     facility.InstanceId,
                     facility.DefinitionId,

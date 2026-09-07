@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 275295110a46b4b4e858cbc62c6dbbdf, type: 3}
+  m_Name: NW7_Facility_VehicleWaterTank
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadFacilityDefinition
+  generatedSpaceSignature: 7dbb89a08cb5dd194727141d420f642053bd1bf23b7214a825f6541cd24c15df
+  legacySpaceSignature: d618fae5c16b61fe46d35ecf8e1dd4be192e0b2091513c33dd8e32876a85a69e
+  id: vehicle-water-tank
+  displayName: "\u8F66\u8F86\u6C34\u7BB1"
+  function: 0
+  buildable: 0
+  footprintParts:
+  - localCenterMeters: {x: 0, y: 0}
+    sizeMeters: {x: 1.8, y: 1}
+    localYawDegrees: 0
+  interactionGroups:
+  - groupId: water-pickup
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: left
+      localPositionMeters: {x: -0.48, y: -0.96}
+      localYawDegrees: 0
+    - slotId: center
+      localPositionMeters: {x: 0, y: -1}
+      localYawDegrees: 0
+    - slotId: right
+      localPositionMeters: {x: 0.48, y: -0.96}
+      localYawDegrees: 0
+  - groupId: maintenance-supply
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: front-left
+      localPositionMeters: {x: -0.6, y: -0.9}
+      localYawDegrees: 0
+    - slotId: front-right
+      localPositionMeters: {x: 0.6, y: -0.9}
+      localYawDegrees: 0
+  - groupId: service-valve
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: rear-left
+      localPositionMeters: {x: -0.45, y: 0.9}
+      localYawDegrees: -180
+    - slotId: rear-right
+      localPositionMeters: {x: 0.45, y: 0.9}
+      localYawDegrees: -180
+  - groupId: water-can-access
+    requiredForOperation: 1
+    alternativeSlots:
+    - slotId: side
+      localPositionMeters: {x: 1.7, y: -0.17}
+      localYawDegrees: -90.00001
+  placementRegions:
+  - regionId: water-can-parking
+    localCenterMeters: {x: 1.2, y: 0}
+    sizeMeters: {x: 0.42, y: 0.32}
+    localYawDegrees: 0
+    supportHeightMeters: 0
+    edgeInsetMeters: 0.02
+    acceptedCategories:
+    - water-can
+  - regionId: maintenance-tray
+    localCenterMeters: {x: 0, y: 0}
+    sizeMeters: {x: 0.6, y: 0.4}
+    localYawDegrees: 0
+    supportHeightMeters: 1.52
+    edgeInsetMeters: 0.02
+    acceptedCategories:
+    - spare-part
+    - tool-small
+  placeAtStart: 1
+  startPositionMeters: {x: -3.4, y: 2.25}
+  startYawDegrees: 0
+  prefab: {fileID: 3355937930229064009, guid: 45eebec40f5698d44b0e0ca25e4d0a1a, type: 3}
+  prototypeSize: {x: 1.65, y: 1.4, z: 0.86}
+  prototypeColor: {r: 0.08, g: 0.48, b: 0.68, a: 1}

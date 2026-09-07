@@ -8,6 +8,26 @@ namespace Game.NomadWorkshop.Simulation.Tests
     /// <summary>锁定自由姿态量化、完整快照不变量和中途行动的幂等恢复决策。</summary>
     public sealed class NomadWorkshopSaveContractTests
     {
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
+        public void FacilitySpaceSignature_AcceptsLegacyMissingAndCanonicalDigest(string signature)
+        {
+            var save = CreateValidSave();
+            save.Facilities[0].SpaceSignature = signature;
+            Assert.DoesNotThrow(() => NomadWorkshopSaveContract.ValidateForSave(save));
+        }
+
+        [TestCase("short")]
+        [TestCase("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef")]
+        [TestCase("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
+        public void FacilitySpaceSignature_RejectsMalformedDigest(string signature)
+        {
+            var save = CreateValidSave();
+            save.Facilities[0].SpaceSignature = signature;
+            Assert.Throws<InvalidOperationException>(() => NomadWorkshopSaveContract.ValidateForSave(save));
+        }
+
         [Test]
         public void QuantizedDeckPose_RoundsMillimetersAndNormalizesYaw()
         {

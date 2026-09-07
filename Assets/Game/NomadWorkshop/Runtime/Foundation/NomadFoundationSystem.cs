@@ -1166,6 +1166,7 @@ namespace Game.NomadWorkshop.Foundation
                 if (definition == null)
                     throw new MissingReferenceException($"设施定义数组第 {i} 项为空。");
                 definition.ValidateOrThrow();
+                definition.ValidateModelSpaceSnapshot();
                 if (!_definitions.TryAdd(definition.Id, definition))
                     throw new InvalidOperationException($"设施稳定 id '{definition.Id}' 重复。");
                 definition.CreateFootprint();

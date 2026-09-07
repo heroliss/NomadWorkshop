@@ -6,7 +6,8 @@ namespace Game.NomadWorkshop.Foundation
 {
     /// <summary>
     /// Foundation 设施停靠空间的运行时所有者：从设施定义重建 committed / preview 拓扑，生成 View 掩码，
-    /// 并把一个空间的全部 Slot 键作为原子租约占用。每位居民持有自己的租约，互不重叠的空间可并行使用。
+    /// 并原子预留所选功能组及一个空间的全部 Slot 键。同组远距离候选仍共享容量，
+    /// 不同组且互不重叠的空间可并行使用。每位居民持有自己的租约。
     /// 单线程调用；释放租约不会销毁共享拓扑，销毁拓扑会撤销全部租约。
     /// </summary>
     public sealed class FoundationInteractionSpaceRuntime : IDisposable
@@ -64,7 +65,7 @@ namespace Game.NomadWorkshop.Foundation
                 if (!reacquireActiveSpace ||
                     !_committed.TryGetSpace(lease.Slot, out InteractionSpace space))
                     continue;
-                foreach (string key in space.ReservationKeys)
+                foreach (string key in ReservationKeys(space, lease.Slot))
                 {
                     keyUseCounts.TryGetValue(key, out int count);
                     keyUseCounts[key] = count + 1;
@@ -79,10 +80,11 @@ namespace Game.NomadWorkshop.Foundation
                 if (retain)
                 {
                     _committed.TryGetSpace(lease.Slot, out InteractionSpace space);
-                    foreach (string key in space.ReservationKeys)
+                    string[] keys = ReservationKeys(space, lease.Slot);
+                    foreach (string key in keys)
                         if (keyUseCounts[key] > 1) retain = false;
                     if (retain && _reservations.TryAcquire(
-                            lease.OwnerId, space.ReservationKeys, out ReservationLease reservation))
+                            lease.OwnerId, keys, out ReservationLease reservation))
                     {
                         lease.ReplaceReservation(reservation);
                         continue;
@@ -143,7 +145,7 @@ namespace Game.NomadWorkshop.Foundation
                         group,
                         group.AlternativeSlots[slotIndex]);
                     if (_committed.TryGetSpace(address, out InteractionSpace space) &&
-                        IsOccupied(space))
+                        IsOccupied(space, address))
                         result |= 1UL << flattenedSlotIndex;
                     flattenedSlotIndex++;
                 }
@@ -153,7 +155,7 @@ namespace Game.NomadWorkshop.Foundation
 
         public bool IsAvailable(in InteractionSlotAddress address) =>
             !_disposed && _committed.TryGetSpace(address, out InteractionSpace space) &&
-            !IsOccupied(space);
+            !IsOccupied(space, address);
 
         /// <summary>同一居民至多占用一个空间；成功句柄由居民行动负责释放，失败不产生部分预留。</summary>
         public bool TryAcquire(
@@ -165,7 +167,7 @@ namespace Game.NomadWorkshop.Foundation
                 !_committed.TryGetSpace(slot.Address, out InteractionSpace space) ||
                 !_reservations.TryAcquire(
                     ownerId,
-                    space.ReservationKeys,
+                    ReservationKeys(space, slot.Address),
                     out ReservationLease reservation))
                 return false;
 
@@ -265,8 +267,21 @@ namespace Game.NomadWorkshop.Foundation
             return result;
         }
 
-        private bool IsOccupied(InteractionSpace space)
+        private static string GroupReservationKey(in InteractionSlotAddress address) =>
+            $"dock-group:\u001f{address.FacilityInstanceId}\u001f{address.GroupId}";
+
+        private static string[] ReservationKeys(InteractionSpace space, in InteractionSlotAddress address)
         {
+            // 只占用实际选择的组；不能把同空间内其他组的远端候选也递归锁住。
+            var keys = new string[space.ReservationKeys.Count + 1];
+            for (int i = 0; i < space.ReservationKeys.Count; i++) keys[i] = space.ReservationKeys[i];
+            keys[keys.Length - 1] = GroupReservationKey(address);
+            return keys;
+        }
+
+        private bool IsOccupied(InteractionSpace space, in InteractionSlotAddress address)
+        {
+            if (_reservations.TryGetOwner(GroupReservationKey(address), out _)) return true;
             for (var i = 0; i < space.ReservationKeys.Count; i++)
             {
                 if (_reservations.TryGetOwner(space.ReservationKeys[i], out _))
