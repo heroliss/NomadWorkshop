@@ -118,6 +118,24 @@ namespace Game.NomadWorkshop.Foundation
         private string _buildFeedback = string.Empty;
         [SerializeField, HideInInspector]
         private FoundationHudPanel _openPanel;
+        private FoundationRoofPresentation _roofDisplay;
+
+        public bool HasRoofControls => _roofDisplay != null && !_roofDisplay.IsDisposed;
+
+        /// <summary>
+        /// 借用同场景 World View 拥有的可选屋顶控制器；返回的句柄只解除借用。
+        /// 旧句柄迟到释放不会清除后续绑定，且不允许覆盖仍有效的持有者。
+        /// </summary>
+        public IDisposable BindRoofDisplay(FoundationRoofPresentation display)
+        {
+            if (display == null || display.IsDisposed) throw new ArgumentException("屋顶显示会话不可用。", nameof(display));
+            if (HasRoofControls) throw new InvalidOperationException("HUD 已绑定有效的屋顶显示会话。");
+            _roofDisplay = display;
+            return Disposable.Create(() =>
+            {
+                if (ReferenceEquals(_roofDisplay, display)) _roofDisplay = null;
+            });
+        }
         private Vector2 _residentPanelScroll;
         private Vector2 _buildPanelScroll;
         private Vector2 _developerPanelScroll;
@@ -297,6 +315,7 @@ namespace Game.NomadWorkshop.Foundation
             EnsureStyles();
             DrawCompactResidentCard();
             DrawCornerToolbar();
+            DrawRoofControl();
 
             switch (_openPanel)
             {
@@ -325,7 +344,22 @@ namespace Game.NomadWorkshop.Foundation
                 screenPoint,
                 Screen.width,
                 Screen.height,
-                _openPanel != FoundationHudPanel.None);
+                _openPanel != FoundationHudPanel.None,
+                HasRoofControls);
+
+        private void DrawRoofControl()
+        {
+            if (!HasRoofControls) return;
+            Rect rect = FoundationHudLayout.GetRoofControlRect(Screen.width, Screen.height);
+            bool previous = GUI.enabled;
+            GUI.enabled = previous && !_roofDisplay.BuildCutaway;
+            string label = _roofDisplay.BuildCutaway ? "建造中 · 屋顶剖开" :
+                _roofDisplay.ExteriorVisible ? "剖开屋顶 [H]" : "显示屋顶 [H]";
+            if (GUI.Button(rect, new GUIContent(label, _roofDisplay.BuildCutaway
+                    ? "退出建造后恢复屋顶观看偏好。" : "切换屋顶外观，便于查看棚下的工位和居民。")))
+                _roofDisplay.ToggleExteriorPreference();
+            GUI.enabled = previous;
+        }
 
         private void OnInteractionModeChanged(FoundationInteractionMode mode)
         {

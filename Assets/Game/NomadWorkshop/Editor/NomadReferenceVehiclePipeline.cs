@@ -39,14 +39,19 @@ namespace Game.NomadWorkshop.Editor
             RequireCleanIdleScenes();
             string json = File.ReadAllText(SourceFolder + "/manifest.json");
             Manifest manifest = JsonUtility.FromJson<Manifest>(json);
-            if (manifest == null || manifest.version != "0.2.0" || manifest.status != "passed-export" ||
+            if (manifest == null || manifest.version != "0.3.0" || manifest.status != "passed-export" ||
                 manifest.atlasSize != 2048 || manifest.source == null || manifest.source.triangles <= 0)
                 throw new InvalidOperationException("参考车体没有完整的导出/烘焙证据。");
             ValidateFiles(manifest.sources, "Tools/ArtPipeline/Blender", new[]
-            { "blender_nomad_vehicle_forms.py", "blender_nomad_form_study.py", "blender_nomad_art_set.py", "blender_nomad_deck_cockpit.py" });
+            { "blender_nomad_vehicle_forms.py", "blender_nomad_form_study.py", "blender_nomad_art_set.py", "blender_nomad_deck_cockpit.py", "blender_nomad_canopy.py" });
             ValidateFiles(manifest.files, SourceFolder, new[] { "NW5_Vehicle.fbx" }.Concat(AtlasStems
                 .SelectMany(stem => new[] { "Color", "Normal", "Surface" }.Select(channel => stem + "_" + channel + ".png"))).ToArray());
             Material[] atlases = AtlasStems.Select(ImportMaterial).ToArray();
+            Material[] canopyMaterials =
+            {
+                ImportCanopyMaterial("NW5_CanopySheet", "NW1_Steel", new Color(.53f, .51f, .435f), .45f),
+                ImportCanopyMaterial("NW5_CanopyFrame", "NW1_Frame", new Color(.32f, .345f, .305f), .38f)
+            };
             string modelPath = Root + "/Models/NW5_Vehicle.fbx";
             File.Copy(SourceFolder + "/NW5_Vehicle.fbx", modelPath, true);
             AssetDatabase.ImportAsset(modelPath, ImportAssetOptions.ForceSynchronousImport);
@@ -65,6 +70,8 @@ namespace Game.NomadWorkshop.Editor
             }
             foreach (Material atlas in atlases)
                 importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), atlas.name), atlas);
+            foreach (Material material in canopyMaterials)
+                importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), material.name), material);
             importer.SaveAndReimport();
             Scene preview = EditorSceneManager.NewPreviewScene();
             try
@@ -83,8 +90,10 @@ namespace Game.NomadWorkshop.Editor
                     lamp.color = new Color(1f, .67f, .30f); lamp.intensity = .55f; lamp.range = 2.3f;
                     lamp.shadows = LightShadows.None;
                 }
+                BindCanopy(wrapper);
                 PrefabUtility.SaveAsPrefabAsset(wrapper, PrefabPath, out bool saved);
                 if (!saved) throw new InvalidOperationException("参考车体 Prefab 保存失败。");
+                ValidateCanopy(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath));
             }
             finally { EditorSceneManager.ClosePreviewScene(preview); }
             File.WriteAllText(Root + "/NW5-source-manifest.json", json);
@@ -109,7 +118,7 @@ namespace Game.NomadWorkshop.Editor
             Directory.CreateDirectory("Logs/AIValidation/nomad-warm-art");
             File.WriteAllText("Logs/AIValidation/nomad-warm-art/reference-vehicle-import.json", JsonUtility.ToJson(new ImportReport
             { scene = ScenePath, triangles = manifest.source.triangles, capturedUtc = DateTime.UtcNow.ToString("O") }, true));
-            Debug.Log("参考车体候选已保存并回读；结构边框、错缝甲板与折面车首接入同一三居民玩法，仍需实际运行和画面验收。");
+            Debug.Log("参考车体候选已保存并回读；结构边框、错缝甲板、折面车首与可剖开棚架接入同一三居民玩法，仍需实际运行和画面验收。");
         }
 
         [Serializable] private sealed class ImportReport
@@ -177,6 +186,62 @@ namespace Game.NomadWorkshop.Editor
             result.SetFloat("_Metallic", 1f); result.SetFloat("_SmoothnessTextureChannel", 0f);
             result.EnableKeyword("_NORMALMAP"); result.EnableKeyword("_METALLICSPECGLOSSMAP");
             EditorUtility.SetDirty(result); AssetDatabase.SaveAssetIfDirty(result); return result;
+        }
+
+        private static Material ImportCanopyMaterial(string name, string sourceName, Color color, float smoothness)
+        {
+            var source = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/" + sourceName + ".mat");
+            if (source == null) throw new InvalidOperationException("屋顶需要已有金属材质，不能静默创建无贴图替代物。");
+            string path = Root + "/Materials/" + name + ".mat";
+            var result = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (result == null)
+            {
+                result = new Material(source);
+                AssetDatabase.CreateAsset(result, path);
+            }
+            else result.CopyPropertiesFromMaterial(source);
+            result.name = name;
+            result.SetColor("_BaseColor", color);
+            result.SetFloat("_Smoothness", smoothness);
+            EditorUtility.SetDirty(result);
+            AssetDatabase.SaveAssetIfDirty(result);
+            return result;
+        }
+
+        private static void BindCanopy(GameObject wrapper)
+        {
+            Transform[] nodes = wrapper.GetComponentsInChildren<Transform>(true);
+            Transform canopy = nodes.Single(t => t.name == "NW5_Canopy");
+            Transform roof = nodes.Single(t => t.name == "NW5_CanopyRoof");
+            var binding = canopy.gameObject.AddComponent<FoundationRoofVisual>();
+            var data = new SerializedObject(binding);
+            SerializedProperty references = data.FindProperty("roofRenderers");
+            Renderer[] renderers = roof.GetComponentsInChildren<Renderer>(true);
+            references.arraySize = renderers.Length;
+            for (int i = 0; i < renderers.Length; i++) references.GetArrayElementAtIndex(i).objectReferenceValue = renderers[i];
+            data.ApplyModifiedPropertiesWithoutUndo();
+            foreach (string name in new[] { "CanopyWorkLamp_0", "CanopyWorkLamp_1" })
+            {
+                Transform lampPoint = nodes.Single(t => t.name == name);
+                Light lamp = lampPoint.gameObject.AddComponent<Light>();
+                lamp.type = LightType.Point; lamp.color = new Color(1f, .8f, .57f);
+                lamp.intensity = 6f; lamp.range = 4f; lamp.shadows = LightShadows.None;
+            }
+            ValidateCanopy(wrapper);
+        }
+
+        // 导入、Prefab 保存回读都验证显式分件；不把局部隐藏误配到整车或工作灯。
+        private static void ValidateCanopy(GameObject root)
+        {
+            FoundationRoofVisual binding = root.GetComponentsInChildren<FoundationRoofVisual>(true).Single();
+            Renderer[] expected = root.GetComponentsInChildren<Renderer>(true)
+                .Where(r => r.sharedMaterials.Any(m => m != null && m.name == "NW5_CanopySheet")).ToArray();
+            if (expected.Length == 0 || !binding.RoofRenderers.OrderBy(r => r.GetInstanceID())
+                    .SequenceEqual(expected.OrderBy(r => r.GetInstanceID())) ||
+                binding.RoofRenderers.Any(r => !r.transform.IsChildOf(binding.transform)))
+                throw new InvalidOperationException("屋顶分件引用缺失、越界或与材质目标不匹配。");
+            if (binding.GetComponentsInChildren<Light>(true).Length != 2)
+                throw new InvalidOperationException("棚下工作灯接线不完整。");
         }
 
         // 仅处理本生成器拥有的材质图。Default 类型不会主动移除旧 Sprite 切片/身份记录；

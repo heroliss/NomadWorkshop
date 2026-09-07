@@ -74,6 +74,16 @@ namespace Game.NomadWorkshop.Foundation
                 Mathf.Max(120f, screenHeight - InformationPanelTop - Margin));
         }
 
+        /// <summary>可选屋顶切换控件固定左下；小窗口仍将可点击矩形限制在屏幕内。</summary>
+        public static Rect GetRoofControlRect(float screenWidth, float screenHeight)
+        {
+            float left = Mathf.Min(Margin, Mathf.Max(0f, screenWidth * .5f));
+            float bottom = Mathf.Min(Margin, Mathf.Max(0f, screenHeight * .5f));
+            float width = Mathf.Min(210f, Mathf.Max(0f, screenWidth - left * 2f));
+            float height = Mathf.Min(ToolbarHeight, Mathf.Max(0f, screenHeight - bottom * 2f));
+            return new Rect(left, screenHeight - bottom - height, width, height);
+        }
+
         /// <summary>
         /// Input System 的屏幕坐标从左下起算，IMGUI 从左上起算；转换后只检查真实可见 UI。
         /// </summary>
@@ -81,11 +91,15 @@ namespace Game.NomadWorkshop.Foundation
             Vector2 screenPoint,
             float screenWidth,
             float screenHeight,
-            bool informationPanelVisible)
+            bool informationPanelVisible,
+            bool roofControlsVisible = false)
         {
             var guiPoint = new Vector2(screenPoint.x, screenHeight - screenPoint.y);
             if (GetCompactResidentCardRect(screenWidth).Contains(guiPoint) ||
                 GetCornerToolbarRect(screenWidth).Contains(guiPoint))
+                return true;
+
+            if (roofControlsVisible && GetRoofControlRect(screenWidth, screenHeight).Contains(guiPoint))
                 return true;
 
             return informationPanelVisible &&

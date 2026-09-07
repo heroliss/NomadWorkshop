@@ -63,6 +63,10 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationBuildTransactionPhase _animationBuildPhase;
         private FoundationReadModel _journeyReadModel;
         private FoundationJourneyPresentation _journeyPresentation;
+        private FoundationRoofPresentation _roofPresentation;
+
+        /// <summary>当前模型的可选屋顶显示会话；生命周期由本 View 的 Bag 拥有。</summary>
+        public FoundationRoofPresentation RoofPresentation => _roofPresentation;
         private Color ClearWeatherKeyColor => vehicleVisualPrefab != null
             ? new Color(1f, .96f, .88f) : new Color(1f, .89f, .72f);
         private float ClearWeatherKeyIntensity => vehicleVisualPrefab != null ? 1.3f : 1.6f;
@@ -341,6 +345,8 @@ namespace Game.NomadWorkshop.Foundation
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
+                if (keyboard.hKey.wasPressedThisFrame)
+                    _roofPresentation?.ToggleExteriorPreference();
                 if (keyboard.bKey.wasPressedThisFrame)
                 {
                     if (_interactionMode == FoundationInteractionMode.Build)
@@ -646,6 +652,13 @@ namespace Game.NomadWorkshop.Foundation
                 vehicle.name = "移动工坊 · 可替换车架表现";
                 vehicle.transform.localPosition = deckLayout.DeckCenterLocal;
                 vehicleRoot = vehicle.transform;
+                FoundationRoofVisual[] roofs = vehicle.GetComponentsInChildren<FoundationRoofVisual>(true);
+                if (roofs.Length > 0)
+                {
+                    _roofPresentation = new FoundationRoofPresentation(roofs);
+                    Bag.Add(_roofPresentation);
+                    if (screenUi != null) Bag.Add(screenUi.BindRoofDisplay(_roofPresentation));
+                }
             }
             else
             {
@@ -1496,6 +1509,7 @@ namespace Game.NomadWorkshop.Foundation
         private void OnInteractionModeChanged(FoundationInteractionMode mode)
         {
             _interactionMode = mode;
+            _roofPresentation?.SetBuildCutaway(mode == FoundationInteractionMode.Build);
             ApplyFacilityAccessVisuals();
             UpdatePlacementGridVisibility();
         }

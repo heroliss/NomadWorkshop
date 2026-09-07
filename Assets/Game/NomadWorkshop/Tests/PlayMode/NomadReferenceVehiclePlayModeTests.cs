@@ -10,7 +10,7 @@ using UnityEngine.TestTools;
 namespace Game.NomadWorkshop.PlayMode.Tests
 {
     /// <summary>在真实车体候选中复用三居民行动、身份和旅程边界；核对车体图集和重建后的空间姿态。</summary>
-    public sealed class NomadReferenceVehiclePlayModeTests : NomadResidentCrewPlayModeTests
+    public sealed partial class NomadReferenceVehiclePlayModeTests : NomadResidentCrewPlayModeTests
     {
         protected override string ScenePath => "Assets/Game/NomadWorkshop/Scenes/ReferenceVehicleSample.unity";
 

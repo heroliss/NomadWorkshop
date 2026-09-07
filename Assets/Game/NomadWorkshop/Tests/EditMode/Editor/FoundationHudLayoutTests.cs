@@ -10,6 +10,28 @@ namespace Game.NomadWorkshop.Editor.Tests
         private const float ScreenHeight = 713f;
 
         [Test]
+        public void RoofControl_BlocksOnlyItsVisibleBottomLeftRectangle()
+        {
+            Rect rect = FoundationHudLayout.GetRoofControlRect(ScreenWidth, ScreenHeight);
+            Vector2 point = new(rect.center.x, ScreenHeight - rect.center.y);
+            Assert.That(FoundationHudLayout.IsScreenPointBlocked(point, ScreenWidth, ScreenHeight, false, true), Is.True);
+            Assert.That(FoundationHudLayout.IsScreenPointBlocked(point, ScreenWidth, ScreenHeight, false, false), Is.False);
+            point.x = rect.xMax + 2f;
+            Assert.That(FoundationHudLayout.IsScreenPointBlocked(point, ScreenWidth, ScreenHeight, false, true), Is.False);
+        }
+
+        [TestCase(180f, 240f)]
+        [TestCase(12f, 20f)]
+        public void RoofControl_NarrowViewportKeepsRectangleInsideScreen(float width, float height)
+        {
+            Rect rect = FoundationHudLayout.GetRoofControlRect(width, height);
+            Assert.That(rect.xMin, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(rect.yMin, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(rect.xMax, Is.LessThanOrEqualTo(width));
+            Assert.That(rect.yMax, Is.LessThanOrEqualTo(height));
+        }
+
+        [Test]
         public void LeftThirdOutsideVisibleCard_DoesNotBlockWorldInput()
         {
             Assert.That(

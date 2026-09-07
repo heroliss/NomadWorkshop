@@ -8,6 +8,7 @@
         "R3.Unity",
         "UniTask",
         "Unity.AI.Navigation",
+        "Unity.InputSystem",
         "UnityEngine.TestRunner"
     ],
     "includePlatforms": [],
