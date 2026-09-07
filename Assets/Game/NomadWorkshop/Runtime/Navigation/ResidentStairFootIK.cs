@@ -25,9 +25,13 @@ namespace Game.NomadWorkshop.Navigation
             _animator = animator; _resident = resident; _surfaceRoot = surfaceRoot;
         }
 
-        private void OnAnimatorIK(int layerIndex)
+        /// <summary>
+        /// 由携物 IK 的同一次回调调用，先设置踏面支撑并返回骨盆世界位移，供手臂采用修正后的肩高。
+        /// 本组件不单独订阅 OnAnimatorIK，避免依赖多个组件回调顺序或重复施加骨盆位移。
+        /// </summary>
+        public Vector3 ApplySupport()
         {
-            if (_animator == null || _surfaceRoot == null) return;
+            if (!isActiveAndEnabled || _animator == null || _surfaceRoot == null) return Vector3.zero;
             Vector3 animatedLeft = _animator.GetIKPosition(AvatarIKGoal.LeftFoot);
             Vector3 animatedRight = _animator.GetIKPosition(AvatarIKGoal.RightFoot);
             LeftContactWeight = Evaluate(AvatarIKGoal.LeftFoot, _animator.leftFeetBottomHeight, out Vector3 left,
@@ -46,6 +50,7 @@ namespace Game.NomadWorkshop.Navigation
             Apply(AvatarIKGoal.LeftFoot, LeftContactWeight, left, leftRotation);
             Apply(AvatarIKGoal.RightFoot, RightContactWeight, right, rightRotation);
             LeftTarget = left; RightTarget = right;
+            return Vector3.up * PelvisOffset;
         }
 
         private void LateUpdate()

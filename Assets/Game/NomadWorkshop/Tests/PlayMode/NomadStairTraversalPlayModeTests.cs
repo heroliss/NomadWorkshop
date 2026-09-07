@@ -211,6 +211,26 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Transform palm = _view.WaterCan.Find(FoundationWaterCanVisualFactory.PalmTargetName);
             Assert.That(Vector3.Distance(contact.RightPalmContactPosition, palm.position), Is.LessThan(.015f));
             Assert.That(Quaternion.Angle(contact.RightPalmRotation, palm.rotation), Is.LessThan(4f));
+            Animator animator = _view.Resident.Animator;
+            Vector3 shoulder = animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position;
+            Vector3 elbow = animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position;
+            Vector3 wrist = animator.GetBoneTransform(HumanBodyBones.RightHand).position;
+            Assert.That(Vector3.Distance(contact.RightShoulderAtSolve, shoulder), Is.LessThan(.025f),
+                "手臂应采用踏面支撑修正后的肩膀，不能按骨盆下降前的位置求解。");
+            Assert.That(Vector3.Dot(elbow - shoulder, _view.Resident.transform.up), Is.LessThan(-.02f),
+                "直立提罐上下楼时，肘部应低于肩膀；握点正确不能掩盖横抬上臂。");
+            Transform body = _view.WaterCan.Find("Can Body");
+            Vector3 scale = body.lossyScale;
+            var bounds = new Bounds(Vector3.zero, Vector3.one + new Vector3(.06f / scale.x, .06f / scale.y, .06f / scale.z));
+            AssertClear(shoulder, elbow);
+            AssertClear(elbow, wrist);
+            void AssertClear(Vector3 from, Vector3 to)
+            {
+                from = body.InverseTransformPoint(from); to = body.InverseTransformPoint(to);
+                bool intersects = bounds.Contains(from) || (bounds.IntersectRay(new Ray(from, to - from), out float hit) &&
+                    hit <= Vector3.Distance(from, to));
+                Assert.That(intersects, Is.False, "上下楼实际手臂应与罐体保持至少 3 cm 净空。");
+            }
         }
 
         private static Bounds MeasureCanBounds(Transform can)

@@ -28,7 +28,8 @@ namespace Game.NomadWorkshop.Foundation
         private bool _alignPalm;
         private float _groundReach;
         private bool _groundFeetCaptured;
-        private Vector3 _groundBodyOffset;
+        private Vector3 _bodyOffsetAtSolve;
+        private System.Func<Vector3> _applyBodySupport;
         private Vector3 _leftStandingFoot, _rightStandingFoot;
         private Vector3 _leftGroundFoot, _rightGroundFoot;
         private Quaternion _leftGroundRotation, _rightGroundRotation;
@@ -54,11 +55,17 @@ namespace Game.NomadWorkshop.Foundation
         /// <summary>地面拾放固定的右脚 IK 世界目标，只用于诊断，不能作为实际足骨位置。</summary>
         public Vector3 RightGroundFootTarget { get; private set; }
 
-        /// <summary>按已初始化 Avatar 的手指根标定掌心；bodyFrame 是面朝玩法 +Z 的居民根，不是 FBX 内层。</summary>
-        public void Configure(Animator animator, Transform bodyFrame)
+        /// <summary>
+        /// 按已初始化 Avatar 的手指根标定掌心；bodyFrame 是面朝玩法 +Z 的居民根，不是 FBX 内层。
+        /// 可选 applyBodySupport 由同一居民的表现宿主提供，在本组件 IK Pass 内先施加脚部/骨盆支撑，
+        /// 返回本次施加的世界位移。支撑端不得另行运行 OnAnimatorIK；地面拾放期间改由蹲身支撑独占。
+        /// 回调与居民共同存活，不移动逻辑根；未提供时保留普通甲板行为。
+        /// </summary>
+        public void Configure(Animator animator, Transform bodyFrame, System.Func<Vector3> applyBodySupport = null)
         {
             _animator = animator;
             _bodyFrame = bodyFrame;
+            _applyBodySupport = applyBodySupport;
             _ikBasisKnown = false;
             _gripLayer = animator.GetLayerIndex(GripLayerName);
             _hand = RequireBone(HumanBodyBones.RightHand);
@@ -120,6 +127,8 @@ namespace Game.NomadWorkshop.Foundation
                 _ikBasisKnown = true;
             }
             ApplyGroundReach();
+            if (_groundReach <= 0f && _applyBodySupport != null)
+                _bodyOffsetAtSolve = _applyBodySupport();
             float weight = _rightGrip != null ? _contactWeight : 0f;
             RightHandContactWeight = weight;
             _animator.SetIKPositionWeight(AvatarIKGoal.RightHand, weight);
@@ -137,7 +146,7 @@ namespace Game.NomadWorkshop.Foundation
                 // 倾倒时肘部绕到罐体前方，避免抬起的壳体扫进上臂；平常下垂携行仍保留自然后弯。
                 float tilt = Mathf.InverseLerp(.995f, .94f, Vector3.Dot(_rightGrip.up, _bodyFrame.up));
                 Vector3 preferredElbow =
-                    _shoulder.position + _groundBodyOffset + _bodyFrame.right * (_rightSide * _armLength * .45f) -
+                    _shoulder.position + _bodyOffsetAtSolve + _bodyFrame.right * (_rightSide * _armLength * .45f) -
                     _bodyFrame.up * (_armLength * .30f) + _bodyFrame.forward * Mathf.Lerp(-.06f, .32f, tilt);
                 _animator.SetIKHintPosition(AvatarIKHint.RightElbow, ResolveCanElbow(wrist, preferredElbow));
             }
@@ -149,7 +158,8 @@ namespace Game.NomadWorkshop.Foundation
         {
             RightElbowClearanceResolved = false;
             if (_canBody == null) return preferred;
-            Vector3 shoulder = _shoulder.position + _groundBodyOffset;
+            // bodyPosition 的 IK 修正在本次求解后才写回骨骼 Transform，不能直接读取未修正的肩膀。
+            Vector3 shoulder = _shoulder.position + _bodyOffsetAtSolve;
             RightShoulderAtSolve = shoulder;
             Vector3 delta = wrist - shoulder;
             float distance = delta.magnitude;
@@ -202,11 +212,11 @@ namespace Game.NomadWorkshop.Foundation
 
         private void ApplyGroundReach()
         {
-            _groundBodyOffset = Vector3.zero;
+            _bodyOffsetAtSolve = Vector3.zero;
             GroundFootContactWeight = 0f;
             if (_groundReach <= 0f)
             {
-                // 普通携物和楼梯不写足部权重，避免争夺独立楼梯 Adapter 的支撑接触。
+                // 先释放上一段蹲身支撑；可选踏面支撑随后在同一 IK Pass 中接管脚部。
                 if (_groundFeetCaptured)
                 {
                     ApplyGroundFoot(AvatarIKGoal.LeftFoot, AvatarIKHint.LeftKnee, 0f, Vector3.zero, Quaternion.identity, -1f);
@@ -226,8 +236,8 @@ namespace Game.NomadWorkshop.Foundation
                 _rightGroundRotation = Quaternion.Inverse(_bodyFrame.rotation) * _animator.GetIKRotation(AvatarIKGoal.RightFoot);
                 _groundFeetCaptured = true;
             }
-            _groundBodyOffset = (_bodyFrame.forward * .20f - _bodyFrame.up * .55f) * _groundReach;
-            _animator.bodyPosition += _groundBodyOffset;
+            _bodyOffsetAtSolve = (_bodyFrame.forward * .20f - _bodyFrame.up * .55f) * _groundReach;
+            _animator.bodyPosition += _bodyOffsetAtSolve;
             GroundFootContactWeight = Mathf.SmoothStep(0f, 1f, _groundReach / .15f);
             LeftGroundFootTarget = _bodyFrame.TransformPoint(_leftGroundFoot);
             RightGroundFootTarget = _bodyFrame.TransformPoint(_rightGroundFoot);

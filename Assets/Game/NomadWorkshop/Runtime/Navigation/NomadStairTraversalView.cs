@@ -46,11 +46,11 @@ namespace Game.NomadWorkshop.Navigation
             fill.gameObject.SetActive(true);
             WaterCan.localPosition = FoundationWaterCanVisualFactory.GetGripPosition(Resident) -
                 Vector3.up * FoundationWaterCanVisualFactory.GripHeight;
-            FoundationResidentCarryIK carry = Resident.Animator.gameObject.AddComponent<FoundationResidentCarryIK>();
-            carry.Configure(Resident.Animator, root.transform);
-            carry.SetWaterCanGrip(WaterCan.Find(FoundationWaterCanVisualFactory.PalmTargetName), WaterCan.Find("Can Body"));
             FootIK = Resident.Animator.gameObject.AddComponent<ResidentStairFootIK>();
             FootIK.Configure(Resident.Animator, root.transform, navigationSpace);
+            FoundationResidentCarryIK carry = Resident.Animator.gameObject.AddComponent<FoundationResidentCarryIK>();
+            carry.Configure(Resident.Animator, root.transform, FootIK.ApplySupport);
+            carry.SetWaterCanGrip(WaterCan.Find(FoundationWaterCanVisualFactory.PalmTargetName), WaterCan.Find("Can Body"));
             _read = this.ExecuteCommand(new GetStairTraversalStateCommand());
             Bag.Subscribe(_read, Apply);
         }

@@ -54,6 +54,8 @@ namespace Game.NomadWorkshop.Editor
             Animator animator = view.Resident.Animator;
             var contact = animator.GetComponent<FoundationResidentCarryIK>();
             Transform palmTarget = view.WaterCan.Find(FoundationWaterCanVisualFactory.PalmTargetName);
+            Vector3 shoulder = animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position;
+            Vector3 elbow = animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position;
             var report = new Report
             {
                 scenePath = SceneManager.GetActiveScene().path, capturedUtc = DateTime.UtcNow.ToString("O"),
@@ -63,6 +65,11 @@ namespace Game.NomadWorkshop.Editor
                 handle = handle.position, leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot).position,
                 rightPalm = contact.RightPalmContactPosition, palmTarget = palmTarget.position,
                 palmAngleDegrees = Quaternion.Angle(contact.RightPalmRotation, palmTarget.rotation),
+                rightShoulder = shoulder, rightElbow = elbow, rightShoulderAtSolve = contact.RightShoulderAtSolve,
+                shoulderSolveErrorMeters = Vector3.Distance(shoulder, contact.RightShoulderAtSolve),
+                elbowDropMeters = Vector3.Dot(shoulder - elbow, view.Resident.transform.up),
+                pelvisOffsetMeters = view.FootIK.PelvisOffset, rightArmReachRatio = contact.RightArmReachRatio,
+                rightElbowClearanceResolved = contact.RightElbowClearanceResolved,
                 rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot).position,
                 leftTarget = view.FootIK.LeftTarget, rightTarget = view.FootIK.RightTarget,
                 leftWeight = view.FootIK.LeftContactWeight, rightWeight = view.FootIK.RightContactWeight,
@@ -74,7 +81,8 @@ namespace Game.NomadWorkshop.Editor
             Directory.CreateDirectory("Logs/AIValidation/nomad-warm-art");
             File.WriteAllText("Logs/AIValidation/nomad-warm-art/stair-review.json", JsonUtility.ToJson(report, true));
             Debug.Log($"[NomadStairReview] {report.phase} y={state.Position.y:F3} m，握点误差=" +
-                $"{Vector3.Distance(report.rightPalm, report.palmTarget):F4} m，身体/导航跨高={report.bodyStepHeight:F2}/{report.navigationStepHeight:F2} m。");
+                $"{Vector3.Distance(report.rightPalm, report.palmTarget):F4} m，肩部求解误差={report.shoulderSolveErrorMeters:F4} m，" +
+                $"肘部低于肩膀={report.elbowDropMeters:F3} m，身体/导航跨高={report.bodyStepHeight:F2}/{report.navigationStepHeight:F2} m。");
         }
 
         private static void Tick()
@@ -132,6 +140,9 @@ namespace Game.NomadWorkshop.Editor
             public bool paused, pathPending;
             public Vector3 body, rightHand, handle, leftFoot, rightFoot, leftTarget, rightTarget, nextPosition, desiredVelocity;
             public Vector3 rightPalm, palmTarget;
+            public Vector3 rightShoulder, rightElbow, rightShoulderAtSolve;
+            public float shoulderSolveErrorMeters, elbowDropMeters, pelvisOffsetMeters, rightArmReachRatio;
+            public bool rightElbowClearanceResolved;
             public float palmAngleDegrees;
             public int targetFloor, waterMilliliters, canInstanceId;
             public float leftWeight, rightWeight, remainingDistance, bodyStepHeight, navigationStepHeight;
