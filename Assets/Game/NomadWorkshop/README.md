@@ -10,7 +10,9 @@
 
 此前单款 NW2 对比基线为 `Scenes/ResidentAppearanceSample.unity`，菜单“Assets/SSFramework/游牧工坊/首版美术/创建或打开现成人物对比”也可打开；独立持桶楼梯基线为 `Scenes/ResidentStairSample.unity`，对应菜单为“创建或打开现成人物楼梯对比”。一个 Quaternius 现成服装外观已接入三居民；修正内袖肩部穿插后，该模型工坊 12/12、楼梯 4/4 通过，并查看实际拿放和上楼画面。旧场景三人同外观；当前三种外观使用下面的 NW3 入口。UMA / MPFB 的候选研究、完整证据和后续可选游戏内捏人范围见[参数化人物制作](../../../docs/nomad-workshop-character-authoring.md)。
 
-**当前人物美术试玩优先打开 `Scenes/ResidentCrewSample.unity`。** 三人已改为短发、束发和灰发胡须的不同外观，保留同一套真实玩法；工坊/身份保持检查 13/13、三款人物各自的楼梯检查 4/4。菜单“Assets/SSFramework/游牧工坊/首版美术/生成并打开三居民外观候选”用于按固定离线配方重新接线；直接打开已保存场景即可 Play。上面的单款 NW2 和原 Warm 场景保留为对比基线。服装仍有中世纪特征，游戏内捏人尚未接入。
+**当前美术试玩优先打开 `Scenes/ReferenceVehicleSample.unity`。** NW5 将参考 J 的分层钢板边框、内凹检修盖和烘焙旧漆接入同一三居民场景，相关 PlayMode 14/14，并检查实际携水和行驶。完整来源、再生成入口和实机差距见[参考结构造型](../../../docs/nomad-workshop-reference-form-study.md)。原人物外观基线 `Scenes/ResidentCrewSample.unity` 保留，两个场景只有车体 Prefab 引用不同。
+
+三人已改为短发、束发和灰发胡须的不同外观，保留同一套真实玩法；原工坊/身份保持检查 13/13、三款人物各自的楼梯检查 4/4。菜单“Assets/SSFramework/游牧工坊/首版美术/生成并打开三居民外观候选”用于按固定离线配方重新接线；直接打开已保存场景即可 Play。上面的单款 NW2 和原 Warm 场景保留为对比基线。服装仍有中世纪特征，游戏内捏人尚未接入。
 
 另有独立[持桶楼梯实验](../../../docs/nomad-workshop-stair-traversal-spike.md)：`Scenes/StairCarrySpike.unity`。18 级实体台阶连接相隔 3.2 m 的平台，复用同一个 Humanoid、水罐和移动 Adapter，验证上楼/下楼、暂停、取消与恢复；它为后续多层建造提供证据，尚不属于正式跨层玩法。
 

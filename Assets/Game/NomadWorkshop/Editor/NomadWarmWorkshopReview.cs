@@ -92,7 +92,7 @@ namespace Game.NomadWorkshop.Editor
         {
             string path = SceneManager.GetActiveScene().path;
             return path == NomadWarmWorkshopArtPipeline.ScenePath || path == NomadResidentSamplePipeline.ScenePath ||
-                path == NomadResidentCrewPipeline.ScenePath;
+                path == NomadResidentCrewPipeline.ScenePath || path == NomadReferenceVehiclePipeline.ScenePath;
         }
 
         private static void Tick()

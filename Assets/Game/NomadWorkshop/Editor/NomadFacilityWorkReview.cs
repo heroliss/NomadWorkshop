@@ -58,7 +58,7 @@ namespace Game.NomadWorkshop.Editor
             Scene scene = SceneManager.GetActiveScene();
             if (!EditorApplication.isPlaying || (scene.path != NomadWarmWorkshopArtPipeline.ScenePath &&
                 scene.path != NomadResidentSamplePipeline.ScenePath && scene.path != NomadResidentCrewPipeline.ScenePath &&
-                scene.path != NomadFacilityBindingPipeline.ScenePath))
+                scene.path != NomadFacilityBindingPipeline.ScenePath && scene.path != NomadReferenceVehiclePipeline.ScenePath))
                 throw new InvalidOperationException("请先运行温暖工坊或现成人物对比样板。");
             _context = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<NomadFoundationContext>()).Single();
             _read = _context.ExecuteCommand(new GetFoundationReadModelCommand());
