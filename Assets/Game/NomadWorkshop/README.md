@@ -1,6 +1,6 @@
 # 《游牧工坊》Foundation 与技术实验
 
-> 2026-09-08 阶段收尾：首版 HUD 布局/主题 15/15、NW5 19/19、Foundation 108/108。修正居民完成爱好后反复占位、错过让路轮询的时序，保留原始失败和明确交错的红/绿证据。常驻居民选择、水量/燃料、暂停与倍速已可用，详见[HUD 验证记录](../../../docs/nomad-workshop-hud-first-pass.md)。下文旧数量属于相应历史阶段。
+> 当前开发先读 [AI 项目索引](../../../docs/ai-project-index.md)，唯一近期执行顺序在 [Foundation §9](../../../docs/nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。美术试玩入口是 [ReferenceVehicleSample](Scenes/ReferenceVehicleSample.unity)；独立紧凑梯入口是 [CompactSteepCarrySpike](Scenes/CompactSteepCarrySpike.unity)。本 README 以下保留各阶段能力与工程导航，旧测试数量和当时的“当前/下一步”不代表最新基线。
 
 > 状态：**Foundation 与技术实验 v0.51**，更新于 2026-09-06。正式场景已接入[首段驾驶](../../../docs/nomad-workshop-driving-integration.md)与[有限取水 / 污物清运 / 备件补给](../../../docs/nomad-workshop-stop-resource-ownership.md)，保留已有生活、水循环、建造与维修。[三居民接线](../../../docs/nomad-workshop-three-residents.md)已包括原生 Agent、个人行动所有权、共享工具、全员召回、多居民 v9 检查点和居民选择。原生测试与正式 1× 运行证据分开记录，当前进度及已知边界见[Foundation](../../../docs/nomad-workshop-foundation-vertical-slice.md)，产品目标见[愿景](../../../docs/nomad-workshop-game-vision.md)。玩家保存/读取/取消已接入旅程面板，身体碰撞、让路与续玩工程验收完成；最新 Foundation PlayMode 106/106。它仍是基础切片，不代表长期平衡或发行门槛已经成立。
 
@@ -20,7 +20,7 @@
 
 2026-09-07 新增 `Scenes/FacilityBindingSample.unity`：沿用三居民玩法，水箱/饮水站更换接口位置、阀门方向与盖板转轴，并增加可选功能点；共享绑定执行器按实际工位与工作进度驱动，业务库存和存档结构不变。绑定 EditMode 11/11、变体 PlayMode 14/14；空间区域生成与人物开门同步仍待后续实验。完整阶段收尾与回归结果见[阶段检查点](../../../docs/nomad-workshop-stage-checkpoint-2026-09.md)。
 
-## 当前证明了什么
+## 各阶段已经取得的工程证据
 
 - 旅途规则 `NomadJourneySession` 已接入正式驾驶台：2 km 的旧营地—干河驿站路线、实际到岗、需求离岗、建造迁离时停车、目标取消与返回、微米 / 皮升精确存取。Context/Bag 独立实验覆盖框架所有权；三名正式居民分别拥有驾驶、资源、物品与交互空间租约。旅程面板显示全员状态，可派遣取水 / 清运 / 备件补给和召回外勤；任何外勤携带者尚未归车时，其他居民也不能开车。地点水源与污物接收容量有限，离开和读档不刷新。污物桶按原厕所实例拆卸与回装，倾倒时才转移内容，拆卸期间所有人都不能使用该厕所。驿站另有两只实体维修包，可搬入维护托盘并用于后续维修；路边景物运动仍待实现；
 - 三名居民由实际 NavMeshAgent 行走和局部避让，停靠/暂停保持脚底与朝向，取消停止原目的地。闲人通过正式意图实际让位；软移动过久无进展会重选活动，携物与工作租约保持原所有权。同步 Soak **0.10.0** 标记为角点快进，只证明业务规则，不提供原生交通结论；

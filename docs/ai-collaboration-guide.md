@@ -20,7 +20,7 @@ SSFramework/
 
 当前没有为 Cursor、Gemini、Copilot 等未实际采用的 Agent 提交仓库级预配置，也没有把 Unity MCP 的机器连接复制成产品配置。目录或格式存在不等于工具、权限和交付闭环已经验证。
 
-《游牧工坊》的按需入口也区分职责：[AI 项目索引](ai-project-index.md)只保留当前状态、证据快照和唯一近期队列；[产品愿景](nomad-workshop-game-vision.md)维护目标与范围，生活 / 建造 / 导航专题维护各自契约，[Foundation](nomad-workshop-foundation-vertical-slice.md)维护实现与详细证据，游戏目录 README 负责导航。阶段重审记录观察、用户选择和验证，不再产生另一条长期队列。这样产品方向调整可以回到同一入口，而不靠多个“下一步”段落相互同步。
+《游牧工坊》的按需入口也区分职责：[AI 项目索引](ai-project-index.md)只保留当前交接与文档路由；[产品愿景](nomad-workshop-game-vision.md)维护目标与范围，生活 / 建造 / 导航专题维护各自契约，[Foundation](nomad-workshop-foundation-vertical-slice.md) §9 维护唯一近期队列，专题页维护各自实际证据。游戏目录 README 负责工程导航。索引不复制优先级表或测试数量；阶段重审中的“下一步”属于当时记录，不覆盖当前队列。
 
 2026-09-06 美术评图推动了实际产品范围调整：小甲板起步、非矩形扩建、局部多层与围护。[可扩建甲板专题](nomad-workshop-expandable-decks-design.md)集中保存本次代码证据、建议边界和新 Harness 验收点，[美术样板记录](nomad-workshop-art-first-pass.md)保存图像与人工反馈；近期顺序仍由 Foundation 维护。纯规则分层字段、概念图与实机多层分别标状态，本轮不把尚未验证的空间方案加入 Framework 公共契约或常驻 Agent 规则。
 
@@ -145,30 +145,28 @@ Hook 适合格式化、配置审计、危险命令拦截或固定事件验证。
 
 Codex 从项目根沿当前工作目录向下拼接 `AGENTS.md`，越近的文件越晚出现、优先级越高；默认合计上限为 **32 KiB**。超过上限时，最重要的就近规则反而可能无法加入。
 
-2026-09-01 按 UTF-8 实测：
+2026-09-08 按 UTF-8 实测（不含 BOM）：
 
 | 最深工作位置 | 累计字节 | 约合 |
 |---|---:|---:|
-| 项目根 | 7,466 | 7.29 KiB |
-| `Assets/Game` | 16,095 | 15.72 KiB |
-| `Assets/Game/Framework` | 26,177 | 25.56 KiB |
-| Demo Modules | 31,008 | 30.28 KiB |
+| 项目根 | 7,509 | 7.33 KiB |
+| `Assets/Game` / NomadWorkshop | 16,138 | 15.76 KiB |
+| `Assets/Game/Framework` | 26,220 | 25.61 KiB |
+| Demo Modules | 31,051 | 30.32 KiB |
 
-最深链还剩 1,760 字节（约 1.72 KiB）。维护时测量**根到最深目录的 UTF-8 合计**，不要只看单文件行数。当前接近上限，新增细节必须优先下沉到 guide、ADR 或 Skill，并尽量删除等量过期常驻内容。
+Demo 最深链还剩 1,717 字节；Nomad 的规则链是 16,138 字节，不能把 Demo 的余量说成当前游戏任务的剩余上下文。这个预算仅衡量仓库指令文件，不代表聊天窗口、Skill 和工具输出的总上下文。新增细节优先下沉到 guide、ADR、Skill 或机器检查。
 
 ```powershell
-$paths = @(
-  'AGENTS.md',
-  'Assets/Game/AGENTS.md',
-  'Assets/Game/Framework/AGENTS.md',
-  'Assets/Game/Framework/Demo/Scripts/Modules/AGENTS.md'
-)
-$total = 0
-foreach ($path in $paths) {
-  $total += [Text.Encoding]::UTF8.GetByteCount((Get-Content -LiteralPath $path -Raw))
-  [pscustomobject]@{ Path = $path; RunningBytes = $total }
-}
+./Tools/Test-AiNavigation.ps1 | ConvertTo-Json -Depth 8
 ```
+
+该只读检查默认验证四层 AGENTS 链和轻量索引的本地行内链接，可用 `-Documents` 增加本轮改动的入口。超预算、缺文件或断链会失败；接近预算只报告提示。它不检查远程链接、章节锚点、引用式链接或语义重复，也不要求每次修改遍历全部文档。
+
+### 长对话与新上下文
+
+自动压缩是正常机制，压缩次数无法单独衡量质量。官方建议每个逻辑完整工作单元使用一个聊天，同一未解决问题通常继续原聊天，避免把整个项目长期塞进一个聊天，见 [Codex 最佳实践](https://learn.chatgpt.com/zh-Hans/guides/best-practices)。项目采用阶段边界交接：实现与验证收口、保存场景、核对 Git 后，将目标、结果、未决问题和下一动作写到既有索引/专题，再按 [Handoff 最小包](ai-agent-onboarding.md#6-handoff-最小包)开启下一阶段。
+
+新上下文首次只读核对目标文件、工作树、Unity 实例/Play/编译、未结束 job 和最近证据；这些状态不能仅从聊天摘要继承。需要干净上下文时使用新任务；Fork 会保留原对话历史。是否新建任务仍由用户决定，当前 Agent 不因压缩自动复制任务或并行写同一工作区。阶段中的判断偏差应先找具体证据，不能未经验证归咎于压缩。
 
 ## 5. 修改协作体系
 
