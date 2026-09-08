@@ -64,7 +64,10 @@ namespace Game.NomadWorkshop.Foundation
         private float _animationMultiplier = 1f;
         private FoundationBuildTransactionPhase _animationBuildPhase;
         private FoundationReadModel _journeyReadModel;
+        private NomadJourneyEndpoint _journeyDestination;
+        private int _journeySpeedPermille;
         private FoundationJourneyPresentation _journeyPresentation;
+        private FoundationJourneyCameraBuffer _journeyCameraBuffer;
         private FoundationRoofPresentation _roofPresentation;
 
         /// <summary>当前模型的可选屋顶显示会话；生命周期由本 View 的 Bag 拥有。</summary>
@@ -88,6 +91,10 @@ namespace Game.NomadWorkshop.Foundation
         private float cameraTouchOrbitDegreesPerPixel = 0.12f;
         [SerializeField, Min(0f), Tooltip("双指距离每变化一个屏幕像素时改变的镜头距离（米）。张开拉近、捏合拉远。")]
         private float cameraPinchZoomMetersPerPixel = 0.04f;
+        [SerializeField, Min(0f), Tooltip("旅途中镜头沿车辆长轴的最大前后缓冲（米）；只改表现，不移动逻辑甲板。")]
+        private float journeyCameraMaximumOffsetMeters = 0.45f;
+        [SerializeField, Min(0.01f), Tooltip("旅途镜头缓冲的指数响应速度；值越大越快回到目标。")]
+        private float journeyCameraBufferResponse = 8f;
 
         private readonly Dictionary<string, NomadFacilityDefinition> _definitions =
             new(StringComparer.Ordinal);
@@ -243,6 +250,8 @@ namespace Game.NomadWorkshop.Foundation
                 RebuildFacilities(this.ExecuteCommand(new GetFoundationFacilitiesCommand()));
                 // 建造与检查点恢复都会重建空间；旧路段的短寿命特效不跨这条边界保留。
                 _journeyPresentation?.ClearTransientEffects();
+                _journeyCameraBuffer?.Reset(0d);
+                _cameraController?.SetMotionFocusOffset(Vector3.zero);
             });
             Bag.Subscribe(readModel.FacilityAccessRevision, _ =>
                 UpdateFacilityAccess(
@@ -298,6 +307,8 @@ namespace Game.NomadWorkshop.Foundation
                 },
                 (index, visual) => visual.Root.SetSiblingIndex(index));
             Bag.Subscribe(readModel.IsPaused, value => _animationPaused = value);
+            Bag.Subscribe(readModel.JourneyDestination, value => _journeyDestination = value);
+            Bag.Subscribe(readModel.JourneySpeedPermille, value => _journeySpeedPermille = value);
             Bag.Subscribe(readModel.SimulationSpeed, value => _animationMultiplier = value);
             Bag.Subscribe(readModel.BuildTransactionPhase, value => _animationBuildPhase = value);
             Bag.Subscribe(readModel.WaterCanCarrierId, id => { _waterCanCarrierId = id; UpdateWaterCanVisual(); });
@@ -340,6 +351,7 @@ namespace Game.NomadWorkshop.Foundation
         {
             UpdateResidentAnimations();
             UpdateFacilityWorkVisuals();
+            UpdateJourneyCameraMotion();
             if (_journeyPresentation != null)
                 _journeyPresentation.Render(
                     _journeyReadModel.JourneyPositionMicrometers.CurrentValue,
@@ -421,6 +433,26 @@ namespace Game.NomadWorkshop.Foundation
             if (!overScreenUi && mouse.rightButton.wasPressedThisFrame)
                 this.ExecuteCommand(new RotateFacilityPreviewCommand(-1));
         }
+
+        private void UpdateJourneyCameraMotion()
+        {
+            if (_cameraController == null || _journeyCameraBuffer == null) return;
+
+            double speed = Math.Clamp(_journeySpeedPermille, 0, 1000) / 1000d;
+            double direction = _journeyDestination == NomadJourneyEndpoint.Origin ? -1d :
+                _journeyDestination == NomadJourneyEndpoint.Destination ? 1d : 0d;
+            double target = direction * journeyCameraMaximumOffsetMeters * speed;
+            double deltaSeconds = _journeyReadModel.IsPaused.CurrentValue
+                ? 0d : Time.unscaledDeltaTime;
+            double offset = _journeyCameraBuffer.Update(target, deltaSeconds);
+            _cameraController.SetMotionFocusOffset(new Vector3(0f, 0f, (float)offset));
+        }
+
+#if UNITY_EDITOR
+        /// <summary>仅供 PlayMode 取证当前镜头偏移，正式 View 不暴露相机控制器。</summary>
+        public Vector3 JourneyCameraMotionOffsetForTests =>
+            _cameraController?.MotionFocusOffset ?? Vector3.zero;
+#endif
 
         private bool HandleTouchCameraInput()
         {
@@ -550,6 +582,8 @@ namespace Game.NomadWorkshop.Foundation
                 deckRoot,
                 deckLayout.DeckCenterLocal,
                 vehicleVisualPrefab != null ? artCameraInitialPosition : new Vector3(11f, 13f, -12f));
+            _journeyCameraBuffer = new FoundationJourneyCameraBuffer(journeyCameraBufferResponse);
+            _journeyCameraBuffer.Reset(0d);
             worldCamera.fieldOfView = 42f;
             worldCamera.clearFlags = skyboxMaterial != null
                 ? CameraClearFlags.Skybox

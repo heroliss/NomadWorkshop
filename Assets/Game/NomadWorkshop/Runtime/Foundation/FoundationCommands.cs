@@ -27,6 +27,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<string> StopWorkFeedback;
         public readonly ReadOnlyReactiveProperty<bool> StopAccessOpen;
         public readonly ReadOnlyReactiveProperty<long> JourneyFuelPicoliters;
+        public readonly ReadOnlyReactiveProperty<int> JourneySpeedPermille;
         public readonly ReadOnlyReactiveProperty<NomadJourneyEndpoint> JourneyDestination;
         public readonly ReadOnlyReactiveProperty<string> JourneyDestinationAnchorId;
         public readonly ReadOnlyReactiveProperty<NomadJourneyStatus> JourneyStatus;
@@ -99,6 +100,7 @@ namespace Game.NomadWorkshop.Foundation
             StopWorkFeedback = model.StopWorkFeedback;
             StopAccessOpen = model.StopAccessOpen;
             JourneyFuelPicoliters = model.JourneyFuelPicoliters;
+            JourneySpeedPermille = model.JourneySpeedPermille;
             JourneyDestination = model.JourneyDestination;
             JourneyDestinationAnchorId = model.JourneyDestinationAnchorId;
             JourneyStatus = model.JourneyStatus;

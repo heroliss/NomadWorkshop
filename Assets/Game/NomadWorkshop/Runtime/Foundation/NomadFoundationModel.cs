@@ -31,6 +31,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<bool> StopSpareActive { get; private set; } = new(false);
         [field: SerializeField] public RP<bool> StopAccessOpen { get; private set; } = new(false);
         [field: SerializeField] public RP<long> JourneyFuelPicoliters { get; private set; } = new(0L);
+        [field: SerializeField, Tooltip("当前旅途速度相对路线巡航速度的千分比；仅供表现层平滑跟随。")]
+        public RP<int> JourneySpeedPermille { get; private set; } = new(0);
         [field: SerializeField] public RP<NomadJourneyEndpoint> JourneyDestination { get; private set; } =
             new(NomadJourneyEndpoint.None);
         [field: SerializeField] public RP<string> JourneyDestinationAnchorId { get; private set; } =

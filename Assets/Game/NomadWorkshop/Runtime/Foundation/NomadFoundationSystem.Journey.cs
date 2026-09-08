@@ -211,6 +211,10 @@ namespace Game.NomadWorkshop.Foundation
                 ? "等待所有车外人员与容器归车，车辆保持停车" : string.Empty;
             SetLong(_model.JourneyPositionMicrometers, _journey.PositionMicrometers);
             SetLong(_model.JourneyFuelPicoliters, _journey.FuelPicoliters);
+            long cruiseSpeed = (long)FoundationRoute.SpeedMillimetersPerSecond * 1000L;
+            int speedPermille = _journey.Status != NomadJourneyStatus.Moving || cruiseSpeed <= 0L ? 0 :
+                Math.Clamp((int)(_journey.CurrentSpeedNanometersPerMillisecond * 1000L / cruiseSpeed), 0, 1000);
+            _model.JourneySpeedPermille.Value = speedPermille;
             _model.JourneyDestination.Value = _journey.Destination;
             _model.JourneyDestinationAnchorId.Value = _journey.DestinationAnchorId;
             _model.JourneyStatus.Value = _journey.Status;

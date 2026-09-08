@@ -226,6 +226,10 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _context.ExecuteCommand(new SetFoundationSpeedCommand(4f));
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
             yield return WaitForJourneyProgress(0, 3000000L);
+            yield return null;
+            Vector3 movingCameraOffset = _view.JourneyCameraMotionOffsetForTests;
+            Assert.That(Mathf.Abs(movingCameraOffset.z), Is.GreaterThan(.01f),
+                "旅途中镜头应产生小幅方向性缓冲，而不是把镜头瞬移到新的目标姿态。");
             _context.ExecuteCommand(new SetFoundationPausedCommand(true));
             yield return null;
             Assert.That(Quaternion.Angle(wheel.rotation, initialWheel), Is.GreaterThan(1f));
@@ -234,6 +238,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Vector4[] savedUvs = scrolling.Select(EnvironmentUv).ToArray();
             if (scrolling.Length > 0) Assert.That(savedUvs.SequenceEqual(initialUvs), Is.False, "真实旅程必须同时滚动地表/车辙。");
             Assert.That(Deck.position, Is.EqualTo(deckPosition), "表现不得移动导航所在的逻辑甲板。");
+            Assert.That(_view.JourneyCameraMotionOffsetForTests, Is.EqualTo(movingCameraOffset),
+                "暂停时镜头缓冲不能继续以真实帧时钟漂移。");
             var checkpoint = _context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
             Quaternion savedWheel = wheel.rotation;
             Vector3 savedShoe = shoe.position;
@@ -266,6 +272,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             Assert.That(Vector3.Distance(rock.position, savedRock), Is.LessThan(.0001f));
             Assert.That(scrolling.Select(EnvironmentUv), Is.EqualTo(savedUvs), "恢复必须还原同一地表与车辙相位。");
             Assert.That(dust.Sum(p => p.particleCount), Is.Zero, "恢复时不能把旧路段的扬尘带到新状态。");
+            Assert.That(_view.JourneyCameraMotionOffsetForTests, Is.EqualTo(Vector3.zero),
+                "读档重建应清除旧路段的镜头缓冲，避免镜头偏移穿越存档边界。");
             _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.None));
             _context.ExecuteCommand(new SetFoundationPausedCommand(false));
             for (int i = 0; i < 8; i++) yield return null;

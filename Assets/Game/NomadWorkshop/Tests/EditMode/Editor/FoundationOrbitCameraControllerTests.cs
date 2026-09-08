@@ -86,5 +86,37 @@ namespace Game.NomadWorkshop.Editor.Tests
                 Object.DestroyImmediate(spaceObject);
             }
         }
+
+        [Test]
+        public void MotionFocusOffset_ShiftsOnlyFocusAndRejectsNonFiniteInput()
+        {
+            var spaceObject = new GameObject("Camera Motion Focus Space");
+            var cameraObject = new GameObject("Foundation Motion Camera");
+            try
+            {
+                Camera camera = cameraObject.AddComponent<Camera>();
+                var controller = new FoundationOrbitCameraController(
+                    camera,
+                    spaceObject.transform,
+                    Vector3.zero,
+                    new Vector3(0f, 10f, -10f));
+                Vector3 before = camera.transform.position;
+
+                controller.SetMotionFocusOffset(new Vector3(0f, 0f, .4f));
+                Assert.That(controller.MotionFocusOffset, Is.EqualTo(new Vector3(0f, 0f, .4f)));
+                Assert.That(camera.transform.position, Is.Not.EqualTo(before));
+                Vector3 expectedFocus = new Vector3(0f, 0f, .4f);
+                Assert.That(Vector3.Dot(camera.transform.forward,
+                    (expectedFocus - camera.transform.position).normalized), Is.GreaterThan(.999f));
+
+                controller.SetMotionFocusOffset(new Vector3(float.NaN, 0f, 0f));
+                Assert.That(controller.MotionFocusOffset, Is.EqualTo(new Vector3(0f, 0f, .4f)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(cameraObject);
+                Object.DestroyImmediate(spaceObject);
+            }
+        }
     }
 }

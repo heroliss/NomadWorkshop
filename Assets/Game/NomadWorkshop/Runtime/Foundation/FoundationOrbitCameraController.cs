@@ -16,6 +16,7 @@ namespace Game.NomadWorkshop.Foundation
         private readonly float _maximumDistance;
         private readonly float _minimumPitch;
         private readonly float _maximumPitch;
+        private Vector3 _motionFocusOffset;
 
         public FoundationOrbitCameraController(
             Camera camera,
@@ -53,6 +54,15 @@ namespace Game.NomadWorkshop.Foundation
         public float Distance { get; private set; }
         public float YawDegrees { get; private set; }
         public float PitchDegrees { get; private set; }
+        public Vector3 MotionFocusOffset => _motionFocusOffset;
+
+        /// <summary>设置表现层的微小前后缓冲；不改变轨道角度、缩放或业务位置。</summary>
+        public void SetMotionFocusOffset(Vector3 offset)
+        {
+            if (!Finite(offset)) return;
+            _motionFocusOffset = offset;
+            Apply();
+        }
 
         public void Orbit(Vector2 pointerDelta, float degreesPerPixel = 0.18f)
         {
@@ -85,12 +95,16 @@ namespace Game.NomadWorkshop.Foundation
                 Mathf.Sin(yaw) * horizontal,
                 Mathf.Sin(pitch) * Distance,
                 Mathf.Cos(yaw) * horizontal);
-            Vector3 focusWorld = _focusSpace.TransformPoint(_focusLocalPosition);
+            Vector3 focusLocalPosition = _focusLocalPosition + _motionFocusOffset;
+            Vector3 focusWorld = _focusSpace.TransformPoint(focusLocalPosition);
             _camera.transform.position = _focusSpace.TransformPoint(
-                _focusLocalPosition + localOffset);
+                focusLocalPosition + localOffset);
             _camera.transform.rotation = Quaternion.LookRotation(
                 focusWorld - _camera.transform.position,
                 _focusSpace.up);
         }
+
+        private static bool Finite(Vector3 value) =>
+            float.IsFinite(value.x) && float.IsFinite(value.y) && float.IsFinite(value.z);
     }
 }
