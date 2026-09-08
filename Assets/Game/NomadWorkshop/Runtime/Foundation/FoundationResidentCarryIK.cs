@@ -242,8 +242,18 @@ namespace Game.NomadWorkshop.Foundation
             }
             Vector3 groundOffset = _container != null ? _container.GroundReachOffset : new Vector3(0f, -.55f, .20f);
             _bodyOffsetAtSolve = _bodyFrame.TransformVector(groundOffset) * _groundReach;
-            _animator.bodyPosition += _bodyOffsetAtSolve;
             GroundFootContactWeight = Mathf.SmoothStep(0f, 1f, _groundReach / .15f);
+            if (_alignPalm && _rightGrip != null && _contactWeight > 0f)
+            {
+                Quaternion handRotation = _rightGrip.rotation * Quaternion.Inverse(_palmFrameInHand);
+                Vector3 wrist = _rightGrip.position - handRotation * Vector3.Scale(_palmContactInHand, _hand.lossyScale);
+                Vector3 reach = wrist - (_shoulder.position + _bodyOffsetAtSolve);
+                // 容器偏移只给蹲姿基准。不同 Avatar 与动作帧的肩膀高度会变化，不能靠拉长手臂接触把手。
+                // 在双脚固定的支撑阶段，骨盆向目标补足够取距离，留下少量肘部弯曲余量；物品与胶囊不移动。
+                float excess = Mathf.Max(0f, reach.magnitude - _armLength * .97f);
+                _bodyOffsetAtSolve += reach.normalized * (excess * GroundFootContactWeight * _contactWeight);
+            }
+            _animator.bodyPosition += _bodyOffsetAtSolve;
             LeftGroundFootTarget = _bodyFrame.TransformPoint(_leftGroundFoot);
             RightGroundFootTarget = _bodyFrame.TransformPoint(_rightGroundFoot);
             ApplyGroundFoot(AvatarIKGoal.LeftFoot, AvatarIKHint.LeftKnee, GroundFootContactWeight,

@@ -10,6 +10,9 @@ namespace Game.NomadWorkshop.Simulation
     public sealed class ContinuousDeckReachabilityProbe
     {
         private readonly DeckBounds _bounds;
+        private readonly DeckSupportRegion _support;
+        private readonly byte[] _unsupported;
+        private readonly byte[] _supportConnections;
         private readonly int _sampleStepMillimeters;
         private readonly int _clearanceMillimeters;
         private readonly int _endpointSampleRadiusMillimeters;
@@ -26,7 +29,19 @@ namespace Game.NomadWorkshop.Simulation
             int sampleStepMillimeters,
             int clearanceMillimeters,
             int endpointSampleRadiusMillimeters)
+            : this(new DeckSupportRegion(bounds), sampleStepMillimeters, clearanceMillimeters, endpointSampleRadiusMillimeters)
         {
+        }
+
+        /// <summary>缓存非矩形支撑及采样连边；窄缺口也会阻断通路，设施拖动不重建静态几何。</summary>
+        public ContinuousDeckReachabilityProbe(
+            DeckSupportRegion support,
+            int sampleStepMillimeters,
+            int clearanceMillimeters,
+            int endpointSampleRadiusMillimeters)
+        {
+            _support = support ?? throw new ArgumentNullException(nameof(support));
+            DeckBounds bounds = support.Bounds;
             if (sampleStepMillimeters <= 0)
                 throw new ArgumentOutOfRangeException(nameof(sampleStepMillimeters));
             if (clearanceMillimeters < 0)
@@ -50,6 +65,36 @@ namespace Game.NomadWorkshop.Simulation
             _blocked = new byte[_width * _depth];
             _reachable = new byte[_blocked.Length];
             _queue = new int[_blocked.Length];
+            _unsupported = new byte[_blocked.Length];
+            _supportConnections = new byte[_blocked.Length];
+            CacheSupport();
+        }
+
+        private void CacheSupport()
+        {
+            for (var z = 0; z < _depth; z++)
+                for (var x = 0; x < _width; x++)
+                {
+                    int index = ToIndex(x, z);
+                    DeckPose pose = ToPose(index, 0);
+                    if (!_support.Contains(pose, _clearanceMillimeters))
+                    {
+                        _unsupported[index] = 1;
+                        continue;
+                    }
+                    var direction = 0;
+                    for (var dz = -1; dz <= 1; dz++)
+                        for (var dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dz == 0) continue;
+                            if (IsInside(x + dx, z + dz) && _support.CoversSweep(
+                                pose.XMillimeters, pose.ZMillimeters,
+                                (double)pose.XMillimeters + dx * _sampleStepMillimeters,
+                                (double)pose.ZMillimeters + dz * _sampleStepMillimeters, _clearanceMillimeters))
+                                _supportConnections[index] |= (byte)(1 << direction);
+                            direction++;
+                        }
+                }
         }
 
         public int CellCount => _blocked.Length;
@@ -97,7 +142,7 @@ namespace Game.NomadWorkshop.Simulation
             if (committedFacilities == null)
                 throw new ArgumentNullException(nameof(committedFacilities));
 
-            Array.Clear(_blocked, 0, _blocked.Length);
+            Array.Copy(_unsupported, _blocked, _blocked.Length);
             Array.Clear(_reachable, 0, _reachable.Length);
             VisitedCellCount = 0;
 
@@ -195,11 +240,14 @@ namespace Game.NomadWorkshop.Simulation
                 VisitedCellCount++;
                 int x = current % _width;
                 int z = current / _width;
+                var direction = 0;
                 for (var zOffset = -1; zOffset <= 1; zOffset++)
                 {
                     for (var xOffset = -1; xOffset <= 1; xOffset++)
                     {
                         if (xOffset == 0 && zOffset == 0) continue;
+                        bool supported = (_supportConnections[current] & (1 << direction++)) != 0;
+                        if (!supported) continue;
                         int nextX = x + xOffset;
                         int nextZ = z + zOffset;
                         if (!IsInside(nextX, nextZ)) continue;
@@ -232,6 +280,10 @@ namespace Game.NomadWorkshop.Simulation
             long bestDistanceSquared = long.MaxValue;
             result = -1;
 
+            // 端点可在采样半径内对齐，但不能从孔洞或另一块断开的板吸附到可达点。
+            if (!_support.Contains(new DeckPose(xMillimeters, zMillimeters, 0, _bounds.DeckLevel)))
+                return false;
+
             for (int z = approximateZ - searchRadius; z <= approximateZ + searchRadius; z++)
             {
                 if (z < 0 || z >= _depth) continue;
@@ -249,6 +301,9 @@ namespace Game.NomadWorkshop.Simulation
                     if (distanceSquared > maximumDistanceSquared ||
                         distanceSquared >= bestDistanceSquared)
                         continue;
+
+                    if (!_support.CoversSweep(xMillimeters, zMillimeters,
+                        _minimumXMillimeters + x * _sampleStepMillimeters, sampleZ, 0)) continue;
 
                     bestDistanceSquared = distanceSquared;
                     result = index;

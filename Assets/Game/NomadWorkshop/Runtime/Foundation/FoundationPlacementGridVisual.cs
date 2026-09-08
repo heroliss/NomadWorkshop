@@ -11,7 +11,7 @@ namespace Game.NomadWorkshop.Foundation
     /// </summary>
     public sealed class FoundationPlacementGridVisual : IDisposable
     {
-        private readonly DeckBounds _bounds;
+        private readonly DeckSupportRegion _support;
         private readonly Mesh _mesh;
         private int _stepMillimeters = -1;
 
@@ -19,10 +19,16 @@ namespace Game.NomadWorkshop.Foundation
             Transform parent,
             DeckBounds bounds,
             Material material)
+            : this(parent, new DeckSupportRegion(bounds), material)
+        {
+        }
+
+        /// <summary>按规范化支撑面裁切辅助线，孔洞与未铺板区域不显示可吸附地板。</summary>
+        public FoundationPlacementGridVisual(Transform parent, DeckSupportRegion support, Material material)
         {
             if (parent == null) throw new ArgumentNullException(nameof(parent));
             if (material == null) throw new ArgumentNullException(nameof(material));
-            _bounds = bounds;
+            _support = support ?? throw new ArgumentNullException(nameof(support));
 
             Root = new GameObject("Optional Placement Grid").transform;
             Root.SetParent(parent, false);
@@ -48,33 +54,28 @@ namespace Game.NomadWorkshop.Foundation
             _mesh.Clear();
             if (stepMillimeters == 0) return;
 
-            float minimumX = _bounds.MinXMillimeters / 1000f;
-            float maximumX = _bounds.MaxXMillimeters / 1000f;
-            float minimumZ = _bounds.MinZMillimeters / 1000f;
-            float maximumZ = _bounds.MaxZMillimeters / 1000f;
             float thickness = Mathf.Min(0.018f, stepMillimeters / 1000f * 0.075f);
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
 
-            int firstX = CeilToStep(_bounds.MinXMillimeters, stepMillimeters);
-            for (int x = firstX; x <= _bounds.MaxXMillimeters; x += stepMillimeters)
-                AddQuad(
-                    vertices,
-                    triangles,
-                    x / 1000f - thickness * 0.5f,
-                    minimumZ,
-                    x / 1000f + thickness * 0.5f,
-                    maximumZ);
+            foreach (DeckBounds bounds in _support.Surfaces)
+            {
+                float minimumX = bounds.MinXMillimeters / 1000f;
+                float maximumX = bounds.MaxXMillimeters / 1000f;
+                float minimumZ = bounds.MinZMillimeters / 1000f;
+                float maximumZ = bounds.MaxZMillimeters / 1000f;
+                int firstX = CeilToStep(bounds.MinXMillimeters, stepMillimeters);
+                for (int x = firstX; x <= bounds.MaxXMillimeters; x += stepMillimeters)
+                    AddQuad(vertices, triangles,
+                        Mathf.Max(minimumX, x / 1000f - thickness * 0.5f), minimumZ,
+                        Mathf.Min(maximumX, x / 1000f + thickness * 0.5f), maximumZ);
 
-            int firstZ = CeilToStep(_bounds.MinZMillimeters, stepMillimeters);
-            for (int z = firstZ; z <= _bounds.MaxZMillimeters; z += stepMillimeters)
-                AddQuad(
-                    vertices,
-                    triangles,
-                    minimumX,
-                    z / 1000f - thickness * 0.5f,
-                    maximumX,
-                    z / 1000f + thickness * 0.5f);
+                int firstZ = CeilToStep(bounds.MinZMillimeters, stepMillimeters);
+                for (int z = firstZ; z <= bounds.MaxZMillimeters; z += stepMillimeters)
+                    AddQuad(vertices, triangles, minimumX,
+                        Mathf.Max(minimumZ, z / 1000f - thickness * 0.5f), maximumX,
+                        Mathf.Min(maximumZ, z / 1000f + thickness * 0.5f));
+            }
 
             _mesh.SetVertices(vertices);
             _mesh.SetTriangles(triangles, 0);

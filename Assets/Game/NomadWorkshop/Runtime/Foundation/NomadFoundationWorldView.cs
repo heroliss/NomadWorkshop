@@ -702,7 +702,7 @@ namespace Game.NomadWorkshop.Foundation
             _stopVisualRoot.gameObject.SetActive(false);
             _placementGrid = new FoundationPlacementGridVisual(
                 deckRoot,
-                deckLayout.CreateBounds(),
+                deckLayout.CreateSupportRegion(),
                 gridMaterial);
             _gridRoot = _placementGrid.Root;
             _placementGrid.Rebuild(
@@ -2016,24 +2016,26 @@ namespace Game.NomadWorkshop.Foundation
             Transform root = deckRoot != null ? deckRoot : transform;
             Gizmos.matrix = root.localToWorldMatrix;
             Gizmos.color = new Color(0.2f, 0.9f, 0.8f, 0.6f);
-            DeckBounds bounds = deckLayout.CreateBounds();
-            int firstX = Mathf.CeilToInt(
-                bounds.MinXMillimeters / (float)stepMillimeters) * stepMillimeters;
-            for (int x = firstX; x <= bounds.MaxXMillimeters; x += stepMillimeters)
+            foreach (DeckBounds bounds in deckLayout.CreateSupportRegion().Surfaces)
             {
-                float localX = x / 1000f;
-                float z0 = bounds.MinZMillimeters / 1000f;
-                float z1 = bounds.MaxZMillimeters / 1000f;
-                Gizmos.DrawLine(new Vector3(localX, 0.03f, z0), new Vector3(localX, 0.03f, z1));
-            }
-            int firstZ = Mathf.CeilToInt(
-                bounds.MinZMillimeters / (float)stepMillimeters) * stepMillimeters;
-            for (int z = firstZ; z <= bounds.MaxZMillimeters; z += stepMillimeters)
-            {
-                float localZ = z / 1000f;
-                float x0 = bounds.MinXMillimeters / 1000f;
-                float x1 = bounds.MaxXMillimeters / 1000f;
-                Gizmos.DrawLine(new Vector3(x0, 0.03f, localZ), new Vector3(x1, 0.03f, localZ));
+                int firstX = Mathf.CeilToInt(
+                    bounds.MinXMillimeters / (float)stepMillimeters) * stepMillimeters;
+                for (int x = firstX; x <= bounds.MaxXMillimeters; x += stepMillimeters)
+                {
+                    float localX = x / 1000f;
+                    float z0 = bounds.MinZMillimeters / 1000f;
+                    float z1 = bounds.MaxZMillimeters / 1000f;
+                    Gizmos.DrawLine(new Vector3(localX, 0.03f, z0), new Vector3(localX, 0.03f, z1));
+                }
+                int firstZ = Mathf.CeilToInt(
+                    bounds.MinZMillimeters / (float)stepMillimeters) * stepMillimeters;
+                for (int z = firstZ; z <= bounds.MaxZMillimeters; z += stepMillimeters)
+                {
+                    float localZ = z / 1000f;
+                    float x0 = bounds.MinXMillimeters / 1000f;
+                    float x1 = bounds.MaxXMillimeters / 1000f;
+                    Gizmos.DrawLine(new Vector3(x0, 0.03f, localZ), new Vector3(x1, 0.03f, localZ));
+                }
             }
         }
 

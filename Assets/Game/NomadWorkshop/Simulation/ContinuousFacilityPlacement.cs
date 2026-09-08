@@ -198,9 +198,7 @@ namespace Game.NomadWorkshop.Simulation
     /// </summary>
     public sealed class ContinuousFacilityPlacementLedger
     {
-        private const double GeometryToleranceMillimeters = 0.0001d;
-
-        private readonly Dictionary<int, DeckBounds> _boundsByLevel = new();
+        private readonly Dictionary<int, DeckSupportRegion> _supportByLevel = new();
         private readonly Dictionary<string, ContinuousPlacedFacility> _placements =
             new(StringComparer.Ordinal);
 
@@ -210,19 +208,33 @@ namespace Game.NomadWorkshop.Simulation
         }
 
         public ContinuousFacilityPlacementLedger(IReadOnlyList<DeckBounds> bounds)
+            : this(CreateRegions(bounds))
+        {
+        }
+
+        /// <summary>以同层完整支撑区域检查占地和功能净空；区域不可变，构造后不随输入集合变动。</summary>
+        public ContinuousFacilityPlacementLedger(IReadOnlyList<DeckSupportRegion> regions)
+        {
+            if (regions == null) throw new ArgumentNullException(nameof(regions));
+            if (regions.Count == 0)
+                throw new ArgumentException("至少需要一层甲板支撑。", nameof(regions));
+
+            for (var i = 0; i < regions.Count; i++)
+            {
+                DeckSupportRegion item = regions[i] ?? throw new ArgumentException("甲板支撑不能为 null。", nameof(regions));
+                if (!_supportByLevel.TryAdd(item.Bounds.DeckLevel, item))
+                    throw new ArgumentException(
+                        $"甲板层 {item.Bounds.DeckLevel} 的边界重复。",
+                        nameof(regions));
+            }
+        }
+
+        private static DeckSupportRegion[] CreateRegions(IReadOnlyList<DeckBounds> bounds)
         {
             if (bounds == null) throw new ArgumentNullException(nameof(bounds));
-            if (bounds.Count == 0)
-                throw new ArgumentException("至少需要一层甲板边界。", nameof(bounds));
-
-            for (var i = 0; i < bounds.Count; i++)
-            {
-                DeckBounds item = bounds[i];
-                if (!_boundsByLevel.TryAdd(item.DeckLevel, item))
-                    throw new ArgumentException(
-                        $"甲板层 {item.DeckLevel} 的边界重复。",
-                        nameof(bounds));
-            }
+            var regions = new DeckSupportRegion[bounds.Count];
+            for (var i = 0; i < regions.Length; i++) regions[i] = new DeckSupportRegion(bounds[i]);
+            return regions;
         }
 
         public int Count => _placements.Count;
@@ -237,7 +249,7 @@ namespace Game.NomadWorkshop.Simulation
 
             if (_placements.ContainsKey(request.InstanceId))
                 return ContinuousPlacementFailure.DuplicateInstanceId;
-            if (!_boundsByLevel.TryGetValue(request.Pose.DeckLevel, out DeckBounds bounds))
+            if (!_supportByLevel.TryGetValue(request.Pose.DeckLevel, out DeckSupportRegion support))
                 return ContinuousPlacementFailure.DeckLevelUnavailable;
 
             PlanarOrientedRectangle[] candidateRectangles =
@@ -246,7 +258,7 @@ namespace Game.NomadWorkshop.Simulation
                 request.Footprint);
             for (var partIndex = 0; partIndex < candidateRectangles.Length; partIndex++)
             {
-                if (!IsInsideBounds(candidateRectangles[partIndex], bounds))
+                if (!support.Covers(candidateRectangles[partIndex]))
                     return ContinuousPlacementFailure.FootprintOutOfBounds;
             }
 
@@ -257,7 +269,7 @@ namespace Game.NomadWorkshop.Simulation
                     request.FunctionalClearance);
             for (var partIndex = 0; partIndex < candidateClearance.Length; partIndex++)
             {
-                if (!IsInsideBounds(candidateClearance[partIndex], bounds))
+                if (!support.Covers(candidateClearance[partIndex]))
                     return ContinuousPlacementFailure.FunctionalClearanceOutOfBounds;
             }
 
@@ -344,24 +356,6 @@ namespace Game.NomadWorkshop.Simulation
             destination.AddRange(_placements.Values);
             destination.Sort((left, right) =>
                 string.Compare(left.InstanceId, right.InstanceId, StringComparison.Ordinal));
-        }
-
-        private static bool IsInsideBounds(
-            in PlanarOrientedRectangle rectangle,
-            in DeckBounds bounds)
-        {
-            double extentX = Math.Abs(rectangle.AxisXX) * rectangle.HalfWidth +
-                Math.Abs(rectangle.AxisZX) * rectangle.HalfDepth;
-            double extentZ = Math.Abs(rectangle.AxisXZ) * rectangle.HalfWidth +
-                Math.Abs(rectangle.AxisZZ) * rectangle.HalfDepth;
-            return bounds.Contains(
-                       rectangle.CenterX - extentX,
-                       rectangle.CenterZ - extentZ,
-                       GeometryToleranceMillimeters) &&
-                   bounds.Contains(
-                       rectangle.CenterX + extentX,
-                       rectangle.CenterZ + extentZ,
-                       GeometryToleranceMillimeters);
         }
 
         private static bool AnyOverlap(

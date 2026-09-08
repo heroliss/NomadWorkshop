@@ -194,6 +194,7 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationResidentExecution _resident;
         private DeckNavigationUtility _navigation;
         private ContinuousFacilityPlacementLedger _placementLedger;
+        private DeckSupportRegion _deckSupport;
         private PlacementRegionLedger _worldItemPlacementLedger;
         private ContinuousDeckReachabilityProbe _previewReachabilityProbe;
         private FoundationInteractionSpaceRuntime _interactionSpaces;
@@ -942,7 +943,8 @@ namespace Game.NomadWorkshop.Foundation
             _facilityInventoryProjection.Clear();
             _model.ReplaceFacilityInventories(_facilityInventoryProjection);
 
-            _placementLedger = deckLayout.CreatePlacementLedger();
+            _deckSupport = deckLayout.CreateSupportRegion();
+            _placementLedger = new ContinuousFacilityPlacementLedger(new[] { _deckSupport });
             _worldItemPlacementLedger = new PlacementRegionLedger();
             _waterCanPlacement = null;
             _residentClearanceMillimeters = Mathf.CeilToInt(
@@ -954,7 +956,7 @@ namespace Game.NomadWorkshop.Foundation
             int interactionSpaceMergeDistanceMillimeters = Mathf.CeilToInt(
                 _navigation.NavigationAgentRadiusMeters * 2000f);
             _previewReachabilityProbe = new ContinuousDeckReachabilityProbe(
-                deckLayout.CreateBounds(),
+                _deckSupport,
                 PreviewReachabilityCellMillimeters,
                 _residentClearanceMillimeters,
                 PreviewEndpointSampleRadiusMillimeters);
@@ -1573,12 +1575,7 @@ namespace Game.NomadWorkshop.Foundation
             in DeckPose pose,
             ContinuousFacilityPlacementRequest? additionalPlacement = null)
         {
-            DeckBounds bounds = deckLayout.CreateBounds();
-            if (pose.DeckLevel != bounds.DeckLevel ||
-                pose.XMillimeters < bounds.MinXMillimeters + _residentClearanceMillimeters ||
-                pose.XMillimeters > bounds.MaxXMillimeters - _residentClearanceMillimeters ||
-                pose.ZMillimeters < bounds.MinZMillimeters + _residentClearanceMillimeters ||
-                pose.ZMillimeters > bounds.MaxZMillimeters - _residentClearanceMillimeters)
+            if (!_deckSupport.Contains(pose, _residentClearanceMillimeters))
                 return false;
 
             IReadOnlyList<FoundationFacilityState> facilities = _model.Facilities;
@@ -2704,7 +2701,7 @@ namespace Game.NomadWorkshop.Foundation
             out string label)
         {
             Vector3 current = ToNavigationPoint(_resident.State.ResidentLocalPosition.Value);
-            DeckBounds bounds = deckLayout.CreateBounds();
+            DeckBounds bounds = _deckSupport.Bounds;
             float margin = (_residentClearanceMillimeters + 120) / 1000f;
             float minX = bounds.MinXMillimeters / 1000f + margin;
             float maxX = bounds.MaxXMillimeters / 1000f - margin;

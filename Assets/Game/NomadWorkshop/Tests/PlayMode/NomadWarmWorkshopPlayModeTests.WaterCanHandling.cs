@@ -88,6 +88,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 }
                 if (ik.GroundFootContactWeight > .999f)
                 {
+                    if (ik.RightHandContactWeight > .999f)
+                        Assert.That(ik.RightArmReachRatio, Is.LessThan(1f), "固定双脚时应靠蹲姿够取，不能拉伸手臂：" + info);
                     Assert.That(Vector3.Distance(human.Animator.GetBoneTransform(HumanBodyBones.LeftFoot).position,
                         ik.LeftGroundFootTarget), Is.LessThan(.045f), "左脚支撑失效：" + info);
                     Assert.That(Vector3.Distance(human.Animator.GetBoneTransform(HumanBodyBones.RightFoot).position,

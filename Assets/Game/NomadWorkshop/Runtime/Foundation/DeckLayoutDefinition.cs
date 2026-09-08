@@ -23,6 +23,12 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField, Min(0.1f), Tooltip("每个可视单元的世界尺寸（米）；甲板总尺寸由单元数乘以此值。")]
         private float cellSize = 1.2f;
 
+        [Header("局部楼板样板（毫米）")]
+        [SerializeField, Tooltip("空数组沿用起步矩形；非空时使用这些轴对齐板片的并集。它是静态布局样板，尚非玩家施工存档。")]
+        private RectInt[] supportPlates = System.Array.Empty<RectInt>();
+        [SerializeField, Tooltip("从板片并集中扣除的开口；尺寸和坐标均为毫米。")]
+        private RectInt[] supportOpenings = System.Array.Empty<RectInt>();
+
         [Header("默认建造辅助")]
         [SerializeField, Min(0), Tooltip("进入场景时的位置吸附步长（毫米）。正式 UI 提供自由、200/300/400/600；非零档位共用 100 mm 基础格与甲板原点。")]
         private int positionSnapMillimeters = 200;
@@ -54,8 +60,28 @@ namespace Game.NomadWorkshop.Foundation
                 maximum.ZMillimeters);
         }
 
+        /// <summary>创建静态支撑快照；主车架原点、取水驿站和旧起步尺寸不因局部外扩而重新居中。</summary>
+        public DeckSupportRegion CreateSupportRegion()
+        {
+            DeckBounds[] plates = supportPlates == null || supportPlates.Length == 0
+                ? new[] { CreateBounds() } : ConvertParts(supportPlates);
+            return new DeckSupportRegion(plates, ConvertParts(supportOpenings));
+        }
+
+        private static DeckBounds[] ConvertParts(RectInt[] parts)
+        {
+            var result = new DeckBounds[parts?.Length ?? 0];
+            for (var i = 0; i < result.Length; i++)
+            {
+                RectInt p = parts[i];
+                if (p.width <= 0 || p.height <= 0) throw new System.ArgumentException("甲板板片/开口尺寸必须为正毫米数。");
+                result[i] = new DeckBounds(p.x, p.y, checked(p.x + p.width), checked(p.y + p.height));
+            }
+            return result;
+        }
+
         public ContinuousFacilityPlacementLedger CreatePlacementLedger() =>
-            new(CreateBounds());
+            new(new[] { CreateSupportRegion() });
 
         /// <summary>把量化业务姿态投影为甲板根节点的局部坐标。</summary>
         public Vector3 PoseToLocal(in DeckPose pose, float localY = 0f) =>
@@ -82,6 +108,14 @@ namespace Game.NomadWorkshop.Foundation
         }
 
 #if UNITY_EDITOR
+        /// <summary>在独立样板资产落盘前配置局部板，复制数组；运行中不能借此热换结构。</summary>
+        public void ConfigureSupportForTests(RectInt[] plates, RectInt[] openings)
+        {
+            supportPlates = plates == null ? System.Array.Empty<RectInt>() : (RectInt[])plates.Clone();
+            supportOpenings = openings == null ? System.Array.Empty<RectInt>() : (RectInt[])openings.Clone();
+            CreateSupportRegion();
+        }
+
         /// <summary>只供隔离测试在资产落盘前建立布局；正式场景使用生成的 ScriptableObject 资产。</summary>
         public void ConfigureForTests(
             int configuredMinX,
