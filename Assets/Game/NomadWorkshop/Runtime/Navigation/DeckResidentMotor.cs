@@ -11,6 +11,9 @@ namespace Game.NomadWorkshop.Navigation
     /// </summary>
     internal sealed class DeckResidentMotor : IDisposable
     {
+        // 路径接纳留出约 15 mm 的导航停车误差；实际身体末段仍受更外层的 110 mm 上限约束。
+        internal const float MaximumDockingSampleDistance = .09f;
+        private const float MaximumDockingMovement = .11f;
         private readonly Transform _space;
         private readonly GameObject _root;
         private readonly NavMeshAgent _agent;
@@ -183,7 +186,7 @@ namespace Game.NomadWorkshop.Navigation
         internal bool TryFinishDocking(Vector3 exactLocalGoal, bool hasYaw, float yaw)
         {
             Vector3 difference = exactLocalGoal - LocalPosition;
-            if (!PathComplete || RemainingDistance > 0.055f || difference.magnitude > 0.11f) return false;
+            if (!PathComplete || RemainingDistance > 0.055f || difference.magnitude > MaximumDockingMovement) return false;
             float finalYaw = hasYaw ? yaw : LocalYaw;
             _body.Move(_space.TransformPoint(exactLocalGoal) - _root.transform.position);
             difference = exactLocalGoal - LocalPosition;

@@ -90,6 +90,38 @@ namespace Game.NomadWorkshop.Simulation
                 pose.XMillimeters, pose.ZMillimeters, paddingMillimeters, paddingMillimeters, 0d));
         }
 
+        /// <summary>
+        /// 检查同层短直线移动的完整支撑。正净空采用扫掠方形的外包围矩形，允许保守拒绝凹角；
+        /// 零净空精确检查线段覆盖。端点有地板不代表途中可走，不能用于跨层连接。
+        /// </summary>
+        public bool CoversSweep(in DeckPose start, in DeckPose end, int paddingMillimeters = 0)
+        {
+            if (paddingMillimeters < 0) throw new ArgumentOutOfRangeException(nameof(paddingMillimeters));
+            return start.DeckLevel == Bounds.DeckLevel && end.DeckLevel == Bounds.DeckLevel &&
+                   CoversSweep(start.XMillimeters, start.ZMillimeters, end.XMillimeters, end.ZMillimeters, paddingMillimeters);
+        }
+
+        /// <summary>
+        /// 检查同层圆形身体投影的完整支撑，允许与缺口相切。用于恢复实际站姿；
+        /// 与工作位方形预留空间不同，圆形可以合法站在凹角的对角外侧。
+        /// </summary>
+        public bool ContainsDisc(in DeckPose pose, int radiusMillimeters)
+        {
+            if (radiusMillimeters < 0) throw new ArgumentOutOfRangeException(nameof(radiusMillimeters));
+            if (radiusMillimeters == 0) return Contains(pose);
+            if (pose.DeckLevel != Bounds.DeckLevel ||
+                !Bounds.Contains((double)pose.XMillimeters - radiusMillimeters, (double)pose.ZMillimeters - radiusMillimeters, Tolerance) ||
+                !Bounds.Contains((double)pose.XMillimeters + radiusMillimeters, (double)pose.ZMillimeters + radiusMillimeters, Tolerance)) return false;
+            foreach (var gap in _voids)
+            {
+                // 支撑分解产生的缺口均轴对齐；最近点距离精确判断圆是否进入空洞。
+                double dx = Math.Max(0d, Math.Abs(pose.XMillimeters - gap.CenterX) - gap.HalfWidth);
+                double dz = Math.Max(0d, Math.Abs(pose.ZMillimeters - gap.CenterZ) - gap.HalfDepth);
+                if (dx * dx + dz * dz < (double)radiusMillimeters * radiusMillimeters - Tolerance) return false;
+            }
+            return true;
+        }
+
         /// <summary>完整检查每块旋转占地；null 拒绝，其他楼层返回 false。</summary>
         public bool Covers(in DeckPose pose, ContinuousFacilityFootprint footprint)
         {

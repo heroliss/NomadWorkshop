@@ -8,6 +8,48 @@ namespace Game.NomadWorkshop.Simulation.Tests
     public sealed class DeckSupportRegionTests
     {
         private static readonly DeckBounds Outer = new(-2000, -2000, 2000, 2000);
+
+        [Test]
+        public void CircularBodyCanStandOutsideConcaveCorner_WithoutAllowingHoleOrWrongLevel()
+        {
+            var support = new DeckSupportRegion(new[]{Outer},new[]{new DeckBounds(0,0,1000,1000)});
+            var diagonal = new DeckPose(-150,-150,0);
+            Assert.That(support.Contains(diagonal,200), Is.False, "方形的右上角进入缺口。");
+            Assert.That(support.ContainsDisc(diagonal,200), Is.True, "圆边距离缺口约 212 mm，200 mm 身体合法。");
+            Assert.That(support.ContainsDisc(new DeckPose(-140,-140,0),200), Is.False);
+            Assert.That(support.ContainsDisc(new DeckPose(-200,500,0),200), Is.True);
+            Assert.That(support.ContainsDisc(new DeckPose(-199,500,0),200), Is.False);
+            Assert.That(support.ContainsDisc(new DeckPose(500,500,0),200), Is.False);
+            Assert.That(support.ContainsDisc(new DeckPose(-150,-150,0,1),200), Is.False);
+            Assert.That(support.ContainsDisc(new DeckPose(-1900,0,0),200), Is.False);
+            Assert.That(()=>support.ContainsDisc(diagonal,-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
+        public void ShortSweepCrossesPlateSeam_ButCannotJumpThinHoleBetweenSupportedEndpoints()
+        {
+            var start = new DeckPose(-40, 0, 0);
+            var end = new DeckPose(40, 0, 0);
+            var seam = new DeckSupportRegion(new[] { new DeckBounds(-2000,-2000,0,2000), new DeckBounds(0,-2000,2000,2000) });
+            Assert.That(seam.CoversSweep(start, end, 245), Is.True);
+            var gap = new DeckSupportRegion(new[] { Outer }, new[] { new DeckBounds(-1,-1000,1,1000) });
+            Assert.That(gap.Contains(start), Is.True);
+            Assert.That(gap.Contains(end), Is.True);
+            Assert.That(gap.CoversSweep(start, end), Is.False, "即使 2 mm 的孔洞也不能靠端点采样越过。");
+            Assert.That(seam.CoversSweep(start, new DeckPose(40,0,0,1)), Is.False);
+            Assert.That(() => seam.CoversSweep(start,end,-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
+        public void SweepChecksWholeBodyClearanceAlongHoleEdge()
+        {
+            var gap = new DeckSupportRegion(new[] { Outer }, new[] { new DeckBounds(-10,-10,10,10) });
+            var start = new DeckPose(-40,250,0);
+            var end = new DeckPose(40,250,0);
+            Assert.That(gap.CoversSweep(start,end), Is.True);
+            Assert.That(gap.CoversSweep(start,end,245), Is.False, "中心有地板仍可能让身体净空覆盖孔洞。");
+            Assert.That(gap.CoversSweep(new DeckPose(-40,255,0),new DeckPose(40,255,0),245), Is.True);
+        }
         private static ContinuousFacilityFootprint Footprint(int width, int depth) =>
             new(new[] { new DeckFootprintPart(0, 0, width, depth) });
         private static ContinuousFacilityPlacementRequest Request(DeckPose pose, int width = 800, int depth = 800) =>

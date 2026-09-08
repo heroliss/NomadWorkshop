@@ -5,6 +5,7 @@ using Game.NomadWorkshop.Simulation;
 using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.SceneManagement;
 
 namespace Game.NomadWorkshop.Navigation
 {
@@ -105,6 +106,8 @@ namespace Game.NomadWorkshop.Navigation
     /// </summary>
     public sealed class DeckNavigationUtility : MonoUtilityBase
     {
+        private readonly Collider[] _dockingOverlaps = new Collider[32];
+        private readonly RaycastHit[] _dockingHits = new RaycastHit[32];
         [SerializeField, Tooltip("甲板连续可行走区域的 NavMeshSurface；设施提交时会重建它。")]
         private NavMeshSurface surface;
         [SerializeField, Tooltip("业务居民 id 到 NavMeshAgent 的显式绑定；避免 System 直接查找场景对象。")]
@@ -250,6 +253,63 @@ namespace Game.NomadWorkshop.Navigation
                 CalculateLength(localCorners));
             return true;
         }
+
+        /// <summary>
+        /// 完整导航路径加同层短段身体接近；不移动居民。System 另查楼板支撑与语义净空，
+        /// Motor 仍须真实到岗。动态居民交给交通/身体约束，静态阻挡或查询缓冲溢出均拒绝。
+        /// </summary>
+        internal bool TryCalculateLocalDockingPath(Vector3 localStart, Vector3 exactGoal,
+            float maximumStartOffset, out DeckNavPathProbe probe)
+        {
+            if (!TryCalculateCompleteLocalPath(localStart, exactGoal, out probe)) return false;
+            Vector3 startError = probe.SampledStart - localStart;
+            startError.y = 0f;
+            Vector3 approach = exactGoal - probe.SampledEnd;
+            if (startError.magnitude > maximumStartOffset || Mathf.Abs(approach.y) > .03f ||
+                approach.magnitude > DeckResidentMotor.MaximumDockingSampleDistance) return false;
+            return IsLocalResidentApproachClear(probe.SampledEnd, exactGoal);
+        }
+
+        /// <summary>恢复已存在的站姿时按实际胶囊检查静态净空，不套用工作位额外预留的方形空间。</summary>
+        internal bool IsLocalResidentBodyClear(Vector3 localPosition) =>
+            IsLocalResidentApproachClear(localPosition, localPosition);
+
+        private bool IsLocalResidentApproachClear(Vector3 localStart, Vector3 localEnd)
+        {
+            Physics.SyncTransforms();
+            var settings = NavMesh.GetSettingsByID(surface.agentTypeID);
+            Transform space = NavigationSpace;
+            // 小接触间隙避免把脚下地板当墙；最后落脚仍由完整 CharacterController 约束。
+            Vector3 lower = space.TransformPoint(localStart + Vector3.up * (settings.agentRadius + .005f));
+            Vector3 upper = space.TransformPoint(localStart + Vector3.up * (settings.agentHeight - settings.agentRadius));
+            float radius = settings.agentRadius * Mathf.Max(space.TransformVector(Vector3.right).magnitude,
+                space.TransformVector(Vector3.forward).magnitude);
+            Vector3 movement = space.TransformVector(localEnd - localStart);
+            PhysicsScene physics = gameObject.scene.GetPhysicsScene();
+            if (!IsDockingCapsuleClear(physics, lower, upper, radius) ||
+                !IsDockingCapsuleClear(physics, lower + movement, upper + movement, radius)) return false;
+            float distance = movement.magnitude;
+            if (distance < .00001f) return true;
+            int count = physics.CapsuleCast(lower, upper, radius, movement / distance, _dockingHits,
+                distance, Physics.AllLayers, QueryTriggerInteraction.Ignore);
+            if (count == _dockingHits.Length) return false;
+            for (int i = 0; i < count; i++)
+                if (IsStaticDockingObstacle(_dockingHits[i].collider)) return false;
+            return true;
+        }
+
+        private bool IsDockingCapsuleClear(PhysicsScene physics, Vector3 lower, Vector3 upper, float radius)
+        {
+            int count = physics.OverlapCapsule(lower, upper, radius, _dockingOverlaps,
+                Physics.AllLayers, QueryTriggerInteraction.Ignore);
+            if (count == _dockingOverlaps.Length) return false;
+            for (int i = 0; i < count; i++)
+                if (IsStaticDockingObstacle(_dockingOverlaps[i])) return false;
+            return true;
+        }
+
+        private static bool IsStaticDockingObstacle(Collider collider) => collider != null &&
+            !(collider is CharacterController && collider.GetComponent<NavMeshAgent>() != null);
 
         /// <summary>
         /// 把导航空间中的局部点解析到最近 NavMesh 点。用于设施落地后让动态居民从新障碍中避让；

@@ -20,6 +20,138 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             .SelectMany(r => r.GetComponentsInChildren<T>(true)).Single();
 
         [UnityTest]
+        public IEnumerator CheckpointAcceptsRealBodyNearFacilityCorner_ButRejectsUnsupportedHole()
+        {
+            var context = Find<NomadFoundationContext>();
+            var save = context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
+            save.Facilities.Single(f=>f.DefinitionId=="drinking-station").Pose = new QuantizedDeckPose(-6200,1000,0);
+            // 来自真实携物途中失败的脚底；位于圆胶囊可通过、工作位方形预留空间会拒绝的拐角。
+            save.Residents[0].Pose = new QuantizedDeckPose(-5561,422,0);
+            string id = save.Residents[0].ResidentId;
+            context.ExecuteCommand(new RestoreFoundationCheckpointCommand(save));
+            yield return null;
+            var read = context.ExecuteCommand(new GetFoundationReadModelCommand());
+            Vector3 position = read.Residents.Single(r=>r.StableId==id).ResidentLocalPosition.CurrentValue;
+            Assert.That(Vector3.Distance(position,new Vector3(-5.561f,0,.422f)), Is.LessThan(.002f));
+            var invalid = context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
+            invalid.Residents.Single(r=>r.ResidentId==id).Pose = new QuantizedDeckPose(-7600,0,0);
+            Assert.That(()=>context.ExecuteCommand(new RestoreFoundationCheckpointCommand(invalid)),
+                Throws.TypeOf<System.InvalidOperationException>());
+            yield return null;
+            Assert.That(Vector3.Distance(read.Residents.Single(r=>r.StableId==id).ResidentLocalPosition.CurrentValue,position),
+                Is.LessThan(.002f), "错误存档回滚后原来的合法位置仍可重建。");
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator TranslatedAndRotatedStationKeepsItsSemanticWorkingSlotsReachable()
+        {
+            var context = Find<NomadFoundationContext>();
+            var poses = new[] {
+                new QuantizedDeckPose(-6000,0,0), new QuantizedDeckPose(-6040,0,0),
+                new QuantizedDeckPose(-6080,0,0), new QuantizedDeckPose(-6000,800,0),
+                new QuantizedDeckPose(-6200,1000,900), new QuantizedDeckPose(-6200,1000,1800),
+                new QuantizedDeckPose(-6200,0,2700) };
+            foreach (var pose in poses)
+            {
+                var save = context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
+                var station = save.Facilities.Single(f=>f.DefinitionId=="drinking-station");
+                station.Pose = pose;
+                context.ExecuteCommand(new RestoreFoundationCheckpointCommand(save));
+                yield return null;
+                var access = context.ExecuteCommand(new GetFoundationFacilityAccessCommand()).Single(a=>a.InstanceId==station.InstanceId);
+                Assert.That(access.CommittedAccess, Is.EqualTo(FoundationFacilityAccess.Reachable), pose.ToString());
+                Assert.That(access.DisplayReachableSlotCount, Is.EqualTo(4), pose.ToString());
+            }
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator StaticColliderOutsideNavMeshSourcesStillBlocksExactWorkingPose()
+        {
+            var context = Find<NomadFoundationContext>();
+            var save = context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
+            var station = save.Facilities.Single(f=>f.DefinitionId=="drinking-station");
+            station.Pose = new QuantizedDeckPose(-6000,0,0);
+            context.ExecuteCommand(new RestoreFoundationCheckpointCommand(save));
+            yield return null;
+            var wall = new GameObject("Docking test · static obstruction outside navigation collection");
+            wall.layer = 2; // Ignore Raycast 不等于不参与身体碰撞，不能用射线默认层掩码漏掉它。
+            SceneManager.MoveGameObjectToScene(wall, SceneManager.GetSceneByPath(ScenePath));
+            try
+            {
+                var deck = Find<FoundationDeckSupportSurface>().transform;
+                wall.transform.SetPositionAndRotation(deck.TransformPoint(new Vector3(-6.48f,.9f,-.49f)),deck.rotation);
+                wall.AddComponent<BoxCollider>().size = new Vector3(.65f,1.8f,.01f);
+                Physics.SyncTransforms();
+                context.ExecuteCommand(new RestoreFoundationCheckpointCommand(save));
+                yield return null;
+                var nav = Find<DeckNavigationUtility>();
+                Assert.That(nav.TryCalculateCompleteLocalPath(Vector3.zero,new Vector3(-6.48f,0,-.64f),out _), Is.True,
+                    "此例必须保留完整 NavMesh 路径，才能证明额外的物理检查。");
+                var access = context.ExecuteCommand(new GetFoundationFacilityAccessCommand()).Single(a=>a.InstanceId==station.InstanceId);
+                for (int i=0;i<3;i++) Assert.That(access.IsDisplaySlotReachable(i), Is.False, "静态墙挡住了正面身体位置。");
+                Assert.That(access.IsDisplaySlotReachable(3), Is.True, "旁边的搬罐位仍可用。");
+                wall.SetActive(false);
+                context.ExecuteCommand(new RestoreFoundationCheckpointCommand(save));
+                yield return null;
+                Assert.That(context.ExecuteCommand(new GetFoundationFacilityAccessCommand()).Single(a=>a.InstanceId==station.InstanceId)
+                    .DisplayReachableSlotCount, Is.EqualTo(4), "清除阻挡后不能遗留不可达缓存。");
+            }
+            finally { wall.SetActive(false); Object.Destroy(wall); }
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
+        public IEnumerator NativeResidentDocksAtVoxelShiftedStation_ThenTransfersWater_AndPauseFreezesBoth()
+        {
+            var context = Find<NomadFoundationContext>();
+            var read = context.ExecuteCommand(new GetFoundationReadModelCommand());
+            var save = context.ExecuteCommand(new CaptureFoundationCheckpointCommand());
+            save.Facilities.Single(f=>f.DefinitionId=="drinking-station").Pose = new QuantizedDeckPose(-6000,0,0);
+            context.ExecuteCommand(new RestoreFoundationCheckpointCommand(save));
+            int initialWater = read.DrinkingStationWaterMilliliters.CurrentValue;
+            context.ExecuteCommand(new SetFoundationSpeedCommand(4f));
+            context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            float deadline = Time.realtimeSinceStartup + 40f;
+            FoundationResidentReadModel carrier = default;
+            bool arrived = false;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                foreach (var resident in read.Residents)
+                    if (resident.ResidentPhase.CurrentValue == FoundationResidentPhase.DeliveringWater)
+                    { carrier = resident; arrived = true; break; }
+                if (arrived) break;
+                Assert.That(read.DrinkingStationWaterMilliliters.CurrentValue, Is.EqualTo(initialWater), "真实到岗前不得交接水。");
+                yield return null;
+            }
+            Assert.That(arrived, Is.True, string.Join(" | ",read.Residents.Select(r=>r.StableId+":"+r.ResidentPhase.CurrentValue+":"+r.LastBlocker.CurrentValue)));
+            context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Vector3 position = carrier.ResidentLocalPosition.CurrentValue;
+            var deck = Find<FoundationDeckSupportSurface>().transform;
+            var body = SceneManager.GetSceneByPath(ScenePath).GetRootGameObjects()
+                .SelectMany(r=>r.GetComponentsInChildren<CharacterController>()).Single(b=>b.name=="Resident Motor · "+carrier.StableId);
+            Vector3 physical = deck.InverseTransformPoint(body.transform.position);
+            float distance = new[]{-6.56f,-6.48f,-6.4f}.Min(x=>Vector3.Distance(physical,new Vector3(x,0,-.64f)));
+            Assert.That(distance, Is.LessThan(.025f), "不能用路径终点代替实际身体到岗。");
+            int stationWater = read.DrinkingStationWaterMilliliters.CurrentValue;
+            int canWater = read.WaterCanWaterMilliliters.CurrentValue;
+            for (int i=0;i<5;i++) yield return null;
+            Assert.That(carrier.ResidentLocalPosition.CurrentValue, Is.EqualTo(position));
+            Assert.That(deck.InverseTransformPoint(body.transform.position), Is.EqualTo(physical));
+            Assert.That(read.DrinkingStationWaterMilliliters.CurrentValue, Is.EqualTo(stationWater));
+            Assert.That(read.WaterCanWaterMilliliters.CurrentValue, Is.EqualTo(canWater));
+            context.ExecuteCommand(new SetFoundationPausedCommand(false));
+            deadline = Time.realtimeSinceStartup + 8f;
+            while (read.DrinkingStationWaterMilliliters.CurrentValue <= stationWater && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            context.ExecuteCommand(new SetFoundationPausedCommand(true));
+            Assert.That(read.DrinkingStationWaterMilliliters.CurrentValue, Is.GreaterThan(stationWater));
+            Assert.That(read.WaterCanWaterMilliliters.CurrentValue, Is.LessThan(canWater));
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
         public IEnumerator HoleHasNoFloor_ActualNavigationDetours_AndSeamHasContinuousHeight()
         {
             var surface = Find<FoundationDeckSupportSurface>();

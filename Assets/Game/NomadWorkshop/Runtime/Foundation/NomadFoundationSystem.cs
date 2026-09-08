@@ -1868,12 +1868,11 @@ namespace Game.NomadWorkshop.Foundation
             }
 
             Vector3 localEnd = ToNavigationPoint(deckLayout.PoseToLocal(exactDockingPose));
-            return TryCalculatePath(
-                localStart,
-                localEnd,
-                MaximumTravelSampleOffset,
-                _dockingNavMeshTolerance,
-                out probe);
+            if (!_navigation.TryCalculateLocalDockingPath(localStart, localEnd, MaximumTravelSampleOffset, out probe))
+                return false;
+            // 取样点与语义锚点之间仍须有完整楼板，不能因两端可站立就越过细孔洞。
+            return _deckSupport.CoversSweep(deckLayout.LocalToPose(probe.SampledEnd), exactDockingPose,
+                _residentClearanceMillimeters + 1); // 量化取样点最多半毫米，向外保守取整。
         }
 
         private bool TryCalculateTravelPath(

@@ -499,6 +499,8 @@ namespace Game.NomadWorkshop.Foundation
                 renderer.sharedMaterial = material;
             if (instance.TryGetComponent(out Collider collider))
             {
+                // 灰盒仅作表现，物理占地由 Navigation 的障碍代理独占；帧末销毁前也不能参与查询。
+                collider.enabled = false;
                 if (Application.isPlaying) UnityEngine.Object.Destroy(collider);
                 else UnityEngine.Object.DestroyImmediate(collider);
             }

@@ -1916,7 +1916,12 @@ namespace Game.NomadWorkshop.Foundation
             instance.transform.localPosition = localPosition;
             instance.transform.localScale = localScale;
             if (instance.TryGetComponent(out Renderer renderer)) renderer.sharedMaterial = material;
-            if (instance.TryGetComponent(out Collider collider)) Destroy(collider);
+            if (instance.TryGetComponent(out Collider collider))
+            {
+                // 表现标记从创建时就不能参与物理；只等帧末 Destroy 会阻挡同帧重建/停靠查询。
+                collider.enabled = false;
+                Destroy(collider);
+            }
             return instance;
         }
 

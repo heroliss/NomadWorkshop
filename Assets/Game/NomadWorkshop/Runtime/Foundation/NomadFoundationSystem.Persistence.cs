@@ -498,10 +498,13 @@ namespace Game.NomadWorkshop.Foundation
                         out Vector3 sampledResidentPosition) ||
                     HorizontalDistance(requestedResidentPosition, sampledResidentPosition) >
                     MaximumTravelSampleOffset ||
-                    !IsResidentPoseClear(deckLayout.LocalToPose(sampledResidentPosition)))
+                    !_deckSupport.ContainsDisc(deckLayout.LocalToPose(sampledResidentPosition),
+                        Mathf.CeilToInt(_navigation.NavigationAgentRadiusMeters * 1000f) + 1) ||
+                    !_navigation.IsLocalResidentBodyClear(sampledResidentPosition))
                     throw new InvalidOperationException(
                         $"检查点居民位置 {personal.Resident.Pose.XMillimeters}, " +
                         $"{personal.Resident.Pose.ZMillimeters} mm 已不在可站立甲板上。");
+                // 行走中的胶囊能贴近设施拐角；工作位的方形额外净空不能反过来否定真实可站立位置。
                 _resident.State.ResidentLocalPosition.Value = ToNavigationPoint(sampledResidentPosition);
                 _resident.State.ResidentLocalYawDegrees.Value = personal.Resident.Pose.YawDegrees;
 
