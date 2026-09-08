@@ -20,6 +20,7 @@ namespace Game.NomadWorkshop.Editor
         private static double _deadline;
         private static int _settle;
         private static bool _waiting;
+        private static bool _turning;
 
         static NomadStairTraversalReview()
         {
@@ -31,10 +32,18 @@ namespace Game.NomadWorkshop.Editor
         }
 
         [MenuItem("Assets/SSFramework/游牧工坊/首版美术/观察楼梯持桶近景")]
-        public static void Observe()
+        public static void Observe() => Begin(false);
+
+        [MenuItem("Assets/SSFramework/游牧工坊/首版美术/观察折返平台转身")]
+        public static void ObserveTurn() => Begin(true);
+
+        private static void Begin(bool turning)
         {
             ValidateScene();
             if (_waiting) throw new InvalidOperationException("已经在等待楼梯中段。");
+            if (turning && SceneManager.GetActiveScene().path != NomadSwitchbackStairPipeline.ScenePath)
+                throw new InvalidOperationException("转身观察仅适用于持罐折返梯实验。");
+            _turning = turning;
             _context = Find<NomadFoundationContext>();
             _read = _context.ExecuteCommand(new GetStairTraversalStateCommand());
             _context.ExecuteCommand(new PauseStairTraversalCommand(false));
@@ -98,7 +107,12 @@ namespace Game.NomadWorkshop.Editor
                 StairTraversalState state = _read.CurrentValue;
                 if (_settle == 0)
                 {
-                    if (state.Position.y < 1.4f) return;
+                    if (_turning)
+                    {
+                        if (state.Position.y < 1.55f || state.Position.y > 1.68f ||
+                            state.Position.x < 1.65f || state.Position.x > 2.65f || state.Position.z > -.45f) return;
+                    }
+                    else if (state.Position.y < 1.4f) return;
                     _context.ExecuteCommand(new PauseStairTraversalCommand(true));
                     _settle = 1;
                     return;
@@ -120,7 +134,8 @@ namespace Game.NomadWorkshop.Editor
         {
             string path = SceneManager.GetActiveScene().path;
             if (!EditorApplication.isPlaying || (path != NomadStairTraversalPipeline.ScenePath &&
-                path != NomadResidentSamplePipeline.StairScenePath && !NomadResidentCrewPipeline.IsStairScene(path) &&
+                path != NomadResidentSamplePipeline.StairScenePath && path != NomadSwitchbackStairPipeline.ScenePath &&
+                !NomadResidentCrewPipeline.IsStairScene(path) &&
                 !NomadWorkwearPipeline.IsStairScene(path)))
                 throw new InvalidOperationException("请先运行持桶楼梯实验场景。");
         }
