@@ -15,8 +15,10 @@ namespace Game.NomadWorkshop.Navigation
         public const float UpperHeight = 3.2f;
         public static readonly Vector3 LowerGoal = new(-2f, 0f, 5.6f);
         public static readonly Vector3 UpperGoal = new(-2f, UpperHeight, 5.6f);
+        private const ulong CarrierOwner = 1UL;
         private NomadStairTraversalModel _model;
         private DeckNavigationUtility _navigation;
+        private NomadStairTrafficGate _traffic;
         private DeckResidentMotor _motor;
         private DisposableBag _motionBag;
         private float _elapsed;
@@ -26,6 +28,9 @@ namespace Game.NomadWorkshop.Navigation
         {
             _model = this.GetModel<NomadStairTraversalModel>();
             _navigation = this.GetUtility<DeckNavigationUtility>();
+            _traffic = transform.parent != null
+                ? transform.parent.GetComponentInChildren<NomadStairTrafficGate>(true)
+                : null;
             _navigation.BuildNow();
             if (!TryEndpoint(LowerGoal, out Vector3 start) || !TryEndpoint(UpperGoal, out _))
                 throw new InvalidOperationException("跨层实验的上下平台缺少同高度 NavMesh。");
@@ -44,6 +49,7 @@ namespace Game.NomadWorkshop.Navigation
             _elapsed += Time.unscaledDeltaTime;
             if (_motor.TryFinishDocking(_goal, true, state.TargetFloor == 1 ? 270f : 90f))
             {
+                ReleaseTraffic();
                 Publish(state.TargetFloor, StairTraversalPhase.Arrived, false,
                     state.TargetFloor == 1 ? "已把水带到二层" : "已把水带回一层");
                 return;
@@ -51,6 +57,7 @@ namespace Game.NomadWorkshop.Navigation
             if (_elapsed > 45f)
             {
                 _motor.Stop();
+                ReleaseAtSafeEndpoint();
                 Publish(state.TargetFloor, StairTraversalPhase.Blocked, false, "路线未完成，请查看碰撞与导航证据");
                 return;
             }
@@ -61,10 +68,16 @@ namespace Game.NomadWorkshop.Navigation
         public bool MoveToFloor(int floor)
         {
             if (_motor == null || floor is < 0 or > 1) return false;
+            bool alreadyOwned = _traffic != null && _traffic.CurrentOwner == CarrierOwner;
+            if (_traffic != null && !_traffic.TryAcquire(CarrierOwner)) return false;
             Vector3 exact = floor == 1 ? UpperGoal : LowerGoal;
             if (!TryEndpoint(exact, out Vector3 target) ||
                 !_navigation.TryCalculateCompleteLocalPath(_motor.LocalPosition, target, out DeckNavPathProbe path) ||
-                Mathf.Abs(path.SampledEnd.y - exact.y) > .08f || !_motor.SetDestination(target)) return false;
+                Mathf.Abs(path.SampledEnd.y - exact.y) > .08f || !_motor.SetDestination(target))
+            {
+                if (!alreadyOwned) ReleaseTraffic();
+                return false;
+            }
             _goal = exact;
             _elapsed = 0f;
             Publish(floor, StairTraversalPhase.Moving, _model.State.Value.Paused,
@@ -80,11 +93,12 @@ namespace Game.NomadWorkshop.Navigation
             Publish(state.TargetFloor, state.Phase, paused, state.Status);
         }
 
-        /// <summary>楼梯允许就地停止，保留水与当前踏面位置；直梯的安全端点取消另行验证。</summary>
+        /// <summary>就地停止并保留水；未回到已验证的平台停靠点前仍独占通道，原持有人可以重新选楼层。</summary>
         public void Cancel()
         {
             if (_motor == null) return;
             _motor.Stop();
+            ReleaseAtSafeEndpoint();
             Publish(_model.State.Value.TargetFloor, StairTraversalPhase.Cancelled, false, "已停在当前踏面，水仍在手中");
         }
 
@@ -115,7 +129,16 @@ namespace Game.NomadWorkshop.Navigation
             Vector3 exact = saved.targetFloor == 1 ? UpperGoal : LowerGoal;
             if (saved.moving && (!TryEndpoint(exact, out Vector3 target) ||
                 !_navigation.TryCalculateCompleteLocalPath(sample, target, out _))) return false;
-            CreateMotor(saved.position, saved.yaw);
+            bool needsTraffic = saved.moving || !IsSafeEndpoint(saved.position);
+            bool alreadyOwned = _traffic != null && _traffic.CurrentOwner == CarrierOwner;
+            if (needsTraffic && _traffic != null && !_traffic.TryAcquire(CarrierOwner)) return false;
+            try { CreateMotor(saved.position, saved.yaw); }
+            catch
+            {
+                if (needsTraffic && !alreadyOwned) ReleaseTraffic();
+                throw;
+            }
+            if (!needsTraffic) ReleaseTraffic();
             Publish(saved.targetFloor, StairTraversalPhase.Ready, saved.paused, "已恢复携水检查点");
             return !saved.moving || MoveToFloor(saved.targetFloor);
         }
@@ -147,6 +170,26 @@ namespace Game.NomadWorkshop.Navigation
                 phase, paused, 8000, status);
 
         private static bool Finite(float number) => !float.IsNaN(number) && !float.IsInfinity(number);
+
+        // 实验按完整平台间搬运持有租约，不能仅凭高度判断已离开顶级踏板。
+        private static bool IsSafeEndpoint(Vector3 position) =>
+            Vector3.Distance(position, LowerGoal) <= .12f || Vector3.Distance(position, UpperGoal) <= .12f;
+
+        private void ReleaseAtSafeEndpoint()
+        {
+            if (IsSafeEndpoint(_motor.LocalPosition)) ReleaseTraffic();
+        }
+
+        private void ReleaseTraffic()
+        {
+            if (_traffic != null) _traffic.Release(CarrierOwner);
+        }
+
+        protected override void OnDestroy()
+        {
+            ReleaseTraffic();
+            base.OnDestroy();
+        }
 
         [Serializable]
         private sealed class Checkpoint

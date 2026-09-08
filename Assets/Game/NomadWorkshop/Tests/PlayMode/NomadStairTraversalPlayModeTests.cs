@@ -19,6 +19,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
     {
         /// <summary>使用各候选的落盘场景，复用相同身体、层高与物品所有权断言。</summary>
         protected virtual string ScenePath => "Assets/Game/NomadWorkshop/Scenes/StairCarrySpike.unity";
+        protected virtual int ExpectedTreadCount => 18;
         private Scene _previous, _scene;
         private bool _owns;
         private NomadFoundationContext _context;
@@ -64,7 +65,7 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         {
             Collider[] steps = _scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Collider>())
                 .Where(c => c.name.Contains("Actual Tread")).ToArray();
-            Assert.That(steps.Length, Is.EqualTo(18));
+            Assert.That(steps.Length, Is.EqualTo(ExpectedTreadCount));
             float envelopeRadius = 0f;
             foreach (Vector3 corner in Corners(_canBounds))
             {

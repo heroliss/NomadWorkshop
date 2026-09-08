@@ -135,7 +135,7 @@ namespace Game.NomadWorkshop.Editor
         /// 只更新本实验的通行能力，保持其他 Agent 类型不变。采用当前 Unity NavigationWindow
         /// 的 SerializedObject 接口，不手改 ProjectSettings YAML；属性缺失时明确失败。
         /// </summary>
-        private static int EnsureStairAgentType()
+        internal static int EnsureStairAgentType()
         {
             const string name = "Nomad Stair Carrier";
             for (int i = 0; i < NavMesh.GetSettingsCount(); i++)
