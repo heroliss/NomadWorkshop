@@ -159,45 +159,7 @@ namespace Game.NomadWorkshop.Editor
             }
         }
 
-        private static Material ImportMaterial()
-        {
-            var textures = new Texture2D[3]; string[] channels = { "Color", "Normal", "Surface" };
-            for (int i = 0; i < channels.Length; i++)
-            {
-                string file = Stem + "_" + channels[i] + ".png", path = Root + "/Textures/" + file;
-                File.Copy(Source + "/" + file, path, true); AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-                importer.textureType = i == 1 ? TextureImporterType.NormalMap : TextureImporterType.Default;
-                importer.spriteImportMode = SpriteImportMode.None; importer.sRGBTexture = i == 0;
-                importer.isReadable = false; importer.alphaIsTransparency = false; importer.maxTextureSize = 2048;
-                importer.alphaSource = i == 0 ? TextureImporterAlphaSource.None : TextureImporterAlphaSource.FromInput;
-                importer.mipmapEnabled = true; importer.wrapMode = TextureWrapMode.Clamp;
-                importer.textureCompression = TextureImporterCompression.CompressedHQ;
-                var data = new SerializedObject(importer);
-                foreach (string field in new[] { "m_SpriteSheet.m_Sprites", "m_SpriteSheet.m_NameFileIdTable", "m_InternalIDToNameTable" })
-                {
-                    var property = data.FindProperty(field);
-                    if (property == null || !property.isArray) throw new InvalidOperationException("Unity 纹理字段已改变：" + field);
-                    property.ClearArray();
-                }
-                data.ApplyModifiedPropertiesWithoutUndo(); importer.SaveAndReimport();
-                textures[i] = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            }
-            string materialPath = Root + "/Materials/" + Stem + "Atlas.mat";
-            var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
-            if (material == null)
-            {
-                var shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader == null) throw new InvalidOperationException("缺少 URP Lit。");
-                material = new Material(shader); AssetDatabase.CreateAsset(material, materialPath);
-            }
-            material.name = Stem + "Atlas"; material.SetColor("_BaseColor", Color.white);
-            material.SetTexture("_BaseMap", textures[0]); material.SetTexture("_BumpMap", textures[1]);
-            material.SetTexture("_MetallicGlossMap", textures[2]); material.SetFloat("_BumpScale", 1);
-            material.SetFloat("_Metallic", 1); material.SetFloat("_Smoothness", 1); material.SetFloat("_SmoothnessTextureChannel", 0);
-            material.EnableKeyword("_NORMALMAP"); material.EnableKeyword("_METALLICSPECGLOSSMAP");
-            EditorUtility.SetDirty(material); AssetDatabase.SaveAssetIfDirty(material); return material;
-        }
+        private static Material ImportMaterial() => NomadBakedPropTextureImporter.Import(Root, Source, Stem);
 
         private static void AuditModel(GameObject root, Geometry geometry)
         {

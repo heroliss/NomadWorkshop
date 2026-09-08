@@ -1,0 +1,251 @@
+{
+  "version": "0.1.0",
+  "status": "passed-export",
+  "blenderVersion": "5.2.1 LTS",
+  "atlasSize": 2048,
+  "assets": [
+    {
+      "name": "NW14_Toilet",
+      "source": {
+        "meshCount": 6,
+        "triangles": 11200,
+        "degenerateTriangles": 0,
+        "vertices": 5768,
+        "uvComplete": true,
+        "boundsBlender": [
+          0.784136176109314,
+          0.8700000047683716,
+          1.828028917312622
+        ],
+        "minimumBlender": [
+          -0.392068088054657,
+          -0.4350000023841858,
+          0.0
+        ],
+        "maximumBlender": [
+          0.392068088054657,
+          0.4350000023841858,
+          1.828028917312622
+        ],
+        "pivots": {
+          "NW14_Toilet": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_AxisForward": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "NW14_Toilet_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_AxisUp": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "NW14_Toilet_BucketEnvelope": [
+            0.0,
+            -0.0820000022649765,
+            0.2619999945163727
+          ],
+          "NW14_Toilet_DomesticDetails": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_PrivacyScreens": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_Seat": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_SeatLid": [
+            0.0,
+            0.30399999022483826,
+            0.6660000085830688
+          ],
+          "NW14_Toilet_ServiceBody": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_TaskLamp": [
+            0.0,
+            0.2590000033378601,
+            1.6030000448226929
+          ]
+        },
+        "parts": [
+          "NW14_Toilet",
+          "NW14_Toilet_AxisForward",
+          "NW14_Toilet_AxisRight",
+          "NW14_Toilet_AxisUp",
+          "NW14_Toilet_BucketEnvelope",
+          "NW14_Toilet_DomesticDetails",
+          "NW14_Toilet_PrivacyScreens",
+          "NW14_Toilet_Seat",
+          "NW14_Toilet_SeatLid",
+          "NW14_Toilet_ServiceBody",
+          "NW14_Toilet_TaskLamp"
+        ]
+      },
+      "roundTrip": {
+        "meshCount": 6,
+        "triangles": 11200,
+        "degenerateTriangles": 0,
+        "vertices": 5768,
+        "uvComplete": true,
+        "boundsBlender": [
+          0.784136176109314,
+          0.8700001239776611,
+          1.8280290621004607
+        ],
+        "minimumBlender": [
+          -0.392068088054657,
+          -0.4350000023841858,
+          -2.557854905660406e-08
+        ],
+        "maximumBlender": [
+          0.392068088054657,
+          0.43500012159347534,
+          1.8280290365219116
+        ],
+        "pivots": {
+          "NW14_Toilet_PrivacyScreens": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_TaskLamp": [
+            0.0,
+            0.2590002715587616,
+            1.6030000448226929
+          ],
+          "NW14_Toilet_AxisForward": [
+            0.0,
+            1.0,
+            -1.6292068494294654e-07
+          ],
+          "NW14_Toilet_AxisUp": [
+            0.0,
+            1.6292068494294654e-07,
+            1.0
+          ],
+          "NW14_Toilet_SeatLid": [
+            0.0,
+            0.3040001094341278,
+            0.6659999489784241
+          ],
+          "NW14_Toilet_DomesticDetails": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_ServiceBody": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_Seat": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_AxisRight": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "NW14_Toilet_BucketEnvelope": [
+            0.0,
+            -0.08199995756149292,
+            0.2619999945163727
+          ]
+        },
+        "parts": [
+          "NW14_Toilet_PrivacyScreens.001",
+          "NW14_Toilet_TaskLamp.001",
+          "NW14_Toilet_AxisForward.001",
+          "NW14_Toilet_AxisUp.001",
+          "NW14_Toilet_SeatLid.001",
+          "NW14_Toilet_DomesticDetails.001",
+          "NW14_Toilet_ServiceBody.001",
+          "NW14_Toilet.001",
+          "NW14_Toilet_Seat.001",
+          "NW14_Toilet_AxisRight.001",
+          "NW14_Toilet_BucketEnvelope.001"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "blender_nomad_sanitation.py",
+      "sha256": "36a86b909942a46e21da1c5e474abe50b4d882ae00331ab3fd6689b38d68189b"
+    },
+    {
+      "file": "blender_nomad_kitchen.py",
+      "sha256": "f3ef156f045e3dc390deb0d701eab7fddb78e0291b9821acf89b383df62b1909"
+    },
+    {
+      "file": "blender_nomad_water_facilities.py",
+      "sha256": "bc182e8881ffec631112e5553f3029fe52c13f9f28cab051d7c41ec48c0f6bf1"
+    },
+    {
+      "file": "blender_nomad_vehicle_forms.py",
+      "sha256": "64a813aaa4a6f96b28f6df01453d2d0825d6d06a23bfcfeeeccd90f6d19b17db"
+    },
+    {
+      "file": "blender_nomad_form_study.py",
+      "sha256": "46e918bb14f4fde5d4ace6089f6cf7f44627cfa29318b8e50516be35f0d62a60"
+    },
+    {
+      "file": "blender_nomad_art_set.py",
+      "sha256": "ae09cbf9573493a013daeb64322f5336c53ef36ebe28a243c7f5b5220850c137"
+    },
+    {
+      "file": "blender_nomad_deck_cockpit.py",
+      "sha256": "c88be92d3cba5c5d1b63468fe8e86fb39da07de5284ebb033846bf685424890b"
+    },
+    {
+      "file": "blender_nomad_canopy.py",
+      "sha256": "8e8afb836ba1dc431858bd7013a440cb699c0fd8f60e1dee3f77c10c50a7814c"
+    }
+  ],
+  "files": [
+    {
+      "file": "NW14_Toilet.fbx",
+      "sha256": "aace5cee83dc24a27e2d756cfffc8e6271ad8fd5b538039484b5090f1d3a07dd"
+    },
+    {
+      "file": "NW14_Toilet_Color.png",
+      "sha256": "a4b6df213f022cc769a10f4434dc9507aed244444105b319f062599cf357dab7"
+    },
+    {
+      "file": "NW14_Toilet_Normal.png",
+      "sha256": "a9ba654f2d1e8feb99d6c7db663f64b21c27328f12fae0a503b02089f998ae49"
+    },
+    {
+      "file": "NW14_Toilet_Surface.png",
+      "sha256": "8d76e4854b86bc0372adb143dfd73ed1bcaf337f3a1e008544bf5aec9154e422"
+    },
+    {
+      "file": "sanitation-preview.png",
+      "sha256": "0d15a2f3e1aa58466261d4191f09b3266fc16201461b15ddf719d2350d64bcdb"
+    }
+  ]
+}

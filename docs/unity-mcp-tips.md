@@ -14,11 +14,11 @@ Codex 的 MCP 配置指向 `D:/unity-mcp-server/src/index.js`。下面是调用�
 - 扩展方法写成静态调用：UI Toolkit 的 `Q` → `UQueryExtensions.Q<...>(root, ...)`；LINQ → `System.Linq.Enumerable.XXX(...)`。
 - **别同步等异步**（`.Result` / `.Wait()` / `.GetAwaiter().GetResult()`）——会冻住编辑器。只做"一次动作 / 读一份快照"，延迟检查拆成多次调用。
 
-截至 2026-09-03，Plugin 2.39.5 + Unity 6000.3.22f1 的当前本机会在 Edit / Play 两种状态下把最简单的
-`unity_execute_code` 也编译成 `Predefined type 'System.Object' is not defined or imported` / 缺少 `mscorlib` 引用；这不是
-传入代码的语法错误。出现同一组签名时只复核一次简单表达式，然后停止重试：优先已有 `unity_*` 工具、Command、菜单或测试夹具；
-只有必须验证真实 Game View 输入时，才按 `unity-background-automation` 做一次锁定 Unity PID / 窗口的窄 Windows 输入，并立即回到
-语义工具。该限制是已观察的版本状态，不写成永久禁用；插件升级后应先用只读表达式复测并修正本文。
+2026-09-08 已在同一 Unity 6000.3.22f1 环境重新验证 `unity_execute_code`：Edit 下的模型导入/场景回读、Play 下的镜头查询与
+动作帧追踪均可执行，当前不应视为禁用接口。2026-09-03 曾出现最简单表达式也报
+`Predefined type 'System.Object' is not defined or imported` / 缺少 `mscorlib` 引用；若再次出现同一签名，先复核一次简单只读表达式。
+仍失败时优先已有 `unity_*` 工具、Command、菜单或测试夹具，不反复改写本来正确的业务表达式。只有必须验证真实 Game View 输入时，
+才按 `unity-background-automation` 选择窄 Windows 输入。将这类情况视为需复测的工具状态，不能沿用为永久能力限制。
 
 ## 3. 重编译会断连
 
@@ -94,6 +94,12 @@ Test-UnityMcpTestEvidence -Plan $plan -Job $job -JobId $dispatch.data.jobId
 `Passed` 表示每个预期身份恰好执行一次且通过；完整证据中的失败 / 跳过返回 `Failed`，范围漂移、错误 job、零测试、明细缺失或汇总矛盾则抛错。保存整套原始证据到独立目录，不覆盖上一轮，便于区分产品、筛选器和基础设施问题。离线反例用 `Tools/Tests/UnityTestEvidence.Tests.ps1` 验证。
 
 当前安装的 `MCPTestRunnerCommands.SaveToSessionState` 只保存汇总，不保存 `AllResults`。域重载后旧 job 仍可能显示 `succeeded`，但明细已经为空。应在得到终态后、继续改代码 / 刷新前保存完整结果；已丢失时先查本轮文件，不能声称精确范围已验证，也不能未经判断再次启动原操作。2026-09 旅途实验已在真实 EditMode / PlayMode job 上使用该流程，详见[实验记录](nomad-workshop-journey-ownership-experiment.md)。
+
+### 后台动作采样与 NoThrottling 的边界
+
+NoThrottling 和 `runInBackground` 表示测试可以在后台执行，不保证每个短动作都有足够的可见帧。2026-09-08 的美术回归中，Test Runner 的真实帧记录仍出现约 250 ms 间隔，4 倍速中间动作可能被跳过，1 倍速的抬起段也未被采到；不能直接把缺样本判成动画资产错误，或降低断言后宣称通过。
+
+当前美术 fixture 使用 [NomadBackgroundFramePump](../Assets/Game/NomadWorkshop/Tests/PlayMode/NomadBackgroundFramePump.cs)，只在测试会话内从 Editor update 请求 `QueuePlayerLoopUpdate`，TearDown 和退出 Play 解除订阅。它不改 Time、模拟速度、用户偏好或前台焦点；同一失败用例的前后追踪及整组验证见[旱厕样板记录](nomad-workshop-sanitation-art.md)。这是一种有证据的局部测试 Adapter，不应无条件安装成 Editor 全局常驻循环，也不能用其帧数据宣称真实设备性能达标。
 
 ### Test Runner 无弹窗预检（EditMode / PlayMode 都必须先做）
 

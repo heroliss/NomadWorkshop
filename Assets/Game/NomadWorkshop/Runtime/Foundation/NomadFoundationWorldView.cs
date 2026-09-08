@@ -78,6 +78,8 @@ namespace Game.NomadWorkshop.Foundation
         private bool captureReflectionProbeOnStart = true;
 
         [Header("镜头操作")]
+        [SerializeField, Tooltip("美术车辆的初始镜头位置，使用甲板局部坐标；仅在创建镜头会话时应用，后续旋转与缩放由玩家控制。")]
+        private Vector3 artCameraInitialPosition = new(9f, 15f, 11f);
         [SerializeField, Min(0f), Tooltip("按住鼠标中键拖动时，每个屏幕像素对应的轨道旋转角度。")]
         private float cameraOrbitDegreesPerPixel = 0.2f;
         [SerializeField, Min(0f), Tooltip("滚轮每个输入单位改变的镜头距离。滚轮单位由设备驱动决定，因此与触屏捏合分别调节；当前值保留人工试玩后的 1.0。")]
@@ -547,7 +549,7 @@ namespace Game.NomadWorkshop.Foundation
                 worldCamera,
                 deckRoot,
                 deckLayout.DeckCenterLocal,
-                vehicleVisualPrefab != null ? new Vector3(9f, 15f, 11f) : new Vector3(11f, 13f, -12f));
+                vehicleVisualPrefab != null ? artCameraInitialPosition : new Vector3(11f, 13f, -12f));
             worldCamera.fieldOfView = 42f;
             worldCamera.clearFlags = skyboxMaterial != null
                 ? CameraClearFlags.Skybox

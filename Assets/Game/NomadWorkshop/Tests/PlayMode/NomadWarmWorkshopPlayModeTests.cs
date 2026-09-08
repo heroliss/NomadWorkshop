@@ -27,11 +27,13 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         private NomadFoundationContext _context;
         private NomadFoundationWorldView _view;
         private FoundationReadModel _read;
+        private NomadBackgroundFramePump _framePump;
         private Transform Deck => _view.transform.Find("Vehicle Deck Root");
 
         [UnitySetUp]
         public IEnumerator SetUp()
         {
+            _framePump = new NomadBackgroundFramePump();
             _previous = SceneManager.GetActiveScene();
             _scene = SceneManager.GetSceneByPath(ScenePath);
             _ownsScene = !_scene.IsValid() || !_scene.isLoaded;
@@ -55,6 +57,8 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         [UnityTearDown]
         public IEnumerator TearDown()
         {
+            _framePump?.Dispose();
+            _framePump = null;
             if (_previous.IsValid() && _previous.isLoaded) SceneManager.SetActiveScene(_previous);
             if (_ownsScene && _scene.IsValid() && _scene.isLoaded)
                 yield return SceneManager.UnloadSceneAsync(_scene);

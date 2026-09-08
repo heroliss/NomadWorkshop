@@ -276,7 +276,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 56372d9811f286341ba940ce0c56cefa, type: 2}
   - {fileID: 11400000, guid: d6dbc695b0d09544a905da9ac06a2147, type: 2}
   - {fileID: 11400000, guid: af14c7a8284fb8841a5af5e577ab1fdd, type: 2}
-  - {fileID: 11400000, guid: 1e64cd6237f16a345a44534d2c1e15be, type: 2}
+  - {fileID: 11400000, guid: fe7a7f0c35e392e45abebdad78ac7bae, type: 2}
   - {fileID: 11400000, guid: 5e2010b87e73021429f38c28f771880d, type: 2}
   - {fileID: 11400000, guid: ed0c5a5954083f94ea38cf8ce3a2c3fe, type: 2}
   worldItemDefinitions:
@@ -304,6 +304,7 @@ MonoBehaviour:
     prefab: {fileID: 3301183253495783099, guid: 9e1ee0fa6c2bed841bb66d45038bb38d, type: 3}
   residentAnimationController: {fileID: 9100000, guid: cc142588163757c46b20c608d71eff21, type: 2}
   captureReflectionProbeOnStart: 1
+  artCameraInitialPosition: {x: 9, y: 15, z: -11}
   cameraOrbitDegreesPerPixel: 0.2
   cameraZoomMetersPerScrollUnit: 1
   cameraTouchOrbitDegreesPerPixel: 0.12
@@ -773,7 +774,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 56372d9811f286341ba940ce0c56cefa, type: 2}
   - {fileID: 11400000, guid: d6dbc695b0d09544a905da9ac06a2147, type: 2}
   - {fileID: 11400000, guid: af14c7a8284fb8841a5af5e577ab1fdd, type: 2}
-  - {fileID: 11400000, guid: 1e64cd6237f16a345a44534d2c1e15be, type: 2}
+  - {fileID: 11400000, guid: fe7a7f0c35e392e45abebdad78ac7bae, type: 2}
   - {fileID: 11400000, guid: 5e2010b87e73021429f38c28f771880d, type: 2}
   - {fileID: 11400000, guid: ed0c5a5954083f94ea38cf8ce3a2c3fe, type: 2}
   worldItemDefinitions:
@@ -1012,8 +1013,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1792913799}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: 0.36772886, y: -0.30950063, z: 0.13126573, w: 0.8670376}
+  m_LocalPosition: {x: 9, y: 15, z: -11}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
