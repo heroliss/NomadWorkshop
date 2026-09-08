@@ -9,8 +9,17 @@ namespace Game.NomadWorkshop.Foundation
     {
         private const string DriverInteractionGroupId = "drive";
         private const long InitialJourneyFuelPicoliters = 20_000_000_000_000L;
+        private static readonly NomadJourneyMotionPolicy FoundationMotionPolicy =
+            new(accelerationMillimetersPerSecondSquared: 1_600,
+                brakingMillimetersPerSecondSquared: 2_400);
         private static readonly NomadJourneyRoute FoundationRoute = new(
-            "old-camp:dry-river", "old-camp", "dry-river", 2_000_000L, 10_000, 2_500);
+            "old-camp:dry-river", "old-camp", "dry-river", 2_000_000L, 8_000, 2_500,
+            new[]
+            {
+                new NomadJourneyRouteAnchor("old-camp-exit", 100),
+                new NomadJourneyRouteAnchor("midway-shelter", 500),
+                new NomadJourneyRouteAnchor("dry-river-approach", 900),
+            });
         private NomadJourneySession _journey;
 
         /// <summary>
@@ -41,7 +50,10 @@ namespace Game.NomadWorkshop.Foundation
         private void ResetJourney()
         {
             _journey?.Dispose();
-            _journey = new NomadJourneySession(FoundationRoute, InitialJourneyFuelPicoliters);
+            _journey = new NomadJourneySession(
+                FoundationRoute,
+                InitialJourneyFuelPicoliters,
+                FoundationMotionPolicy);
         }
 
         // 到岗与离岗采用不同阈值，避免需求刚低于危险线就反复走回驾驶台。

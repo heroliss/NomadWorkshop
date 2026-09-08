@@ -32,18 +32,20 @@ namespace Game.NomadWorkshop.PlayMode.Tests
                 "到岗步骤不补算途中等待的行驶时间。");
             _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Destination));
             StepJourney(1000);
-            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(10_000_000L));
-            Assert.That(_model.JourneyFuelPicoliters.Value, Is.EqualTo(initialFuel - 25_000_000_000L));
+            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(800_000L),
+                "1.6 m/s² 的平滑起步在第一秒应只行驶 0.8 米，不应瞬间达到巡航速度。");
+            Assert.That(_model.JourneyFuelPicoliters.Value, Is.EqualTo(initialFuel - 2_000_000_000L));
             FoundationSoakRunResult drivingRun = _context.ExecuteCommand(
                 new RunFoundationSoakHarnessCommand(35_000L, 1000, 30_000L));
             Assert.That(drivingRun.StopReason, Is.EqualTo(FoundationSoakStopReason.DurationReached),
                 "居民持续留在驾驶岗位时，车辆行进不能被旧停滞检测误报。");
-            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(360_000_000L));
+            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(268_000_000L),
+                "达到巡航速度前的加速段应让长段旅途比旧恒速轨迹更平滑。");
             long stoppedFuel = _model.JourneyFuelPicoliters.Value;
             _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.None));
             Assert.That(_model.JourneyStatus.Value, Is.EqualTo(NomadJourneyStatus.NoDestination));
             StepJourney(2000);
-            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(360_000_000L));
+            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(268_000_000L));
             Assert.That(_model.JourneyFuelPicoliters.Value, Is.EqualTo(stoppedFuel));
         }
 
@@ -99,6 +101,17 @@ namespace Game.NomadWorkshop.PlayMode.Tests
             _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.None));
             StepJourney(1000);
             Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(checkpoint.Vehicle.Journey.PositionMicrometers));
+
+            var legacy = JsonUtility.FromJson<NomadWorkshopSaveData>(json);
+            legacy.Vehicle.Journey.SpeedMillimetersPerSecond = 10_000;
+            legacy.Vehicle.Journey.CurrentSpeedNanometersPerMillisecond = 0L;
+            legacy.Vehicle.Journey.DistanceRemainderHalfNanometers = 0L;
+            _context.ExecuteCommand(new RestoreFoundationCheckpointCommand(legacy));
+            Assert.That(_model.JourneyPositionMicrometers.Value,
+                Is.EqualTo(checkpoint.Vehicle.Journey.PositionMicrometers),
+                "旧 10 m/s 恒速检查点应迁移到当前 8 m/s 平滑路线，而不是拒绝或重置位置。");
+            Assert.That(_model.JourneyFuelPicoliters.Value,
+                Is.EqualTo(checkpoint.Vehicle.Journey.FuelPicoliters));
         }
 
         [UnityTest]

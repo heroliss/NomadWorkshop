@@ -54,10 +54,14 @@ namespace Game.NomadWorkshop.Simulation.Tests
             NomadWorkshopSaveData save = CreateValidSave();
             save.Vehicle.Journey = NomadJourneySaveData.FromSnapshot(session.Capture());
             NomadWorkshopSaveContract.ValidateForSave(save);
+            Assert.That(save.Vehicle.Journey.CurrentSpeedNanometersPerMillisecond,
+                Is.EqualTo(137_000L),
+                "Journey 检查点应保存当前运动速度，避免平滑路线读取后出现速度跳变。");
             using var restored = new NomadJourneySession(route, 0);
             restored.Restore(save.Vehicle.Journey.ToValidatedSnapshot());
             Assert.That(restored.PositionMicrometers, Is.EqualTo(137L));
             Assert.That(restored.FuelPicoliters, Is.EqualTo(99_999_588L));
+            Assert.That(restored.CurrentSpeedNanometersPerMillisecond, Is.EqualTo(137_000L));
             Assert.That(restored.Status, Is.EqualTo(NomadJourneyStatus.AwaitingDriver));
         }
 

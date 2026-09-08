@@ -10,6 +10,17 @@ namespace Game.NomadWorkshop.Simulation.Tests
             new("salt-road", "workshop", "well", 100_000L, speed, 150);
         private static NomadJourneySession Journey() => new(Route(), 100_000_000_000L);
 
+        private static NomadJourneyRoute SmoothRoute() =>
+            new("smooth-road", "workshop", "well", 100_000L, 4_000, 150,
+                new[]
+                {
+                    new NomadJourneyRouteAnchor("midway", 500),
+                });
+
+        private static NomadJourneyMotionPolicy SmoothMotion() =>
+            new(accelerationMillimetersPerSecondSquared: 1_000,
+                brakingMillimetersPerSecondSquared: 2_000);
+
         [Test]
         public void TargetAloneCannotDrive_AndDriverIsExclusive()
         {
@@ -28,6 +39,77 @@ namespace Game.NomadWorkshop.Simulation.Tests
             driver.Dispose();
             Assert.That(journey.Advance(1000), Is.Zero);
             Assert.That(journey.Status, Is.EqualTo(NomadJourneyStatus.AwaitingDriver));
+        }
+
+        [Test]
+        public void SmoothedMotion_AcceleratesBrakesAndIsFramePartitionInvariant()
+        {
+            NomadJourneyRoute route = SmoothRoute();
+            using var whole = new NomadJourneySession(route, 1_000_000_000_000L, SmoothMotion());
+            using var chunked = new NomadJourneySession(route, 1_000_000_000_000L, SmoothMotion());
+            whole.SetDestination(NomadJourneyEndpoint.Destination);
+            chunked.SetDestination(NomadJourneyEndpoint.Destination);
+            Assert.IsTrue(whole.TryAcquireDriver("resident-1", whole.DestinationRevision, out _));
+            Assert.IsTrue(chunked.TryAcquireDriver("resident-1", chunked.DestinationRevision, out _));
+
+            Assert.That(whole.CurrentSpeedNanometersPerMillisecond, Is.Zero,
+                "平滑路线从静止起步，不能在接班瞬间跳到巡航速度。");
+            whole.Advance(6_000);
+            for (var i = 0; i < 6; i++) chunked.Advance(1_000);
+
+            Assert.That(whole.Capture(), Is.EqualTo(chunked.Capture()),
+                "同一模拟时长的不同输入分块必须得到同一速度、位置和燃料。");
+            Assert.That(whole.PositionMicrometers, Is.GreaterThan(0L));
+            Assert.That(whole.PositionMicrometers, Is.LessThan(24_000_000L),
+                "起步加速阶段不应等同于旧恒速路线。");
+            Assert.That(whole.CurrentSpeedNanometersPerMillisecond, Is.EqualTo(4_000_000L));
+
+            var saved = whole.Capture();
+            whole.Advance(30_000);
+            Assert.That(whole.Status, Is.EqualTo(NomadJourneyStatus.Arrived));
+            Assert.That(whole.CurrentSpeedNanometersPerMillisecond, Is.Zero,
+                "到达目标前应完成制动，而不是把表现瞬移到终点。");
+            whole.Restore(saved);
+            Assert.IsTrue(whole.TryAcquireDriver("resident-2", whole.DestinationRevision, out _));
+            whole.Advance(500);
+            var restoredExpected = whole.Capture();
+
+            using var replay = new NomadJourneySession(route, 1_000_000_000_000L, SmoothMotion());
+            replay.Restore(saved);
+            Assert.IsTrue(replay.TryAcquireDriver("resident-2", replay.DestinationRevision, out _));
+            replay.Advance(500);
+            Assert.That(replay.Capture(), Is.EqualTo(restoredExpected),
+                "保存 / 读取必须保留速度与亚微米积分余量。");
+        }
+
+        [Test]
+        public void RouteAnchors_ResolveStableProgressAndRejectUnorderedDuplicates()
+        {
+            var route = new NomadJourneyRoute(
+                "anchored-road", "workshop", "well", 100_000L, 1_000, 10,
+                new[]
+                {
+                    new NomadJourneyRouteAnchor("first-shelter", 100),
+                    new NomadJourneyRouteAnchor("last-shelter", 900),
+                });
+
+            Assert.IsTrue(route.TryResolveAnchorPosition("first-shelter", out long first));
+            Assert.That(first, Is.EqualTo(10_000_000L));
+            Assert.IsFalse(route.TryResolveAnchorPosition("missing", out _));
+            Assert.Throws<ArgumentException>(() => new NomadJourneyRoute(
+                "duplicate-road", "workshop", "well", 100_000L, 1_000, 10,
+                new[]
+                {
+                    new NomadJourneyRouteAnchor("same", 100),
+                    new NomadJourneyRouteAnchor("same", 200),
+                }));
+            Assert.Throws<ArgumentException>(() => new NomadJourneyRoute(
+                "unordered-road", "workshop", "well", 100_000L, 1_000, 10,
+                new[]
+                {
+                    new NomadJourneyRouteAnchor("late", 900),
+                    new NomadJourneyRouteAnchor("early", 100),
+                }));
         }
 
         [TestCase(1)]

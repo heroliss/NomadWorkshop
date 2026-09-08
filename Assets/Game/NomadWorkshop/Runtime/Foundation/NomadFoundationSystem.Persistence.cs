@@ -11,11 +11,48 @@ namespace Game.NomadWorkshop.Foundation
     public sealed partial class NomadFoundationSystem
     {
         private string ResidentStableId => _resident.StableId;
-        private static NomadJourneySnapshot ResolveCheckpointJourney(NomadVehicleSaveData vehicle) =>
-            vehicle.Journey is { IsEmpty: false }
-                ? vehicle.Journey.ToValidatedSnapshot()
-                : new NomadJourneySnapshot(FoundationRoute, 0L, InitialJourneyFuelPicoliters,
+        private const int LegacyFoundationCruiseSpeedMillimetersPerSecond = 10_000;
+
+        private static NomadJourneySnapshot ResolveCheckpointJourney(NomadVehicleSaveData vehicle)
+        {
+            if (vehicle.Journey is not { IsEmpty: false })
+                return new NomadJourneySnapshot(
+                    FoundationRoute, 0L, InitialJourneyFuelPicoliters,
                     NomadJourneyEndpoint.None);
+
+            NomadJourneySnapshot snapshot = vehicle.Journey.ToValidatedSnapshot();
+            if (IsFoundationRoute(snapshot.Route, FoundationRoute)) return snapshot;
+
+            // 旧 Foundation 检查点使用 10 m/s 恒速路线。路线身份与油耗未变时迁移到
+            // 当前 8 m/s 平滑策略；旧 DTO 没有速度字段，默认从静止重新起步。
+            if (!IsFoundationRoute(snapshot.Route, LegacyFoundationCruiseSpeedMillimetersPerSecond))
+                return snapshot;
+            long migratedSpeed = Math.Min(
+                snapshot.CurrentSpeedNanometersPerMillisecond,
+                (long)FoundationRoute.SpeedMillimetersPerSecond * 1000L);
+            return new NomadJourneySnapshot(
+                FoundationRoute,
+                snapshot.PositionMicrometers,
+                snapshot.FuelPicoliters,
+                snapshot.Destination,
+                migratedSpeed,
+                snapshot.DistanceRemainderHalfNanometers);
+        }
+
+        private static bool IsFoundationRoute(NomadJourneyRoute route, NomadJourneyRoute expected) =>
+            IsFoundationRoute(route, expected.SpeedMillimetersPerSecond) &&
+            route.FuelNanolitersPerMillimeter == expected.FuelNanolitersPerMillimeter;
+
+        private static bool IsFoundationRoute(
+            NomadJourneyRoute route,
+            int speedMillimetersPerSecond) =>
+            route != null &&
+            route.Id == FoundationRoute.Id &&
+            route.OriginId == FoundationRoute.OriginId &&
+            route.DestinationId == FoundationRoute.DestinationId &&
+            route.LengthMicrometers == FoundationRoute.LengthMicrometers &&
+            route.SpeedMillimetersPerSecond == speedMillimetersPerSecond &&
+            route.FuelNanolitersPerMillimeter == FoundationRoute.FuelNanolitersPerMillimeter;
         private string ResidentPersonalInventoryId => _resident.State.PersonalInventoryId;
         private string ResidentBodyWaterInventoryId => _resident.State.BodyWaterInventoryId;
         private string ResidentBladderInventoryId => _resident.State.BladderInventoryId;
@@ -692,7 +729,8 @@ namespace Game.NomadWorkshop.Foundation
                 throw new NotSupportedException(
                     "当前 Foundation 使用有限路线 Journey，不能静默丢弃其他宏观地图字段。");
             // 在重建当前世界之前验证路线身份 / 参数；不能把陌生路线的位置套用到本地路线。
-            using (var journeyValidation = new NomadJourneySession(FoundationRoute, 0L))
+            using (var journeyValidation = new NomadJourneySession(
+                       FoundationRoute, 0L, FoundationMotionPolicy))
                 journeyValidation.Restore(ResolveCheckpointJourney(data.Vehicle));
             ResolveStopWater(data.Stop);
 

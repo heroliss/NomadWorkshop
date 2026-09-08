@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Game.NomadWorkshop.Simulation
 {
@@ -9,6 +10,60 @@ namespace Game.NomadWorkshop.Simulation
     public enum NomadJourneyStatus { NoDestination, AwaitingDriver, Moving, Arrived, FuelExhausted, Disposed }
 
     /// <summary>
+    /// 路线上的稳定兴趣点进度。进度只属于宏观路线，不绑定 Unity 世界坐标；表现和停靠系统
+    /// 可以据此把交互点放在车辆必经的路线段上。路线锚点必须按进度递增且身份唯一。
+    /// </summary>
+    public readonly struct NomadJourneyRouteAnchor
+    {
+        public NomadJourneyRouteAnchor(string id, int progressPermille)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("路线锚点身份不能为空。", nameof(id));
+            if (progressPermille < 0 || progressPermille > 1000)
+                throw new ArgumentOutOfRangeException(
+                    nameof(progressPermille), "路线锚点进度必须在 0–1000‰ 之间。");
+
+            Id = id;
+            ProgressPermille = progressPermille;
+        }
+
+        public string Id { get; }
+        public int ProgressPermille { get; }
+
+        internal long ResolvePosition(long lengthMicrometers) =>
+            checked((long)((decimal)lengthMicrometers * ProgressPermille / 1000m));
+    }
+
+    /// <summary>
+    /// 连续旅途的纯规则运动参数。速度仍是路线的巡航速度；加速 / 制动为零时保留旧恒速语义，
+    /// 非零时按整数纳米/毫秒积分并在到达前自动进入制动段。它不拥有 Unity 表现或输入。
+    /// </summary>
+    public readonly struct NomadJourneyMotionPolicy
+    {
+        public NomadJourneyMotionPolicy(
+            int accelerationMillimetersPerSecondSquared,
+            int brakingMillimetersPerSecondSquared)
+        {
+            if (accelerationMillimetersPerSecondSquared < 0)
+                throw new ArgumentOutOfRangeException(nameof(accelerationMillimetersPerSecondSquared));
+            if (brakingMillimetersPerSecondSquared < 0)
+                throw new ArgumentOutOfRangeException(nameof(brakingMillimetersPerSecondSquared));
+            if ((accelerationMillimetersPerSecondSquared == 0) !=
+                (brakingMillimetersPerSecondSquared == 0))
+                throw new ArgumentException("加速和制动必须同时为零或同时大于零。");
+
+            AccelerationMillimetersPerSecondSquared = accelerationMillimetersPerSecondSquared;
+            BrakingMillimetersPerSecondSquared = brakingMillimetersPerSecondSquared;
+        }
+
+        public int AccelerationMillimetersPerSecondSquared { get; }
+        public int BrakingMillimetersPerSecondSquared { get; }
+        public bool UsesSmoothing => AccelerationMillimetersPerSecondSquared > 0;
+
+        public static NomadJourneyMotionPolicy ConstantSpeed => new(0, 0);
+    }
+
+    /// <summary>
     /// 有稳定身份的有限路线与固定行驶参数。速度为毫米 / 秒，油耗为纳升 / 毫米；
     /// 内部用微米和皮升精确积分，因此一毫秒也无需浮点取整。它不拥有地图或甲板表现。
     /// </summary>
@@ -17,6 +72,16 @@ namespace Game.NomadWorkshop.Simulation
         public NomadJourneyRoute(
             string id, string originId, string destinationId, long lengthMillimeters,
             int speedMillimetersPerSecond, int fuelNanolitersPerMillimeter)
+            : this(id, originId, destinationId, lengthMillimeters,
+                speedMillimetersPerSecond, fuelNanolitersPerMillimeter,
+                Array.Empty<NomadJourneyRouteAnchor>())
+        {
+        }
+
+        public NomadJourneyRoute(
+            string id, string originId, string destinationId, long lengthMillimeters,
+            int speedMillimetersPerSecond, int fuelNanolitersPerMillimeter,
+            IReadOnlyList<NomadJourneyRouteAnchor> anchors)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("路线身份不能为空。", nameof(id));
             if (string.IsNullOrWhiteSpace(originId)) throw new ArgumentException("起点身份不能为空。", nameof(originId));
@@ -31,6 +96,7 @@ namespace Game.NomadWorkshop.Simulation
             DestinationId = destinationId;
             SpeedMillimetersPerSecond = speedMillimetersPerSecond;
             FuelNanolitersPerMillimeter = fuelNanolitersPerMillimeter;
+            Anchors = CopyAndValidateAnchors(anchors, LengthMicrometers);
         }
 
         public string Id { get; }
@@ -39,12 +105,54 @@ namespace Game.NomadWorkshop.Simulation
         public long LengthMicrometers { get; }
         public int SpeedMillimetersPerSecond { get; }
         public int FuelNanolitersPerMillimeter { get; }
+        public IReadOnlyList<NomadJourneyRouteAnchor> Anchors { get; }
+
+        public bool TryResolveAnchorPosition(string anchorId, out long positionMicrometers)
+        {
+            if (string.IsNullOrWhiteSpace(anchorId))
+                throw new ArgumentException("路线锚点身份不能为空。", nameof(anchorId));
+            for (var i = 0; i < Anchors.Count; i++)
+            {
+                NomadJourneyRouteAnchor anchor = Anchors[i];
+                if (!string.Equals(anchor.Id, anchorId, StringComparison.Ordinal)) continue;
+                positionMicrometers = anchor.ResolvePosition(LengthMicrometers);
+                return true;
+            }
+
+            positionMicrometers = 0L;
+            return false;
+        }
 
         internal bool Matches(NomadJourneyRoute other) => other != null &&
             Id == other.Id && OriginId == other.OriginId && DestinationId == other.DestinationId &&
             LengthMicrometers == other.LengthMicrometers &&
             SpeedMillimetersPerSecond == other.SpeedMillimetersPerSecond &&
             FuelNanolitersPerMillimeter == other.FuelNanolitersPerMillimeter;
+
+        private static IReadOnlyList<NomadJourneyRouteAnchor> CopyAndValidateAnchors(
+            IReadOnlyList<NomadJourneyRouteAnchor> anchors,
+            long lengthMicrometers)
+        {
+            if (anchors == null || anchors.Count == 0)
+                return Array.Empty<NomadJourneyRouteAnchor>();
+
+            var copy = new NomadJourneyRouteAnchor[anchors.Count];
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            var previousProgress = -1;
+            for (var i = 0; i < anchors.Count; i++)
+            {
+                NomadJourneyRouteAnchor anchor = anchors[i];
+                if (!ids.Add(anchor.Id))
+                    throw new ArgumentException("路线锚点身份不能重复。", nameof(anchors));
+                if (anchor.ProgressPermille < previousProgress)
+                    throw new ArgumentException("路线锚点必须按进度递增排列。", nameof(anchors));
+                _ = anchor.ResolvePosition(lengthMicrometers);
+                copy[i] = anchor;
+                previousProgress = anchor.ProgressPermille;
+            }
+
+            return copy;
+        }
     }
 
     /// <summary>
@@ -56,17 +164,30 @@ namespace Game.NomadWorkshop.Simulation
         public NomadJourneySnapshot(
             NomadJourneyRoute route, long positionMicrometers, long fuelPicoliters,
             NomadJourneyEndpoint destination)
+            : this(route, positionMicrometers, fuelPicoliters, destination, 0L, 0L)
+        {
+        }
+
+        public NomadJourneySnapshot(
+            NomadJourneyRoute route, long positionMicrometers, long fuelPicoliters,
+            NomadJourneyEndpoint destination,
+            long currentSpeedNanometersPerMillisecond,
+            long distanceRemainderHalfNanometers)
         {
             Route = route;
             PositionMicrometers = positionMicrometers;
             FuelPicoliters = fuelPicoliters;
             Destination = destination;
+            CurrentSpeedNanometersPerMillisecond = currentSpeedNanometersPerMillisecond;
+            DistanceRemainderHalfNanometers = distanceRemainderHalfNanometers;
         }
 
         public NomadJourneyRoute Route { get; }
         public long PositionMicrometers { get; }
         public long FuelPicoliters { get; }
         public NomadJourneyEndpoint Destination { get; }
+        public long CurrentSpeedNanometersPerMillisecond { get; }
+        public long DistanceRemainderHalfNanometers { get; }
     }
 
     /// <summary>
@@ -76,20 +197,34 @@ namespace Game.NomadWorkshop.Simulation
     /// </summary>
     public sealed class NomadJourneySession : IDisposable
     {
+        private const long DistanceDenominatorHalfNanometers = 2_000L;
         private NomadDriverLease _driver;
+        private long _currentSpeedNanometersPerMillisecond;
+        private long _distanceRemainderHalfNanometers;
         private bool _disposed;
 
         public NomadJourneySession(NomadJourneyRoute route, long fuelPicoliters)
+            : this(route, fuelPicoliters, NomadJourneyMotionPolicy.ConstantSpeed)
+        {
+        }
+
+        public NomadJourneySession(
+            NomadJourneyRoute route,
+            long fuelPicoliters,
+            NomadJourneyMotionPolicy motionPolicy)
         {
             Route = route ?? throw new ArgumentNullException(nameof(route));
             if (fuelPicoliters < 0) throw new ArgumentOutOfRangeException(nameof(fuelPicoliters));
+            MotionPolicy = motionPolicy;
             FuelPicoliters = fuelPicoliters;
         }
 
         public NomadJourneyRoute Route { get; }
+        public NomadJourneyMotionPolicy MotionPolicy { get; }
         public long PositionMicrometers { get; private set; }
         public long FuelPicoliters { get; private set; }
         public NomadJourneyEndpoint Destination { get; private set; }
+        public long CurrentSpeedNanometersPerMillisecond => _currentSpeedNanometersPerMillisecond;
         /// <summary>
         /// Session 内的目标版本。执行 owner 开始前往驾驶岗位时捕获，到岗时原样提交；
         /// 即使取消后选回同一地点或读取同一快照也会变化，不随世界快照回退。
@@ -112,6 +247,7 @@ namespace Game.NomadWorkshop.Simulation
             if (destination == Destination) return;
             long nextRevision = checked(DestinationRevision + 1L);
             RevokeDriver();
+            ResetMotion();
             Destination = destination;
             DestinationRevision = nextRevision;
         }
@@ -127,6 +263,10 @@ namespace Game.NomadWorkshop.Simulation
             if (string.IsNullOrWhiteSpace(residentId)) throw new ArgumentException("居民身份不能为空。", nameof(residentId));
             lease = null;
             if (expectedDestinationRevision != DestinationRevision || Status != NomadJourneyStatus.AwaitingDriver) return false;
+            if (!MotionPolicy.UsesSmoothing)
+                _currentSpeedNanometersPerMillisecond = CruiseSpeedNanometersPerMillisecond;
+            else if (_currentSpeedNanometersPerMillisecond > CruiseSpeedNanometersPerMillisecond)
+                _currentSpeedNanometersPerMillisecond = CruiseSpeedNanometersPerMillisecond;
             lease = _driver = new NomadDriverLease(this, residentId);
             return true;
         }
@@ -140,6 +280,41 @@ namespace Game.NomadWorkshop.Simulation
             ThrowIfDisposed();
             if (deltaMilliseconds < 0) throw new ArgumentOutOfRangeException(nameof(deltaMilliseconds));
             if (Status != NomadJourneyStatus.Moving || deltaMilliseconds == 0) return 0L;
+            // 保留旧入口的溢出语义；平滑积分内部使用纳米/毫秒，但同样先拒绝不可能的超长步。
+            _ = checked((long)Route.SpeedMillimetersPerSecond * deltaMilliseconds);
+            return MotionPolicy.UsesSmoothing
+                ? AdvanceWithSmoothing(deltaMilliseconds)
+                : AdvanceAtConstantSpeed(deltaMilliseconds);
+        }
+
+        /// <summary>平滑策略的加速 / 制动积分；内部决策量子为 1 ms，巡航段可整段跳过。</summary>
+        private long AdvanceWithSmoothing(long deltaMilliseconds)
+        {
+            long movedTotal = 0L;
+            long remainingMilliseconds = deltaMilliseconds;
+            while (remainingMilliseconds > 0L && Status == NomadJourneyStatus.Moving)
+            {
+                long remainingDistance = Math.Abs(DestinationPosition - PositionMicrometers);
+                long stoppingDistance = ResolveStoppingDistanceMicrometers(
+                    _currentSpeedNanometersPerMillisecond);
+                long acceleration = remainingDistance <= stoppingDistance &&
+                                    _currentSpeedNanometersPerMillisecond > 0L
+                    ? -MotionPolicy.BrakingMillimetersPerSecondSquared
+                    : _currentSpeedNanometersPerMillisecond < CruiseSpeedNanometersPerMillisecond
+                        ? MotionPolicy.AccelerationMillimetersPerSecondSquared
+                        : 0L;
+                long stepMilliseconds = acceleration == 0L
+                    ? ResolveCruiseStepMilliseconds(remainingDistance, stoppingDistance, remainingMilliseconds)
+                    : Math.Min(1L, remainingMilliseconds);
+                movedTotal = checked(movedTotal + IntegrateMotion(stepMilliseconds, acceleration));
+                remainingMilliseconds -= stepMilliseconds;
+            }
+
+            return movedTotal;
+        }
+
+        private long AdvanceAtConstantSpeed(long deltaMilliseconds)
+        {
             // (mm/s) × ms = µm；(nL/mm) × µm = pL，避免分帧丢余量。
             long requested = checked(Route.SpeedMillimetersPerSecond * deltaMilliseconds);
             long remaining = Math.Abs(DestinationPosition - PositionMicrometers);
@@ -147,12 +322,19 @@ namespace Game.NomadWorkshop.Simulation
             long distance = Math.Min(requested, Math.Min(remaining, affordable));
             FuelPicoliters -= distance * Route.FuelNanolitersPerMillimeter;
             PositionMicrometers += DestinationPosition > PositionMicrometers ? distance : -distance;
+            _currentSpeedNanometersPerMillisecond = CruiseSpeedNanometersPerMillisecond;
             if (Status is NomadJourneyStatus.Arrived or NomadJourneyStatus.FuelExhausted) RevokeDriver();
             return distance;
         }
 
         /// <summary>捕获已执行的世界状态；保存本身不打断当前驾驶员。</summary>
-        public NomadJourneySnapshot Capture() => new(Route, PositionMicrometers, FuelPicoliters, Destination);
+        public NomadJourneySnapshot Capture() => new(
+            Route,
+            PositionMicrometers,
+            FuelPicoliters,
+            Destination,
+            _currentSpeedNanometersPerMillisecond,
+            _distanceRemainderHalfNanometers);
 
         /// <summary>完整验证后恢复并撤销驾驶租约；新 owner 重新到岗前不会自动续驶。</summary>
         public void Restore(in NomadJourneySnapshot snapshot)
@@ -160,7 +342,11 @@ namespace Game.NomadWorkshop.Simulation
             ThrowIfDisposed();
             if (!Route.Matches(snapshot.Route)) throw new ArgumentException("快照路线身份或行驶参数不匹配。", nameof(snapshot));
             if (snapshot.PositionMicrometers < 0 || snapshot.PositionMicrometers > Route.LengthMicrometers ||
-                snapshot.FuelPicoliters < 0)
+                snapshot.FuelPicoliters < 0 ||
+                snapshot.CurrentSpeedNanometersPerMillisecond < 0L ||
+                snapshot.CurrentSpeedNanometersPerMillisecond > CruiseSpeedNanometersPerMillisecond ||
+                snapshot.DistanceRemainderHalfNanometers < 0L ||
+                snapshot.DistanceRemainderHalfNanometers >= DistanceDenominatorHalfNanometers)
                 throw new ArgumentOutOfRangeException(nameof(snapshot));
             ValidateDestination(snapshot.Destination);
             long nextRevision = checked(DestinationRevision + 1L);
@@ -168,6 +354,8 @@ namespace Game.NomadWorkshop.Simulation
             PositionMicrometers = snapshot.PositionMicrometers;
             FuelPicoliters = snapshot.FuelPicoliters;
             Destination = snapshot.Destination;
+            _currentSpeedNanometersPerMillisecond = snapshot.CurrentSpeedNanometersPerMillisecond;
+            _distanceRemainderHalfNanometers = snapshot.DistanceRemainderHalfNanometers;
             DestinationRevision = nextRevision;
         }
 
@@ -183,6 +371,69 @@ namespace Game.NomadWorkshop.Simulation
         {
             _driver?.Detach();
             _driver = null;
+        }
+
+        private long CruiseSpeedNanometersPerMillisecond =>
+            checked((long)Route.SpeedMillimetersPerSecond * 1000L);
+
+        private long IntegrateMotion(long deltaMilliseconds, long acceleration)
+        {
+            long before = _currentSpeedNanometersPerMillisecond;
+            long after = before;
+            if (acceleration > 0L)
+                after = Math.Min(CruiseSpeedNanometersPerMillisecond,
+                    checked(before + acceleration * deltaMilliseconds));
+            else if (acceleration < 0L)
+                after = Math.Max(0L, checked(before + acceleration * deltaMilliseconds));
+
+            long halfNanometers = checked((before + after) * deltaMilliseconds);
+            long totalHalfNanometers = checked(halfNanometers + _distanceRemainderHalfNanometers);
+            long distanceMicrometers = totalHalfNanometers / DistanceDenominatorHalfNanometers;
+            _distanceRemainderHalfNanometers = totalHalfNanometers % DistanceDenominatorHalfNanometers;
+
+            long remaining = Math.Abs(DestinationPosition - PositionMicrometers);
+            long affordable = FuelPicoliters / Route.FuelNanolitersPerMillimeter;
+            long distance = Math.Min(distanceMicrometers, Math.Min(remaining, affordable));
+            FuelPicoliters -= checked(distance * Route.FuelNanolitersPerMillimeter);
+            PositionMicrometers += DestinationPosition > PositionMicrometers ? distance : -distance;
+            _currentSpeedNanometersPerMillisecond = after;
+
+            if (distance < distanceMicrometers ||
+                Status is NomadJourneyStatus.Arrived or NomadJourneyStatus.FuelExhausted)
+            {
+                ResetMotion();
+                if (Status is NomadJourneyStatus.Arrived or NomadJourneyStatus.FuelExhausted)
+                    RevokeDriver();
+            }
+
+            return distance;
+        }
+
+        private long ResolveCruiseStepMilliseconds(
+            long remainingDistance,
+            long stoppingDistance,
+            long remainingMilliseconds)
+        {
+            if (remainingDistance <= stoppingDistance) return 1L;
+            long distanceBeforeBrake = remainingDistance - stoppingDistance;
+            long cruiseMilliseconds = checked(
+                distanceBeforeBrake * 1000L /
+                Math.Max(1L, _currentSpeedNanometersPerMillisecond));
+            return Math.Min(remainingMilliseconds, Math.Max(1L, cruiseMilliseconds));
+        }
+
+        private long ResolveStoppingDistanceMicrometers(long speedNanometersPerMillisecond)
+        {
+            if (speedNanometersPerMillisecond <= 0L) return 0L;
+            decimal numerator = (decimal)speedNanometersPerMillisecond * speedNanometersPerMillisecond;
+            decimal denominator = 2m * MotionPolicy.BrakingMillimetersPerSecondSquared * 1000m;
+            return checked((long)Math.Ceiling(numerator / denominator));
+        }
+
+        private void ResetMotion()
+        {
+            _currentSpeedNanometersPerMillisecond = 0L;
+            _distanceRemainderHalfNanometers = 0L;
         }
 
         private void ThrowIfDisposed()
