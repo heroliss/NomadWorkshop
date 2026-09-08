@@ -1,10 +1,13 @@
 # NomadWorkshop 文档入口
 
-本仓库只维护游牧工坊自身的玩法、运行时、资产和验证记录。
+NomadWorkshop 的文档按“入口 → 契约 → 证据”组织，避免把框架规则复制到游戏仓库。
 
-- 工程导航与当前 Foundation 入口：[`Assets/Game/NomadWorkshop/README.md`](../Assets/Game/NomadWorkshop/README.md)
-- 历史路线与已完成里程碑：[`roadmap.md`](roadmap.md)
-- Framework 版本与兼容边界：[`framework-compatibility.md`](framework-compatibility.md)
-- 仓库边界与分支约定：[`repository-boundary.md`](repository-boundary.md)
+- [AI 项目索引](ai-project-index.md)：当前交接和按问题路由。
+- [Foundation 垂直切片](nomad-workshop-foundation-vertical-slice.md)：唯一近期执行顺序，重点阅读 §9。
+- [产品愿景](nomad-workshop-game-vision.md)：产品气质、成长和边界。
+- [世界放置与建造契约](nomad-workshop-world-placement-and-construction.md)：统一建造与地点生命周期。
+- [路线](roadmap.md)：阶段摘要，不重复专题正文。
+- [Framework 兼容记录](framework-compatibility.md)：当前子模块版本。
+- [仓库边界](repository-boundary.md)：依赖、分支和跨仓库规则。
 
-框架 API、模块地图和 Unity 通用自动化说明随 `Packages/com.liss.ssframework` 子仓库维护；本仓库不复制一份 Framework 文档。
+设施、人物、旅途和美术专题保留各自证据；发现过时事实时，先更新专题和本索引，再修改实现。

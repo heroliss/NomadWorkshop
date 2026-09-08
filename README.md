@@ -21,4 +21,4 @@ NomadWorkshop 不依赖 Outpost 或 FrameworkTutorial。跨项目通用能力先
 git submodule update --init --recursive
 ```
 
-Foundation、Journey、玩法设计和验证记录位于 `Assets/Game/NomadWorkshop/README.md` 与 `docs/`。
+Foundation、Journey、玩法设计和验证记录位于 `Assets/Game/NomadWorkshop/README.md` 与 `docs/`；进入开发前先读 `docs/ai-project-index.md`。
