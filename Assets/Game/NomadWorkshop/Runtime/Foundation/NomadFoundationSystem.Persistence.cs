@@ -210,6 +210,10 @@ namespace Game.NomadWorkshop.Foundation
                 data.Residents.Add(new NomadResidentSaveData
                 {
                     ResidentId = ResidentStableId,
+                    DisplayName = _resident.State.DisplayName ?? string.Empty,
+                    Gender = _resident.State.Gender,
+                    AppearanceSeed = _resident.State.AppearanceSeed,
+                    IsPlayerAvatar = _resident.State.IsPlayerAvatar,
                     Pose = QuantizedDeckPose.FromDeckPose(_resident.StopVisit?.CheckpointPose ??
                         (!IsResidentAboard ? _resident.LastDeckCheckpointPose : null) ?? deckLayout.LocalToPose(
                         _resident.State.ResidentLocalPosition.Value,
@@ -611,6 +615,11 @@ namespace Game.NomadWorkshop.Foundation
             foreach (var personal in restore.Residents)
             {
                 using var scope = UseResident(FindResident(personal.Resident.ResidentId));
+                _resident.State.SetIdentity(new NomadResidentIdentity(
+                    personal.Resident.DisplayName,
+                    personal.Resident.Gender,
+                    personal.Resident.AppearanceSeed,
+                    personal.Resident.IsPlayerAvatar));
                 _resident.WaterCycle = new ResidentWaterCycle(
                     ResidentStableId,
                     _resident.OwnerId,

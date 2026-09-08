@@ -12,6 +12,8 @@ namespace Game.NomadWorkshop.Simulation
         Work,
         PersonalCare,
         GroundRest,
+        /// <summary>微型车只有驾驶位时的低质量休息；恢复慢且会产生长期身体代价。</summary>
+        SeatRest,
         Daydream,
         Wander,
         Hobby,
@@ -170,7 +172,11 @@ namespace Game.NomadWorkshop.Simulation
                 InverseLerp(DehydrationDamageOnset, 1f, drivers.ThirstDeficit));
             float healthDelta = -MaximumDehydrationHealthLossPerSecond *
                                 dehydrationSeverity;
-            if (drivers.ThirstDeficit < 0.55f)
+            if (activity == ResidentWellbeingActivity.SeatRest)
+            {
+                healthDelta -= NomadSeatRestRules.HealthLossPerSecond;
+            }
+            else if (drivers.ThirstDeficit < 0.55f)
             {
                 float recoveryReadiness =
                     1f - 0.65f * SmootherStep(InverseLerp(0.55f, 1f, Fatigue));
@@ -235,6 +241,15 @@ namespace Game.NomadWorkshop.Simulation
                         ResidentNeed.Stress,
                         Clamp01(GroundRestStressRecoveryPerSecond * seconds)),
                 },
+                ResidentWellbeingActivity.SeatRest => new[]
+                {
+                    new NeedEffect(
+                        ResidentNeed.Fatigue,
+                        Clamp01(NomadSeatRestRules.FatigueRecoveryPerSecond * seconds)),
+                    new NeedEffect(
+                        ResidentNeed.Stress,
+                        Clamp01(NomadSeatRestRules.StressRecoveryPerSecond * seconds)),
+                },
                 ResidentWellbeingActivity.Daydream => new[]
                 {
                     new NeedEffect(
@@ -289,6 +304,7 @@ namespace Game.NomadWorkshop.Simulation
             ResidentWellbeingActivity.Work => 1.35f,
             ResidentWellbeingActivity.PersonalCare => 0.75f,
             ResidentWellbeingActivity.GroundRest => 0.1f,
+            ResidentWellbeingActivity.SeatRest => 0.08f,
             ResidentWellbeingActivity.Daydream => 0.2f,
             ResidentWellbeingActivity.Wander => 0.55f,
             ResidentWellbeingActivity.Hobby => 0.45f,
@@ -298,6 +314,7 @@ namespace Game.NomadWorkshop.Simulation
         private static float GetFatigueRecovery(ResidentWellbeingActivity activity) => activity switch
         {
             ResidentWellbeingActivity.GroundRest => GroundRestFatigueRecoveryPerSecond,
+            ResidentWellbeingActivity.SeatRest => NomadSeatRestRules.FatigueRecoveryPerSecond,
             ResidentWellbeingActivity.Daydream => DaydreamFatigueRecoveryPerSecond,
             ResidentWellbeingActivity.Wander => WanderFatigueRecoveryPerSecond,
             ResidentWellbeingActivity.Hobby => HobbyFatigueRecoveryPerSecond,
@@ -307,6 +324,7 @@ namespace Game.NomadWorkshop.Simulation
         private static float GetStressRecovery(ResidentWellbeingActivity activity) => activity switch
         {
             ResidentWellbeingActivity.GroundRest => GroundRestStressRecoveryPerSecond,
+            ResidentWellbeingActivity.SeatRest => NomadSeatRestRules.StressRecoveryPerSecond,
             ResidentWellbeingActivity.Daydream => DaydreamStressRecoveryPerSecond,
             ResidentWellbeingActivity.Wander => WanderStressRecoveryPerSecond,
             ResidentWellbeingActivity.Hobby => HobbyStressRecoveryPerSecond,
@@ -316,6 +334,7 @@ namespace Game.NomadWorkshop.Simulation
         private static float GetMoodGain(ResidentWellbeingActivity activity) => activity switch
         {
             ResidentWellbeingActivity.GroundRest => -GroundRestMoodLossPerSecond,
+            ResidentWellbeingActivity.SeatRest => -NomadSeatRestRules.MoodLossPerSecond,
             ResidentWellbeingActivity.Daydream => DaydreamMoodGainPerSecond,
             ResidentWellbeingActivity.Wander => WanderMoodGainPerSecond,
             ResidentWellbeingActivity.Hobby => HobbyMoodGainPerSecond,
@@ -326,6 +345,7 @@ namespace Game.NomadWorkshop.Simulation
             activity switch
             {
                 ResidentWellbeingActivity.GroundRest => GroundRestHealthRecoveryPerSecond,
+                ResidentWellbeingActivity.SeatRest => 0f,
                 ResidentWellbeingActivity.Daydream => 0.00022f,
                 ResidentWellbeingActivity.Hobby => 0.00018f,
                 ResidentWellbeingActivity.PersonalCare => 0.00012f,

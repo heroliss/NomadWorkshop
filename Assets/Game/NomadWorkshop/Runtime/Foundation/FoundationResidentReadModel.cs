@@ -1,4 +1,5 @@
 using System;
+using Game.NomadWorkshop.Simulation;
 using R3;
 using UnityEngine;
 
@@ -10,6 +11,10 @@ namespace Game.NomadWorkshop.Foundation
         internal readonly FoundationResidentModelState State;
         public readonly string StableId;
         public readonly ulong OwnerId;
+        public readonly string DisplayName;
+        public readonly NomadCharacterGender Gender;
+        public readonly int AppearanceSeed;
+        public readonly bool IsPlayerAvatar;
         public readonly ReadOnlyReactiveProperty<FoundationResidentPhase> ResidentPhase;
         public readonly ReadOnlyReactiveProperty<Vector3> ResidentLocalPosition;
         public readonly ReadOnlyReactiveProperty<float> ResidentLocalYawDegrees;
@@ -52,6 +57,10 @@ namespace Game.NomadWorkshop.Foundation
             State = state;
             StableId = state.StableId;
             OwnerId = state.OwnerId;
+            DisplayName = state.DisplayName;
+            Gender = state.Gender;
+            AppearanceSeed = state.AppearanceSeed;
+            IsPlayerAvatar = state.IsPlayerAvatar;
             ResidentPhase = state.ResidentPhase;
             ResidentLocalPosition = state.ResidentLocalPosition;
             ResidentLocalYawDegrees = state.ResidentLocalYawDegrees;

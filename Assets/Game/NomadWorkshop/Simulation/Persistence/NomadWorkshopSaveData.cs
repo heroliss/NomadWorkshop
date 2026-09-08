@@ -304,6 +304,11 @@ namespace Game.NomadWorkshop.Simulation.Persistence
     public sealed class NomadResidentSaveData
     {
         public string ResidentId = string.Empty;
+        /// <summary>可替换外观只依赖稳定身份字段；具体网格、材质与动画由 View 按种子选择。</summary>
+        public string DisplayName = string.Empty;
+        public NomadCharacterGender Gender = NomadCharacterGender.Unspecified;
+        public int AppearanceSeed;
+        public bool IsPlayerAvatar;
         public QuantizedDeckPose Pose;
         public string PersonalInventoryId = string.Empty;
         public int HungerPermille;
@@ -445,6 +450,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             for (var i = 0; i < data.Residents.Count; i++)
             {
                 NomadResidentSaveData resident = data.Residents[i];
+                if (resident != null) resident.DisplayName ??= string.Empty;
                 if (resident?.ActiveAction != null && IsSerializedEmptyAction(resident.ActiveAction))
                     resident.ActiveAction = null;
             }
@@ -763,11 +769,23 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             HashSet<string> entityIds,
             HashSet<string> inventoryIds)
         {
+            string playerAvatarId = null;
             for (var i = 0; i < residents.Count; i++)
             {
                 NomadResidentSaveData resident = residents[i] ??
                     throw new InvalidOperationException($"居民列表第 {i} 项为空。");
                 RequireUniqueId(resident.ResidentId, "居民", entityIds);
+                NomadResidentIdentity.ValidateDisplayName(resident.DisplayName, allowEmpty: true);
+                if (!Enum.IsDefined(typeof(NomadCharacterGender), resident.Gender))
+                    throw new InvalidOperationException(
+                        $"居民 {resident.ResidentId} 的性别选项无效。");
+                if (resident.IsPlayerAvatar)
+                {
+                    if (playerAvatarId != null)
+                        throw new InvalidOperationException(
+                            $"居民 {resident.ResidentId} 与 {playerAvatarId} 同时标记为玩家化身。");
+                    playerAvatarId = resident.ResidentId;
+                }
                 ValidatePose(resident.Pose, $"居民 {resident.ResidentId}");
                 RequireId(resident.PersonalInventoryId, $"居民 {resident.ResidentId} 的随身库存");
                 if (!inventoryIds.Contains(resident.PersonalInventoryId))

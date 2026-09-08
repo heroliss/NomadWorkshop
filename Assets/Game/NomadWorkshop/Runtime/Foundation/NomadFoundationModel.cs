@@ -102,7 +102,13 @@ namespace Game.NomadWorkshop.Foundation
 
         /// <summary>首位居民的独立记录；复位与读取保留记录及其属性身份，执行器只重建瞬时行动。</summary>
         [field: SerializeField]
-        public FoundationResidentModelState PrimaryResident { get; private set; } = new("resident-01", 0xF01UL);
+        public FoundationResidentModelState PrimaryResident { get; private set; } = new(
+            "resident-01",
+            0xF01UL,
+            "旅人",
+            NomadCharacterGender.Unspecified,
+            appearanceSeed: 1,
+            isPlayerAvatar: true);
 
         private readonly ObservableList<FoundationResidentReadModel> residents = new();
         internal IReadOnlyObservableList<FoundationResidentReadModel> Residents => residents;

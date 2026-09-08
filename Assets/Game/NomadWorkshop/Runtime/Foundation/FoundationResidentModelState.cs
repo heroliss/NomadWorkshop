@@ -1,4 +1,5 @@
 using System;
+using Game.NomadWorkshop.Simulation;
 using R3;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -15,22 +16,52 @@ namespace Game.NomadWorkshop.Foundation
     {
         [SerializeField] private string stableId;
         [SerializeField] private ulong ownerId;
+        [SerializeField] private string displayName;
+        [SerializeField] private NomadCharacterGender gender;
+        [SerializeField] private int appearanceSeed;
+        [SerializeField] private bool isPlayerAvatar;
 
         /// <summary>检查点、库存和驾驶使用的稳定居民身份。</summary>
         public string StableId => stableId;
         /// <summary>资源、空间租约和确定性随机使用的运行期身份；同一世界内不能重复。</summary>
         public ulong OwnerId => ownerId;
+        /// <summary>玩家可见姓名；为空时 View 应回退到稳定 id，而不是生成第二份身份。</summary>
+        public string DisplayName => displayName;
+        public NomadCharacterGender Gender => gender;
+        public int AppearanceSeed => appearanceSeed;
+        public bool IsPlayerAvatar => isPlayerAvatar;
         internal string PersonalInventoryId => $"{StableId}:personal";
         internal string BodyWaterInventoryId => $"{StableId}:body-water";
         internal string BladderInventoryId => $"{StableId}:bladder";
 
         /// <summary>只建立个人数据，不创建世界库存；身份为空或 owner 为零时拒绝。</summary>
-        public FoundationResidentModelState(string stableId, ulong ownerId)
+        public FoundationResidentModelState(
+            string stableId,
+            ulong ownerId,
+            string displayName = "",
+            NomadCharacterGender gender = NomadCharacterGender.Unspecified,
+            int appearanceSeed = 0,
+            bool isPlayerAvatar = false)
         {
             if (string.IsNullOrWhiteSpace(stableId)) throw new ArgumentException("居民稳定身份不能为空。", nameof(stableId));
             if (ownerId == 0UL) throw new ArgumentOutOfRangeException(nameof(ownerId), "居民 owner 不能为零。");
+            NomadResidentIdentity.ValidateDisplayName(displayName, allowEmpty: true);
+            if (!System.Enum.IsDefined(typeof(NomadCharacterGender), gender))
+                throw new ArgumentOutOfRangeException(nameof(gender));
             this.stableId = stableId;
             this.ownerId = ownerId;
+            this.displayName = displayName ?? string.Empty;
+            this.gender = gender;
+            this.appearanceSeed = appearanceSeed;
+            this.isPlayerAvatar = isPlayerAvatar;
+        }
+
+        internal void SetIdentity(NomadResidentIdentity identity)
+        {
+            displayName = identity.DisplayName ?? string.Empty;
+            gender = identity.Gender;
+            appearanceSeed = identity.AppearanceSeed;
+            isPlayerAvatar = identity.IsPlayerAvatar;
         }
 
         [field: SerializeField] public RP<FoundationResidentPhase> ResidentPhase { get; private set; } =
