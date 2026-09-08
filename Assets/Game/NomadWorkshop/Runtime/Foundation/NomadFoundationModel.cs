@@ -33,6 +33,8 @@ namespace Game.NomadWorkshop.Foundation
         [field: SerializeField] public RP<long> JourneyFuelPicoliters { get; private set; } = new(0L);
         [field: SerializeField] public RP<NomadJourneyEndpoint> JourneyDestination { get; private set; } =
             new(NomadJourneyEndpoint.None);
+        [field: SerializeField] public RP<string> JourneyDestinationAnchorId { get; private set; } =
+            new(string.Empty);
         [field: SerializeField] public RP<NomadJourneyStatus> JourneyStatus { get; private set; } =
             new(NomadJourneyStatus.NoDestination);
         [field: SerializeField] public RP<bool> IsPaused { get; private set; } = new(false);

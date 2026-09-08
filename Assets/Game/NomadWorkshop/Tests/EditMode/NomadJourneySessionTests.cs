@@ -112,6 +112,35 @@ namespace Game.NomadWorkshop.Simulation.Tests
                 }));
         }
 
+        [Test]
+        public void AnchorDestination_ChoosesRouteDirectionStopsAndSurvivesRestore()
+        {
+            NomadJourneyRoute route = SmoothRoute();
+            using var journey = new NomadJourneySession(route, 1_000_000_000_000L, SmoothMotion());
+            journey.SetAnchorDestination("midway");
+
+            Assert.That(journey.Destination, Is.EqualTo(NomadJourneyEndpoint.Destination));
+            Assert.That(journey.DestinationAnchorId, Is.EqualTo("midway"));
+            Assert.That(journey.DestinationPositionMicrometers, Is.EqualTo(50_000_000L));
+            Assert.IsTrue(journey.TryAcquireDriver("resident-1", journey.DestinationRevision, out _));
+            journey.Advance(1_000);
+            var saved = journey.Capture();
+
+            journey.SetDestination(NomadJourneyEndpoint.None);
+            Assert.That(journey.PositionMicrometers, Is.EqualTo(saved.PositionMicrometers));
+            Assert.That(journey.DestinationAnchorId, Is.Empty);
+            Assert.That(journey.Status, Is.EqualTo(NomadJourneyStatus.NoDestination));
+
+            journey.Restore(saved);
+            Assert.That(journey.DestinationAnchorId, Is.EqualTo("midway"));
+            Assert.That(journey.DestinationPositionMicrometers, Is.EqualTo(50_000_000L));
+            Assert.That(journey.Status, Is.EqualTo(NomadJourneyStatus.AwaitingDriver));
+            Assert.IsTrue(journey.TryAcquireDriver("resident-2", journey.DestinationRevision, out _));
+            journey.Advance(30_000);
+            Assert.That(journey.PositionMicrometers, Is.EqualTo(50_000_000L));
+            Assert.That(journey.Status, Is.EqualTo(NomadJourneyStatus.Arrived));
+        }
+
         [TestCase(1)]
         [TestCase(10)]
         [TestCase(137)]

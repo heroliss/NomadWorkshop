@@ -66,6 +66,27 @@ namespace Game.NomadWorkshop.Simulation.Tests
         }
 
         [Test]
+        public void JourneySave_PreservesRouteAnchorDestinationIdentity()
+        {
+            var route = new NomadJourneyRoute(
+                "route-with-anchor", "a", "b", 1000, 137, 3,
+                new[] { new NomadJourneyRouteAnchor("shelter", 500) });
+            using var session = new NomadJourneySession(route, 99_999_999L);
+            session.SetAnchorDestination("shelter");
+            NomadWorkshopSaveData save = CreateValidSave();
+            save.Vehicle.Journey = NomadJourneySaveData.FromSnapshot(session.Capture());
+
+            NomadWorkshopSaveContract.ValidateForSave(save);
+            Assert.That(save.Vehicle.Journey.DestinationAnchorId, Is.EqualTo("shelter"));
+            var snapshot = save.Vehicle.Journey.ToValidatedSnapshot();
+            Assert.That(snapshot.DestinationAnchorId, Is.EqualTo("shelter"));
+            using var restored = new NomadJourneySession(route, 0L);
+            restored.Restore(snapshot);
+            Assert.That(restored.DestinationAnchorId, Is.EqualTo("shelter"));
+            Assert.That(restored.DestinationPositionMicrometers, Is.EqualTo(500_000L));
+        }
+
+        [Test]
         public void VersionFourJourneyMigration_PreservesExistingWorld_AndLeavesJourneyForAdapterInitialization()
         {
             NomadWorkshopSaveData save = CreateValidSave();

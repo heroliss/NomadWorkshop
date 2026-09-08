@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Game.NomadWorkshop.Simulation
 {
-    /// <summary>当前实验仅允许在一条有限路线的两个端点之间设定目标。</summary>
+    /// <summary>现有存档兼容的有限路线端点；路线锚点目标通过独立身份字段表示。</summary>
     public enum NomadJourneyEndpoint { None, Origin, Destination }
 
     /// <summary>行驶与停车的领域原因；不把“有目标”误当成“有人实际驾驶”。</summary>
@@ -156,7 +156,7 @@ namespace Game.NomadWorkshop.Simulation
     }
 
     /// <summary>
-    /// 实验的不可变内存快照，包含路线契约、位置、燃料和玩家目标；刻意不包含驾驶租约。
+    /// 实验的不可变内存快照，包含路线契约、位置、燃料、端点方向和可选锚点目标；刻意不包含驾驶租约。
     /// 它不是正式游戏存档 DTO，接入产品存储时须另行定义版本与迁移。
     /// </summary>
     public readonly struct NomadJourneySnapshot
@@ -164,13 +164,14 @@ namespace Game.NomadWorkshop.Simulation
         public NomadJourneySnapshot(
             NomadJourneyRoute route, long positionMicrometers, long fuelPicoliters,
             NomadJourneyEndpoint destination)
-            : this(route, positionMicrometers, fuelPicoliters, destination, 0L, 0L)
+            : this(route, positionMicrometers, fuelPicoliters, destination, string.Empty, 0L, 0L)
         {
         }
 
         public NomadJourneySnapshot(
             NomadJourneyRoute route, long positionMicrometers, long fuelPicoliters,
             NomadJourneyEndpoint destination,
+            string destinationAnchorId,
             long currentSpeedNanometersPerMillisecond,
             long distanceRemainderHalfNanometers)
         {
@@ -178,6 +179,7 @@ namespace Game.NomadWorkshop.Simulation
             PositionMicrometers = positionMicrometers;
             FuelPicoliters = fuelPicoliters;
             Destination = destination;
+            DestinationAnchorId = destinationAnchorId ?? string.Empty;
             CurrentSpeedNanometersPerMillisecond = currentSpeedNanometersPerMillisecond;
             DistanceRemainderHalfNanometers = distanceRemainderHalfNanometers;
         }
@@ -186,6 +188,7 @@ namespace Game.NomadWorkshop.Simulation
         public long PositionMicrometers { get; }
         public long FuelPicoliters { get; }
         public NomadJourneyEndpoint Destination { get; }
+        public string DestinationAnchorId { get; }
         public long CurrentSpeedNanometersPerMillisecond { get; }
         public long DistanceRemainderHalfNanometers { get; }
     }
@@ -231,7 +234,9 @@ namespace Game.NomadWorkshop.Simulation
         /// </summary>
         public long DestinationRevision { get; private set; }
         public string DriverId => _driver?.ResidentId ?? string.Empty;
-        private long DestinationPosition => Destination == NomadJourneyEndpoint.Origin ? 0L : Route.LengthMicrometers;
+        public string DestinationAnchorId { get; private set; } = string.Empty;
+        public long DestinationPositionMicrometers => ResolveDestinationPosition();
+        private long DestinationPosition => ResolveDestinationPosition();
 
         public NomadJourneyStatus Status => _disposed ? NomadJourneyStatus.Disposed :
             Destination == NomadJourneyEndpoint.None ? NomadJourneyStatus.NoDestination :
@@ -244,11 +249,35 @@ namespace Game.NomadWorkshop.Simulation
         {
             ThrowIfDisposed();
             ValidateDestination(destination);
-            if (destination == Destination) return;
+            if (destination == Destination && string.IsNullOrEmpty(DestinationAnchorId)) return;
             long nextRevision = checked(DestinationRevision + 1L);
             RevokeDriver();
             ResetMotion();
             Destination = destination;
+            DestinationAnchorId = string.Empty;
+            DestinationRevision = nextRevision;
+        }
+
+        /// <summary>
+        /// 把目标设为路线上的稳定锚点。锚点只描述路线进度，不创建第二套坐标或移动系统；
+        /// 方向由当前位置与锚点位置决定，抵达后仍由同一驾驶租约和到站语义收口。
+        /// </summary>
+        public void SetAnchorDestination(string anchorId)
+        {
+            ThrowIfDisposed();
+            if (string.IsNullOrWhiteSpace(anchorId))
+                throw new ArgumentException("路线锚点身份不能为空。", nameof(anchorId));
+            if (!Route.TryResolveAnchorPosition(anchorId, out long targetPosition))
+                throw new ArgumentException("路线不存在指定锚点。", nameof(anchorId));
+            if (string.Equals(DestinationAnchorId, anchorId, StringComparison.Ordinal)) return;
+
+            long nextRevision = checked(DestinationRevision + 1L);
+            RevokeDriver();
+            ResetMotion();
+            Destination = targetPosition < PositionMicrometers
+                ? NomadJourneyEndpoint.Origin
+                : NomadJourneyEndpoint.Destination;
+            DestinationAnchorId = anchorId;
             DestinationRevision = nextRevision;
         }
 
@@ -333,6 +362,7 @@ namespace Game.NomadWorkshop.Simulation
             PositionMicrometers,
             FuelPicoliters,
             Destination,
+            DestinationAnchorId,
             _currentSpeedNanometersPerMillisecond,
             _distanceRemainderHalfNanometers);
 
@@ -349,11 +379,23 @@ namespace Game.NomadWorkshop.Simulation
                 snapshot.DistanceRemainderHalfNanometers >= DistanceDenominatorHalfNanometers)
                 throw new ArgumentOutOfRangeException(nameof(snapshot));
             ValidateDestination(snapshot.Destination);
+            if (!string.IsNullOrEmpty(snapshot.DestinationAnchorId))
+            {
+                if (snapshot.Destination == NomadJourneyEndpoint.None ||
+                    !Route.TryResolveAnchorPosition(snapshot.DestinationAnchorId, out long targetPosition))
+                    throw new ArgumentException("快照路线锚点目标无效。", nameof(snapshot));
+                if ((targetPosition < snapshot.PositionMicrometers &&
+                     snapshot.Destination != NomadJourneyEndpoint.Origin) ||
+                    (targetPosition > snapshot.PositionMicrometers &&
+                     snapshot.Destination != NomadJourneyEndpoint.Destination))
+                    throw new ArgumentException("快照锚点目标方向与位置不一致。", nameof(snapshot));
+            }
             long nextRevision = checked(DestinationRevision + 1L);
             RevokeDriver();
             PositionMicrometers = snapshot.PositionMicrometers;
             FuelPicoliters = snapshot.FuelPicoliters;
             Destination = snapshot.Destination;
+            DestinationAnchorId = snapshot.DestinationAnchorId ?? string.Empty;
             _currentSpeedNanometersPerMillisecond = snapshot.CurrentSpeedNanometersPerMillisecond;
             _distanceRemainderHalfNanometers = snapshot.DistanceRemainderHalfNanometers;
             DestinationRevision = nextRevision;
@@ -375,6 +417,18 @@ namespace Game.NomadWorkshop.Simulation
 
         private long CruiseSpeedNanometersPerMillisecond =>
             checked((long)Route.SpeedMillimetersPerSecond * 1000L);
+
+        private long ResolveDestinationPosition()
+        {
+            if (!string.IsNullOrEmpty(DestinationAnchorId))
+            {
+                if (!Route.TryResolveAnchorPosition(DestinationAnchorId, out long position))
+                    throw new InvalidOperationException("当前路线缺少已保存的目标锚点。");
+                return position;
+            }
+
+            return Destination == NomadJourneyEndpoint.Origin ? 0L : Route.LengthMicrometers;
+        }
 
         private long IntegrateMotion(long deltaMilliseconds, long acceleration)
         {

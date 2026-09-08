@@ -4,7 +4,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
 {
     /// <summary>
     /// v5+ 首段旅途的精确业务状态；单位与 Session 一致，不用千分比或整数毫升继续积分。
-    /// 平滑运动字段对旧 DTO 可缺省，读取后从静止重新起步。
+    /// 平滑运动字段与锚点目标对旧 DTO 可缺省；旧存档读取后从静止、端点目标重新起步。
     /// 驾驶权和到岗请求版本不落盘，读取后必须重新到岗。
     /// </summary>
     [Serializable]
@@ -19,6 +19,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public long PositionMicrometers;
         public long FuelPicoliters;
         public NomadJourneyEndpoint Destination;
+        public string DestinationAnchorId = string.Empty;
         public long CurrentSpeedNanometersPerMillisecond;
         public long DistanceRemainderHalfNanometers;
 
@@ -27,6 +28,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             string.IsNullOrEmpty(DestinationSiteId) && LengthMillimeters == 0 &&
             SpeedMillimetersPerSecond == 0 && FuelNanolitersPerMillimeter == 0 &&
             PositionMicrometers == 0 && FuelPicoliters == 0 && Destination == NomadJourneyEndpoint.None &&
+            string.IsNullOrEmpty(DestinationAnchorId) &&
             CurrentSpeedNanometersPerMillisecond == 0 && DistanceRemainderHalfNanometers == 0;
 
         /// <summary>复制业务真值，不保存运行期租约或对象身份。</summary>
@@ -41,6 +43,7 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             PositionMicrometers = snapshot.PositionMicrometers,
             FuelPicoliters = snapshot.FuelPicoliters,
             Destination = snapshot.Destination,
+            DestinationAnchorId = snapshot.DestinationAnchorId,
             CurrentSpeedNanometersPerMillisecond = snapshot.CurrentSpeedNanometersPerMillisecond,
             DistanceRemainderHalfNanometers = snapshot.DistanceRemainderHalfNanometers,
         };
@@ -48,13 +51,17 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         /// <summary>校验路线、整数范围和目标后返回独立快照；失败不修改 DTO 或任何运行世界。</summary>
         public NomadJourneySnapshot ToValidatedSnapshot()
         {
+            var anchors = string.IsNullOrEmpty(DestinationAnchorId)
+                ? Array.Empty<NomadJourneyRouteAnchor>()
+                : new[] { new NomadJourneyRouteAnchor(DestinationAnchorId, 0) };
             var route = new NomadJourneyRoute(RouteId, OriginId, DestinationSiteId, LengthMillimeters,
-                SpeedMillimetersPerSecond, FuelNanolitersPerMillimeter);
+                SpeedMillimetersPerSecond, FuelNanolitersPerMillimeter, anchors);
             var snapshot = new NomadJourneySnapshot(
                 route,
                 PositionMicrometers,
                 FuelPicoliters,
                 Destination,
+                DestinationAnchorId,
                 CurrentSpeedNanometersPerMillisecond,
                 DistanceRemainderHalfNanometers);
             using var validation = new NomadJourneySession(route, 0L);

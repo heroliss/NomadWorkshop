@@ -35,6 +35,7 @@ namespace Game.NomadWorkshop.Foundation
                 snapshot.PositionMicrometers,
                 snapshot.FuelPicoliters,
                 snapshot.Destination,
+                snapshot.DestinationAnchorId,
                 migratedSpeed,
                 snapshot.DistanceRemainderHalfNanometers);
         }

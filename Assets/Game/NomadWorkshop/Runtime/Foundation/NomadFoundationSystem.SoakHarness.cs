@@ -219,6 +219,7 @@ namespace Game.NomadWorkshop.Foundation
             hash = Fold(hash, _model.JourneyPositionMicrometers.Value);
             hash = Fold(hash, _model.JourneyFuelPicoliters.Value);
             hash = Fold(hash, (int)_model.JourneyDestination.Value);
+            hash = Fold(hash, StableStringHash(_model.JourneyDestinationAnchorId.Value));
             hash = Fold(hash, (int)_model.JourneyStatus.Value);
             hash = Fold(hash, _model.StopWaterMilliliters.Value);
             hash = Fold(hash, _model.StopWaterRequested.Value ? 1 : 0);

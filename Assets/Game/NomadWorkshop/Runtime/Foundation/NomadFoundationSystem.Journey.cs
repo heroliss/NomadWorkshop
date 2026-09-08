@@ -30,7 +30,8 @@ namespace Game.NomadWorkshop.Foundation
         {
             if (_checkpointOperation != null) return;
             if (!_initialized) throw new InvalidOperationException("Foundation 尚未初始化。");
-            bool changed = _journey.Destination != destination;
+            bool changed = _journey.Destination != destination ||
+                           !string.IsNullOrEmpty(_journey.DestinationAnchorId);
             _journey.SetDestination(destination);
             if (destination == NomadJourneyEndpoint.Origin && IsAtDryRiver)
             {
@@ -38,6 +39,23 @@ namespace Game.NomadWorkshop.Foundation
                 RequestStopWaste(false);
                 RequestStopSpare(false);
             }
+            foreach (var resident in _residents)
+            {
+                using var scope = UseResident(resident);
+                if (changed && IsDrivingAction()) StopDrivingAction("目标已改变，车辆已停车");
+            }
+            WakeResidents();
+            WriteJourneyProjection();
+        }
+
+        /// <summary>选择当前路线的稳定锚点；锚点到站不会打开端点驿站资源权限。</summary>
+        public void SetJourneyAnchorDestination(string anchorId)
+        {
+            if (_checkpointOperation != null) return;
+            if (!_initialized) throw new InvalidOperationException("Foundation 尚未初始化。");
+            bool changed = !string.Equals(_journey.DestinationAnchorId, anchorId,
+                StringComparison.Ordinal);
+            _journey.SetAnchorDestination(anchorId);
             foreach (var resident in _residents)
             {
                 using var scope = UseResident(resident);
@@ -92,9 +110,7 @@ namespace Game.NomadWorkshop.Foundation
                     {
                         CreateTravelStep(travelMeters, "前往驾驶台"),
                         new ResidentActionStepEstimate(ResidentActionStepKind.UseFacility,
-                            (_journey.Destination == NomadJourneyEndpoint.Origin
-                                ? _journey.PositionMicrometers
-                                : FoundationRoute.LengthMicrometers - _journey.PositionMicrometers) /
+                            Math.Abs(_journey.DestinationPositionMicrometers - _journey.PositionMicrometers) /
                             (FoundationRoute.SpeedMillimetersPerSecond * 1000f),
                             label: "驾驶剩余路程（必要生活需求会中断）"),
                     },
@@ -196,6 +212,7 @@ namespace Game.NomadWorkshop.Foundation
             SetLong(_model.JourneyPositionMicrometers, _journey.PositionMicrometers);
             SetLong(_model.JourneyFuelPicoliters, _journey.FuelPicoliters);
             _model.JourneyDestination.Value = _journey.Destination;
+            _model.JourneyDestinationAnchorId.Value = _journey.DestinationAnchorId;
             _model.JourneyStatus.Value = _journey.Status;
         }
     }

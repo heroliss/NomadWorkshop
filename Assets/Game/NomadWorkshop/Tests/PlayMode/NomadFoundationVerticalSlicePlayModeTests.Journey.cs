@@ -50,6 +50,30 @@ namespace Game.NomadWorkshop.PlayMode.Tests
         }
 
         [UnityTest]
+        public IEnumerator JourneyAnchorDestination_StopsAtRouteInterestPoint_AndEndpointChangeClearsAnchor()
+        {
+            yield return PrepareDrivingScenario();
+            _context.ExecuteCommand(new SetFoundationJourneyAnchorDestinationCommand("midway-shelter"));
+            Assert.That(_model.JourneyDestination.Value, Is.EqualTo(NomadJourneyEndpoint.Destination));
+            Assert.That(_model.JourneyDestinationAnchorId.Value, Is.EqualTo("midway-shelter"));
+            Assert.That(_model.JourneyStatus.Value, Is.EqualTo(NomadJourneyStatus.AwaitingDriver));
+
+            AdvanceUntilJourneyPhase(FoundationResidentPhase.Driving);
+            for (var i = 0; i < 2000 && _model.JourneyStatus.Value != NomadJourneyStatus.Arrived; i++)
+                StepJourney(1000);
+
+            Assert.That(_model.JourneyStatus.Value, Is.EqualTo(NomadJourneyStatus.Arrived));
+            Assert.That(_model.JourneyPositionMicrometers.Value, Is.EqualTo(1_000_000_000L));
+            Assert.That(_model.JourneyDestinationAnchorId.Value, Is.EqualTo("midway-shelter"));
+            Assert.That(_model.StopAccessOpen.Value, Is.False,
+                "中途兴趣点到站不能误开干河驿站的取水、清运和备件权限。");
+
+            _context.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Destination));
+            Assert.That(_model.JourneyDestinationAnchorId.Value, Is.Empty);
+            Assert.That(_model.JourneyStatus.Value, Is.EqualTo(NomadJourneyStatus.AwaitingDriver));
+        }
+
+        [UnityTest]
         public IEnumerator JourneyDriver_LeavesForThirst_StopsVehicle_AndReturnsAfterRealDrink()
         {
             yield return PrepareDrivingScenario();

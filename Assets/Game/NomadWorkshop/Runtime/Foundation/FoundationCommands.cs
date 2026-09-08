@@ -28,6 +28,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<bool> StopAccessOpen;
         public readonly ReadOnlyReactiveProperty<long> JourneyFuelPicoliters;
         public readonly ReadOnlyReactiveProperty<NomadJourneyEndpoint> JourneyDestination;
+        public readonly ReadOnlyReactiveProperty<string> JourneyDestinationAnchorId;
         public readonly ReadOnlyReactiveProperty<NomadJourneyStatus> JourneyStatus;
         public readonly ReadOnlyReactiveProperty<bool> IsPaused;
         public readonly ReadOnlyReactiveProperty<bool> CheckpointBusy;
@@ -99,6 +100,7 @@ namespace Game.NomadWorkshop.Foundation
             StopAccessOpen = model.StopAccessOpen;
             JourneyFuelPicoliters = model.JourneyFuelPicoliters;
             JourneyDestination = model.JourneyDestination;
+            JourneyDestinationAnchorId = model.JourneyDestinationAnchorId;
             JourneyStatus = model.JourneyStatus;
             IsPaused = model.IsPaused;
             CheckpointBusy = model.CheckpointBusy;
@@ -182,6 +184,16 @@ namespace Game.NomadWorkshop.Foundation
             _destination = destination;
         public void Execute(ICommandContext ctx) =>
             ctx.GetSystem<NomadFoundationSystem>().SetJourneyDestination(_destination);
+    }
+
+    /// <summary>选择路线上的稳定兴趣点锚点；不会直接授予驾驶权或改变居民位置。</summary>
+    [Description("设定路线锚点旅途目标")]
+    public readonly struct SetFoundationJourneyAnchorDestinationCommand : ICommand
+    {
+        private readonly string _anchorId;
+        public SetFoundationJourneyAnchorDestinationCommand(string anchorId) => _anchorId = anchorId;
+        public void Execute(ICommandContext ctx) =>
+            ctx.GetSystem<NomadFoundationSystem>().SetJourneyAnchorDestination(_anchorId);
     }
 
     [Description("读取已提交设施快照")]

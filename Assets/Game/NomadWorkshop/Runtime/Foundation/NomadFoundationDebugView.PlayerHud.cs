@@ -94,7 +94,10 @@ namespace Game.NomadWorkshop.Foundation
             _ => "停车休整 · 在旅程面板选择目的地",
         };
 
-        private string DestinationName => _journeyDestination == Simulation.NomadJourneyEndpoint.Destination ? "干河驿站" : "旧营地";
+        private string DestinationName => !string.IsNullOrEmpty(_journeyDestinationAnchorId)
+            ? $"路线锚点 · {_journeyDestinationAnchorId}"
+            : _journeyDestination == Simulation.NomadJourneyEndpoint.Destination ? "干河驿站" :
+            _journeyDestination == Simulation.NomadJourneyEndpoint.Origin ? "旧营地" : "未指定";
 
         private void DrawTimeControls()
         {

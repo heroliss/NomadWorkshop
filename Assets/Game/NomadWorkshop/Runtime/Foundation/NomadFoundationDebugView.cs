@@ -23,6 +23,7 @@ namespace Game.NomadWorkshop.Foundation
         private long _journeyPositionMicrometers;
         private long _journeyFuelPicoliters;
         private NomadJourneyEndpoint _journeyDestination;
+        private string _journeyDestinationAnchorId = string.Empty;
         private NomadJourneyStatus _journeyStatus;
         private int _stopWaterMilliliters;
         private bool _stopWaterRequested;
@@ -164,6 +165,8 @@ namespace Game.NomadWorkshop.Foundation
             Bag.Subscribe(readModel.CheckpointFeedback, value => _checkpointFeedback = value);
             Bag.Subscribe(readModel.JourneyFuelPicoliters, value => _journeyFuelPicoliters = value);
             Bag.Subscribe(readModel.JourneyDestination, value => _journeyDestination = value);
+            Bag.Subscribe(readModel.JourneyDestinationAnchorId,
+                value => _journeyDestinationAnchorId = value);
             Bag.Subscribe(readModel.JourneyStatus, value => _journeyStatus = value);
             Bag.Subscribe(readModel.StopWaterMilliliters, value => _stopWaterMilliliters = value);
             Bag.Subscribe(readModel.StopWaterRequested, value => _stopWaterRequested = value);
@@ -740,12 +743,12 @@ namespace Game.NomadWorkshop.Foundation
                 NomadJourneyStatus.FuelExhausted => "燃料不足 · 车辆已停车",
                 _ => "旅途已结束",
             }, _smallStyle);
-            string destinationName = _journeyDestination == NomadJourneyEndpoint.Destination ? "干河驿站" :
-                _journeyDestination == NomadJourneyEndpoint.Origin ? "旧营地" : "未指定";
-            GUILayout.Label($"目的地：{destinationName}", _smallStyle);
+            GUILayout.Label($"目的地：{DestinationName}", _smallStyle);
             GUILayout.Space(12f);
             if (GUILayout.Button("前往干河驿站", GUILayout.Height(32f)))
                 this.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Destination));
+            if (GUILayout.Button("前往途中避难棚", GUILayout.Height(32f)))
+                this.ExecuteCommand(new SetFoundationJourneyAnchorDestinationCommand("midway-shelter"));
             if (GUILayout.Button("返回旧营地", GUILayout.Height(32f)))
                 this.ExecuteCommand(new SetFoundationJourneyDestinationCommand(NomadJourneyEndpoint.Origin));
             if (GUILayout.Button("取消目标并停车", GUILayout.Height(32f)))
