@@ -40,8 +40,6 @@ namespace Game.NomadWorkshop.Editor
         private static readonly string[] Legacy2DScenePathsInternal =
         {
             "Assets/Settings/Scenes/URP2DSceneTemplate.unity",
-            "Assets/Game/Framework/Demo/Scenes/DemoScene.unity",
-            "Assets/Game/Outpost/Scenes/OutpostBattle.unity",
         };
 
         /// <summary>必须显式使用 Renderer2D 的已知场景；新增 2D 场景时同步扩展此清单和测试。</summary>

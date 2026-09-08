@@ -86,7 +86,7 @@
 - Rodin 野战厨房在 Unity 中是 1 Mesh / 1 Material Slot、18,924 Source Vertex / 22,058 Runtime Vertex、37,903 Triangle；Bounds、URP/Lit 通道、Prefab、BoxCollider 与预览场景审计成立，固定相机能看见青色旧漆、不锈钢、橙色安全件、织物与软管；源候选仍有 5 个重复面、6 个几何岛和不可拆分部件，保持人工复核且未批准为生产资产；
 - 同一野战厨房另有一条 Unity 参数化代理路线：Profile 确定 `2.30 × 2.00 × 0.88 m` 玩法尺寸，用 ProBuilder 6.1.2 在 Editor 临时生成并按材质合并，落盘为 1 个静态主体 + 3 个独立门的普通 Mesh（4,856 Vertex / 2,172 Triangle），运行时不保留 `ProBuilderMesh`；
 - 参数化 Prefab 把根 Collider、工作 / 手部 / 储物 / 进水 / 排污 Anchor 与 `Visual_Prototype` / `Visual_Final` 分离，三扇门有稳定 Pivot；版本化预览场景避免重复生成造成 local fileID 漂移，连续生成的资产 GUID 与 Dependency Hash 已稳定；
-- Universal RP Asset 保留 `Renderer2D` 为 index 0，并把共享 `UniversalRendererData`（index 1）设为项目默认；框架 Demo、Outpost 与 2D Scene Template 的 Camera 已显式固定 index 0，正式 Foundation 与 3D 预览相机显式固定 index 1；
+- Universal RP Asset 保留 `Renderer2D` 为 index 0，并把共享 `UniversalRendererData`（index 1）设为项目默认；本仓库的 2D Scene Template Camera 已显式固定 index 0，正式 Foundation 与 3D 预览相机显式固定 index 1；
 - 固定 3D Game View 已实际看到两个道具的体积、阴影、金属高光和青 / 橙 / 黑材质层级；水循环设施的划痕、细微法线与裸露金属响应可读，没有粉材质、黑屏或错误姿态。自动审计仍把最终审美结论留给人工。
 
 这些证据仍不能证明游戏好玩、正式画面达标、多人居民调度自然、IK 接触可靠或参数已经平衡。实体物流已扩展为三人共用有限工具和固定任务链；现有后处理、SSAO 与反射只证明代表性灰盒渲染链路成立。程序磨损仍缺少基于 Mesh 边缘、遮挡、重力与用途的细节，正式车辆镜头、Surface Shader / VFX、目标平台质量分层、性能预算和统一艺术指导仍未成立。

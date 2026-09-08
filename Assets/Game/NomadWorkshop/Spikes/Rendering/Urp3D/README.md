@@ -16,7 +16,7 @@
 | 检查项 | 已验证结果 |
 |---|---|
 | Renderer 列表 | `Renderer2D.asset` 唯一保留为 index 0；`NW_UniversalRenderer3D.asset` 唯一注册为 index 1 并成为默认值；未知默认值会停止迁移 |
-| 2D 兼容 | 2D Scene Template、Framework Demo 与 Outpost Camera 显式选择 index 0，不依赖项目默认值 |
+| 2D 兼容 | 本仓库的 2D Scene Template Camera 显式选择 index 0，不依赖项目默认值 |
 | 3D Renderer | 保持 Forward、全 Layer、唯一降采样 SSAO（Depth Normals、Medium Sample / Blur），不抢跑 Forward+ |
 | URP Asset | Linear 项目下启用 64-bit 内部 HDR、4x MSAA、2 Cascades / Medium Soft Shadow、Reflection Probe Blending / Box Projection |
 | 相机 | 预览 Camera 显式选择 index 1，HDR + SMAA High，不启用实验外后处理或 XR |

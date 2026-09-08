@@ -1,4 +1,6 @@
-# SSFramework 愿景与路线图
+# NomadWorkshop 路线与迁移记录
+
+> 本文保留从旧单仓库迁出的游戏里程碑记录。当前工程入口和近期工作以 [`Assets/Game/NomadWorkshop/README.md`](../Assets/Game/NomadWorkshop/README.md) 为准；Framework 的 API 与架构文档随 `Packages/com.liss.ssframework` 子仓库维护。
 
 ## 愿景
 
@@ -166,7 +168,7 @@ M0 骨架 → M1 战斗核心 → M2 升级 → M3 存档/音频/本地化 → M
 - [ai-agent-onboarding.md](ai-agent-onboarding.md) —— 其他 Agent 的最薄接入与 Handoff
 - [ai-game-development-capability-map.md](ai-game-development-capability-map.md) —— 真实游戏开发的全景能力地图与补全策略
 - `Assets/Game/AGENTS.md` —— 框架 **API 使用规则**（写业务代码时就近加载）
-- `Assets/Game/Framework/AGENTS.md` —— 框架 **内部编码规则**（改框架源码时就近加载）
+- `Packages/com.liss.ssframework/AGENTS.md` —— 框架 **内部编码规则**（改框架源码时进入 Framework 子仓库加载）
 - [adr/](adr/) —— 架构决策记录（为什么这样设计）
-- [Outpost 导读](../Assets/Game/Outpost/Documentation~/outpost-guide.md) / [技术笔记](../Assets/Game/Outpost/Documentation~/outpost-tech-notes.md) —— 垂直切片 demo 的对照地图与实现方案（随游戏放在其 `Documentation~/`，将来随包提取）
+- Outpost 的玩法对照记录属于独立仓库，不纳入 NomadWorkshop 的运行时依赖；需要对照时查看 Outpost 仓库的 `Assets/Game/Outpost/Documentation~/`。
 - [unity-mcp-tips.md](unity-mcp-tips.md) —— Unity MCP 调用陷阱
