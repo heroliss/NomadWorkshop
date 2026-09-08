@@ -2,7 +2,7 @@
 
 > 当前开发先读 [AI 项目索引](../../../docs/ai-project-index.md)，唯一近期执行顺序在 [Foundation §9](../../../docs/nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。美术试玩入口是 [ReferenceVehicleSample](Scenes/ReferenceVehicleSample.unity)；独立紧凑梯入口是 [CompactSteepCarrySpike](Scenes/CompactSteepCarrySpike.unity)。本 README 以下保留各阶段能力与工程导航，旧测试数量和当时的“当前/下一步”不代表最新基线。
 
-> 状态：**Foundation 与技术实验 v0.51**，更新于 2026-09-06。正式场景已接入[首段驾驶](../../../docs/nomad-workshop-driving-integration.md)与[有限取水 / 污物清运 / 备件补给](../../../docs/nomad-workshop-stop-resource-ownership.md)，保留已有生活、水循环、建造与维修。[三居民接线](../../../docs/nomad-workshop-three-residents.md)已包括原生 Agent、个人行动所有权、共享工具、全员召回、多居民 v9 检查点和居民选择。原生测试与正式 1× 运行证据分开记录，当前进度及已知边界见[Foundation](../../../docs/nomad-workshop-foundation-vertical-slice.md)，产品目标见[愿景](../../../docs/nomad-workshop-game-vision.md)。玩家保存/读取/取消已接入旅程面板，身体碰撞、让路与续玩工程验收完成；最新 Foundation PlayMode 106/106。它仍是基础切片，不代表长期平衡或发行门槛已经成立。
+> 状态：**Foundation 与技术实验 v0.52**，更新于 2026-09-09。独立仓库迁移基线已在 Unity 6000.3.22f1 中通过 EditMode 878/878；N1-B 新增 `StarterJourneySample` 起步场景和纯规则拾荒 / 座位休息接线，定向回归 4/4，运行时冒烟与画面取证见[迁移与起步验证](../../../docs/validation-split-baseline-20260909.md)。正式三居民入口仍是 [ReferenceVehicleSample](Scenes/ReferenceVehicleSample.unity)，当前 Foundation 的驾驶、有限取水 / 污物清运 / 备件补给、生活、水循环、建造与维修继续保留。原生测试与正式运行证据分开记录，当前进度及已知边界见[Foundation](../../../docs/nomad-workshop-foundation-vertical-slice.md)，产品目标见[愿景](../../../docs/nomad-workshop-game-vision.md)。它仍是基础切片，不代表长期平衡或发行门槛已经成立。
 
 切片同时用于检验游戏设计、SSFramework 与 AI 自动工作流。优先通过小任务探索未经历的边界，依据实际失败与摩擦改进工具、文档和框架；不以堆叠功能作为唯一进度指标。
 

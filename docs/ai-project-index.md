@@ -5,9 +5,9 @@
 ## 当前交接
 
 - **产品目标**：在恶劣生存环境中建立有温度的移动小家；从一名玩家化身、只有驾驶位的微型车和拾荒起步，逐步形成建造、研究、制造、共同生活、可控随机故事和车辆成长。
-- **当前正式入口**：`Assets/Game/NomadWorkshop/Scenes/ReferenceVehicleSample.unity`。它保留已验证的三居民 Foundation 与暖工坊表现，不被 StarterJourneySample 替换。
-- **当前状态**：N0 平稳连续旅途和 N1-A 微型车纯配置/身份/座位休息规则已经落地；N1-B 尚未接线。独立仓库已在 Unity 6000.3.22f1 中完成编译与 EditMode 全量回归（878/878）；下一步进入 N1-B 的场景与最小拾荒接线。
-- **唯一近期队列**：[Foundation §9](nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。下一项是 N1-B：独立 `StarterJourneySample` 场景、最小拾荒起点和座位休息意图接线。
+- **当前正式入口**：`Assets/Game/NomadWorkshop/Scenes/StarterJourneySample.unity`。它是 N1-B 的最小起步切片；`ReferenceVehicleSample.unity` 继续保留已验证的三居民 Foundation 与暖工坊表现，不被替换。
+- **当前状态**：N0 平稳连续旅途、N1-A 微型车纯配置/身份/座位休息规则，以及 N1-B 最小拾荒场景已经落地。独立仓库已在 Unity 6000.3.22f1 中完成编译与 EditMode 全量回归（882/882），N1-B 规则定向回归 4/4，StarterJourneySample 运行时冒烟和画面取证通过。
+- **唯一近期队列**：[Foundation §9](nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。下一项是 N2：把车内外统一建造先收敛为一个可回收材料、施工占位和地点生命周期的纯规则切片。
 - **空间与建造细则**：[世界放置与建造契约](nomad-workshop-world-placement-and-construction.md#51-车内外统一建造与地点生命周期)。它明确车内外共用蓝图/材料/工作量，不引入工作台作为建造前置。
 - **恢复现场**：以实际 Git、Unity 编译/Play 状态和当前测试证据为准。修改场景或 Prefab 前必须通过 Unity Editor/MCP，不能手改 YAML。
 
@@ -35,5 +35,5 @@
 - NomadWorkshop：`main` / `develop`，当前提交由远端仓库维护。
 - Framework Package：`com.liss.ssframework`，通过 `Packages/com.liss.ssframework` 子模块固定版本。
 - Unity：6000.3.22f1。
-- 最近验证：[独立仓库迁移基线](validation-split-baseline-20260909.md)，记录当前子模块版本、预检流程和 878/878 回归结果。
+- 最近验证：[N1-B 起步样板](validation-starter-journey-20260909.md)；迁移基线与 878/878 历史证据仍见[独立仓库迁移基线](validation-split-baseline-20260909.md)。
 - 迁移后的文档从旧单体仓库移动到本仓库；Framework API 和通用 Unity 文档继续由 Framework 子模块维护，不在这里复制。

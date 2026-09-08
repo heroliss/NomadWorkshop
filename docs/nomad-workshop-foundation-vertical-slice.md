@@ -275,7 +275,9 @@ N0–N5 是下一轮的体验闭环，N6–N8 依赖它们的节奏证据。餐�
 
 镜头收口随后加入 `FoundationJourneyCameraBuffer`：它把实际 Moving 状态的速度千分比映射为最多 0.45 m 的车辆长轴前后偏移，用指数响应平滑启动与刹车；暂停冻结响应，设施重建 / 读档清零，轨道旋转与缩放仍由原控制器拥有。缓冲 EditMode 4/4、落盘样板 `RealJourney_MovesTrackAndScenery_FreezesOnPause_AndRestoresAbsolutePose` 1/1 通过；Game View 截图 `Screenshots/nomad-n0-camera-buffer-moving-20260908.png` 已实际检查。镜头偏移只改表现焦点，不移动逻辑甲板或居民导航。
 
-N1-A 已建立 `NomadStarterJourneyProfile` 纯配置接缝：默认玩家化身保存姓名、性别、外观种子和玩家标记，微型车声明一张驾驶位、无床铺、零设施槽；`NomadResidentSaveData` 增加这些零缺省身份字段，旧存档按空身份兼容，重复玩家化身和非法显示名会被拒绝。`ResidentWellbeingActivity.SeatRest` 与 `NomadSeatRestRules` 已表达座位休息比地面休息慢、持续消耗少量健康和心情；这轮只完成规则与契约，没有把它误接成完整开局场景或捏脸编辑器。StarterJourneySample、起步拾荒和座位休息行动将在 N1-B 通过独立场景接线。
+N1-A 已建立 `NomadStarterJourneyProfile` 纯配置接缝：默认玩家化身保存姓名、性别、外观种子和玩家标记，微型车声明一张驾驶位、无床铺、零设施槽；`NomadResidentSaveData` 增加这些零缺省身份字段，旧存档按空身份兼容，重复玩家化身和非法显示名会被拒绝。`ResidentWellbeingActivity.SeatRest` 与 `NomadSeatRestRules` 已表达座位休息比地面休息慢、持续消耗少量健康和心情。
+
+2026-09-09，N1-B 的最小接线已完成：`NomadStarterScavengeState` 以纯 C# 守恒规则表达路边废料、微型车有限携带量和座位休息意图，定向 EditMode 4/4 通过；Unity Editor 生成并回读 `StarterJourneySample`，场景只放一辆沿长轴朝前的微型车、驾驶位、路边废料点和低干扰 HUD。运行时可用 E 拾取、R 开关座位休息，实际冒烟确认拾取会减少废料点、休息会慢速恢复疲劳并付出健康 / 心情代价。该切片刻意没有把 Foundation 的水循环设施前置条件带入开局；正式资源库存、Command 输入和车辆移动仍分别由 N2/N3 接回。
 
 ### 开局成长方案的实现依据
 
