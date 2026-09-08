@@ -20,7 +20,7 @@ SSFramework/
 
 当前没有为 Cursor、Gemini、Copilot 等未实际采用的 Agent 提交仓库级预配置，也没有把 Unity MCP 的机器连接复制成产品配置。目录或格式存在不等于工具、权限和交付闭环已经验证。
 
-《游牧工坊》的按需入口也区分职责：[产品愿景](nomad-workshop-game-vision.md)维护目标与范围，生活 / 建造 / 导航专题维护各自契约，[Foundation](nomad-workshop-foundation-vertical-slice.md)维护当前实现、证据和唯一近期开发队列，游戏目录 README 负责导航。阶段重审记录观察、用户选择和验证，不再产生另一条长期队列。这样产品方向调整可以回到同一入口，而不靠多个“下一步”段落相互同步。
+《游牧工坊》的按需入口也区分职责：[AI 项目索引](ai-project-index.md)只保留当前状态、证据快照和唯一近期队列；[产品愿景](nomad-workshop-game-vision.md)维护目标与范围，生活 / 建造 / 导航专题维护各自契约，[Foundation](nomad-workshop-foundation-vertical-slice.md)维护实现与详细证据，游戏目录 README 负责导航。阶段重审记录观察、用户选择和验证，不再产生另一条长期队列。这样产品方向调整可以回到同一入口，而不靠多个“下一步”段落相互同步。
 
 2026-09-06 美术评图推动了实际产品范围调整：小甲板起步、非矩形扩建、局部多层与围护。[可扩建甲板专题](nomad-workshop-expandable-decks-design.md)集中保存本次代码证据、建议边界和新 Harness 验收点，[美术样板记录](nomad-workshop-art-first-pass.md)保存图像与人工反馈；近期顺序仍由 Foundation 维护。纯规则分层字段、概念图与实机多层分别标状态，本轮不把尚未验证的空间方案加入 Framework 公共契约或常驻 Agent 规则。
 
