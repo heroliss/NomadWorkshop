@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b25b1ad7ced5c14e84c847e554b1065, type: 3}
+  m_Name: NW_Blueprint_FieldKitchenSample
+  m_EditorClassIdentifier: Game.NomadWorkshop::Game.NomadWorkshop.Foundation.NomadConstructionBlueprintSampleDefinition
+  blueprintId: blueprint-kitchen-n2b
+  facilityDefinition: {fileID: 11400000, guid: 66d8f48cbf8b4b343986b4fe3917b7f0, type: 2}
+  positionMeters: {x: 0, y: -2}
+  yawDegrees: 0
+  siteKind: 2
+  siteId: vehicle-01
+  routeId:
+  routeProgressMillimeters: 0
+  retentionDistanceMillimeters: 0
+  requiredWorkUnits: 12
+  requiredMaterials:
+  - resourceId: steel
+    amount: 2

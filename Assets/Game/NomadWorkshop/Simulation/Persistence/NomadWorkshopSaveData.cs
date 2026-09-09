@@ -201,6 +201,9 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         PendingValidation,
         AwaitingMaterials,
         Building,
+        ReadyToBuild,
+        Commissioning,
+        Complete,
     }
 
     /// <summary>
@@ -216,6 +219,19 @@ namespace Game.NomadWorkshop.Simulation.Persistence
         public NomadBlueprintSaveStage Stage;
         public int ConstructionProgressPermille;
         public bool MaterialsCommitted;
+
+        // N2-B：地点语义与蓝图自有材料库存。旧 DTO 缺少 SiteId 时仍按旧契约校验；
+        // Foundation 会明确拒绝恢复，避免猜测旧蓝图的配方与地点。
+        public NomadConstructionSiteKind SiteKind;
+        public string SiteId = string.Empty;
+        public string RouteId = string.Empty;
+        public long RouteProgressMillimeters;
+        public long RetentionDistanceMillimeters;
+        public int RequiredWorkUnits;
+        public int CompletedWorkUnits;
+        public List<NomadResourceStackSaveData> RequiredMaterials = new();
+        public List<NomadResourceStackSaveData> StagedMaterials = new();
+        public List<NomadResourceStackSaveData> InstalledMaterials = new();
     }
 
     /// <summary>
@@ -387,13 +403,13 @@ namespace Game.NomadWorkshop.Simulation.Persistence
 
             RequireCollections(data);
             var entityIds = new HashSet<string>(StringComparer.Ordinal);
+            var stackIds = new HashSet<string>(StringComparer.Ordinal);
             if (data.Stop is { IsEmpty: false }) entityIds.Add("site:" + data.Stop.SiteId);
             ValidateFacilities(data.Facilities, entityIds, data.SimulationTick);
-            ValidateBlueprints(data.Blueprints, entityIds);
+            ValidateBlueprints(data.Blueprints, entityIds, stackIds);
             ValidateWorldItems(data.WorldItems, entityIds);
 
             var inventoryIds = new HashSet<string>(StringComparer.Ordinal);
-            var stackIds = new HashSet<string>(StringComparer.Ordinal);
             ValidateInventories(data.Inventories, inventoryIds, stackIds);
             ValidateResidents(data.Residents, entityIds, inventoryIds);
             ValidateRandomStreams(data.RandomStreams);
@@ -442,6 +458,14 @@ namespace Game.NomadWorkshop.Simulation.Persistence
             data.Inventories ??= new List<NomadInventorySaveData>();
             data.Residents ??= new List<NomadResidentSaveData>();
             data.RandomStreams ??= new List<NomadRandomStreamSaveData>();
+            for (var i = 0; i < data.Blueprints.Count; i++)
+            {
+                NomadBlueprintSaveData blueprint = data.Blueprints[i];
+                if (blueprint == null) continue;
+                blueprint.RequiredMaterials ??= new List<NomadResourceStackSaveData>();
+                blueprint.StagedMaterials ??= new List<NomadResourceStackSaveData>();
+                blueprint.InstalledMaterials ??= new List<NomadResourceStackSaveData>();
+            }
             for (var i = 0; i < data.Inventories.Count; i++)
             {
                 NomadInventorySaveData inventory = data.Inventories[i];
@@ -671,7 +695,8 @@ namespace Game.NomadWorkshop.Simulation.Persistence
 
         private static void ValidateBlueprints(
             IReadOnlyList<NomadBlueprintSaveData> blueprints,
-            HashSet<string> entityIds)
+            HashSet<string> entityIds,
+            HashSet<string> stackIds)
         {
             for (var i = 0; i < blueprints.Count; i++)
             {
@@ -685,6 +710,46 @@ namespace Game.NomadWorkshop.Simulation.Persistence
                     $"蓝图 {blueprint.InstanceId} 建造进度");
                 if (!Enum.IsDefined(typeof(NomadBlueprintSaveStage), blueprint.Stage))
                     throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 阶段无效。");
+
+                bool hasConstructionCheckpoint = !string.IsNullOrWhiteSpace(blueprint.SiteId);
+                if (!hasConstructionCheckpoint) continue;
+                if (!Enum.IsDefined(typeof(NomadConstructionSiteKind), blueprint.SiteKind))
+                    throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 地点类型无效。");
+                if (blueprint.RouteProgressMillimeters < 0 || blueprint.RetentionDistanceMillimeters < 0)
+                    throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 路线进度或保留距离不能为负数。");
+                if (blueprint.SiteKind == NomadConstructionSiteKind.TemporaryRoadside &&
+                    string.IsNullOrWhiteSpace(blueprint.RouteId))
+                    throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 临时地点缺少路线 id。");
+                if (blueprint.RequiredWorkUnits <= 0)
+                    throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 标准工作量必须大于零。");
+                if (blueprint.CompletedWorkUnits < 0 ||
+                    blueprint.CompletedWorkUnits > blueprint.RequiredWorkUnits)
+                    throw new InvalidOperationException($"蓝图 {blueprint.InstanceId} 已完成工作量越界。");
+                ValidateBlueprintMaterials(blueprint.InstanceId, blueprint.RequiredMaterials, stackIds);
+                ValidateBlueprintMaterials(blueprint.InstanceId, blueprint.StagedMaterials, stackIds);
+                ValidateBlueprintMaterials(blueprint.InstanceId, blueprint.InstalledMaterials, stackIds);
+            }
+        }
+
+        private static void ValidateBlueprintMaterials(
+            string blueprintId,
+            IReadOnlyList<NomadResourceStackSaveData> materials,
+            HashSet<string> stackIds)
+        {
+            if (materials == null)
+                throw new InvalidOperationException($"蓝图 {blueprintId} 材料列表不能为 null。");
+            for (var i = 0; i < materials.Count; i++)
+            {
+                NomadResourceStackSaveData material = materials[i] ??
+                    throw new InvalidOperationException($"蓝图 {blueprintId} 材料第 {i} 项为空。");
+                RequireUniqueId(material.StackId, "蓝图材料批次", stackIds);
+                RequireId(material.ResourceId, "蓝图材料资源");
+                if (material.Measure != ResourceMeasure.Item)
+                    throw new InvalidOperationException($"蓝图 {blueprintId} 只能保存 Item 建材。");
+                if (material.AmountBaseUnits <= 0)
+                    throw new InvalidOperationException($"蓝图 {blueprintId} 材料数量必须大于零。");
+                ValidateRange(material.ConditionPermille, $"蓝图 {blueprintId} 材料状态");
+                ValidateRange(material.ContaminationPermille, $"蓝图 {blueprintId} 材料污染");
             }
         }
 

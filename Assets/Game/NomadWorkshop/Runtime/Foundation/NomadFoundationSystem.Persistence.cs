@@ -159,6 +159,7 @@ namespace Game.NomadWorkshop.Foundation
                         conditionCheckpoint.LastSettledSimulationTick,
                 });
             }
+            CaptureConstructionBlueprints(data);
             CapturePlacedWorldItems(data);
 
             data.Inventories.Add(CreateInventorySaveData(
@@ -526,6 +527,11 @@ namespace Game.NomadWorkshop.Foundation
                 RegisterFacilityPlacementRegions(restoredFacility);
             }
             _model.ReplaceFacilities(restoredFacilities);
+            _resourceFlow = new ResourceFlowLedger();
+            _constructionBlueprintLedger = new NomadConstructionBlueprintLedger(
+                _placementLedger,
+                _resourceFlow);
+            RestoreConstructionBlueprints(data.Blueprints);
             RestorePlacedWorldItems(restore.WorldItems);
 
             _navigation.BuildNow();
@@ -555,7 +561,6 @@ namespace Game.NomadWorkshop.Foundation
             RebuildCommittedInteractionSpaces(reacquireActiveSpace: false);
             RefreshCommittedFacilityAccess();
 
-            _resourceFlow = new ResourceFlowLedger();
             int vehicleWaterAmount = restore.VehicleWaterAmount;
             int waterCanAmount = restore.WaterCanAmount;
             FoundationWaterCanLocation waterCanLocation = restore.WaterCanLocation;
@@ -719,9 +724,6 @@ namespace Game.NomadWorkshop.Foundation
         private FoundationRestoreData ValidateAndResolveFoundationCheckpoint(
             NomadWorkshopSaveData data)
         {
-            if (data.Blueprints.Count > 0)
-                throw new NotSupportedException(
-                    "当前 Foundation 还没有蓝图执行器，不能静默丢弃检查点中的未完成蓝图。");
             if (data.Residents.Count < 1 || data.Residents.Count > 3)
                 throw new NotSupportedException("当前 Foundation 支持一至三名居民的检查点。");
             var savedResidents = new Dictionary<string, NomadResidentSaveData>(StringComparer.Ordinal);
@@ -791,6 +793,8 @@ namespace Game.NomadWorkshop.Foundation
             }
             if (!ContainsFunction(facilityFunctions, NomadFacilityFunction.VehicleWaterTank))
                 throw new InvalidOperationException("Foundation 检查点缺少已放置的车辆水箱。");
+
+            ValidateConstructionBlueprintsForRestore(data.Blueprints, validationLedger);
 
             var inventories = new Dictionary<string, NomadInventorySaveData>(
                 StringComparer.Ordinal);

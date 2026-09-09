@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Game.NomadWorkshop.Simulation;
 using UnityEngine;
 
@@ -605,6 +606,119 @@ namespace Game.NomadWorkshop.Foundation
                 zMillimeters,
                 yawDeciDegrees,
                 deckLevel);
+    }
+
+    /// <summary>
+    /// 正式 Foundation 对未完成/已完成蓝图的只读投影。材料数量来自蓝图自有库存的快照，
+    /// 不把暂存物料复制成设施库存，也不把施工阶段交给 View 推断。
+    /// </summary>
+    [Serializable]
+    public struct FoundationConstructionBlueprintState : IEquatable<FoundationConstructionBlueprintState>
+    {
+        [SerializeField] private string instanceId;
+        [SerializeField] private string definitionId;
+        [SerializeField] private int xMillimeters;
+        [SerializeField] private int zMillimeters;
+        [SerializeField] private int yawDeciDegrees;
+        [SerializeField] private int deckLevel;
+        [SerializeField] private string siteId;
+        [SerializeField] private NomadConstructionSiteKind siteKind;
+        [SerializeField] private string routeId;
+        [SerializeField] private long routeProgressMillimeters;
+        [SerializeField] private long retentionDistanceMillimeters;
+        [SerializeField] private NomadConstructionStage stage;
+        [SerializeField] private int requiredWorkUnits;
+        [SerializeField] private int completedWorkUnits;
+        [SerializeField] private int requiredMaterialItems;
+        [SerializeField] private int stagedMaterialItems;
+        [SerializeField] private int installedMaterialItems;
+
+        public FoundationConstructionBlueprintState(
+            NomadConstructionBlueprintCheckpoint checkpoint)
+        {
+            if (checkpoint == null) throw new ArgumentNullException(nameof(checkpoint));
+            instanceId = checkpoint.Placement.InstanceId;
+            definitionId = checkpoint.Placement.DefinitionId;
+            DeckPose pose = checkpoint.Placement.Pose;
+            xMillimeters = pose.XMillimeters;
+            zMillimeters = pose.ZMillimeters;
+            yawDeciDegrees = pose.YawDeciDegrees;
+            deckLevel = pose.DeckLevel;
+            siteId = checkpoint.Site.SiteId;
+            siteKind = checkpoint.Site.Kind;
+            routeId = checkpoint.Site.RouteId;
+            routeProgressMillimeters = checkpoint.Site.RouteProgressMillimeters;
+            retentionDistanceMillimeters = checkpoint.Site.RetentionDistanceMillimeters;
+            stage = checkpoint.Stage;
+            requiredWorkUnits = checkpoint.RequiredWorkUnits;
+            completedWorkUnits = checkpoint.CompletedWorkUnits;
+            requiredMaterialItems = Sum(checkpoint.RequiredMaterials);
+            stagedMaterialItems = Sum(checkpoint.StagedMaterials);
+            installedMaterialItems = Sum(checkpoint.InstalledMaterials);
+        }
+
+        public string InstanceId => instanceId;
+        public string DefinitionId => definitionId;
+        public DeckPose Pose => new(xMillimeters, zMillimeters, yawDeciDegrees, deckLevel);
+        public NomadConstructionSite Site => new(
+            siteId,
+            siteKind,
+            routeId,
+            routeProgressMillimeters,
+            retentionDistanceMillimeters);
+        public NomadConstructionStage Stage => stage;
+        public int RequiredWorkUnits => requiredWorkUnits;
+        public int CompletedWorkUnits => completedWorkUnits;
+        public int RequiredMaterialItems => requiredMaterialItems;
+        public int StagedMaterialItems => stagedMaterialItems;
+        public int InstalledMaterialItems => installedMaterialItems;
+        public int ConstructionProgressPermille => requiredWorkUnits <= 0
+            ? 0
+            : Math.Clamp((int)((long)completedWorkUnits * 1000L / requiredWorkUnits), 0, 1000);
+
+        public bool Equals(FoundationConstructionBlueprintState other) =>
+            string.Equals(instanceId, other.instanceId, StringComparison.Ordinal) &&
+            string.Equals(definitionId, other.definitionId, StringComparison.Ordinal) &&
+            xMillimeters == other.xMillimeters && zMillimeters == other.zMillimeters &&
+            yawDeciDegrees == other.yawDeciDegrees && deckLevel == other.deckLevel &&
+            string.Equals(siteId, other.siteId, StringComparison.Ordinal) && siteKind == other.siteKind &&
+            string.Equals(routeId, other.routeId, StringComparison.Ordinal) &&
+            routeProgressMillimeters == other.routeProgressMillimeters &&
+            retentionDistanceMillimeters == other.retentionDistanceMillimeters &&
+            stage == other.stage && requiredWorkUnits == other.requiredWorkUnits &&
+            completedWorkUnits == other.completedWorkUnits &&
+            requiredMaterialItems == other.requiredMaterialItems &&
+            stagedMaterialItems == other.stagedMaterialItems &&
+            installedMaterialItems == other.installedMaterialItems;
+
+        public override bool Equals(object obj) => obj is FoundationConstructionBlueprintState other && Equals(other);
+        public override int GetHashCode()
+        {
+            int pose = HashCode.Combine(
+                instanceId, definitionId, xMillimeters, zMillimeters,
+                yawDeciDegrees, deckLevel);
+            int site = HashCode.Combine(
+                siteId, siteKind, routeId, routeProgressMillimeters,
+                retentionDistanceMillimeters);
+            int progress = HashCode.Combine(
+                stage, requiredWorkUnits, completedWorkUnits,
+                requiredMaterialItems, stagedMaterialItems, installedMaterialItems);
+            return HashCode.Combine(pose, site, progress);
+        }
+
+        private static int Sum(IReadOnlyList<NomadConstructionMaterialRequirement> values)
+        {
+            int total = 0;
+            for (var i = 0; i < values.Count; i++) total = checked(total + values[i].Amount);
+            return total;
+        }
+
+        private static int Sum(IReadOnlyList<ResourceQuantity> values)
+        {
+            int total = 0;
+            for (var i = 0; i < values.Count; i++) total = checked(total + values[i].Amount);
+            return total;
+        }
     }
 
     /// <summary>

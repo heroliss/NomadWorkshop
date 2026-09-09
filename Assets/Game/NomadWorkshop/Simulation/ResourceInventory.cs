@@ -206,6 +206,22 @@ namespace Game.NomadWorkshop.Simulation
             _amounts[resource] = checked(current + amount);
         }
 
+        /// <summary>
+        /// 仅供同一模拟程序集从已校验检查点构造库存；运行期转移仍必须经由
+        /// <see cref="ResourceFlowLedger"/>，避免恢复入口变成第二条物质流写路径。
+        /// </summary>
+        internal void AddInitial(ResourceQuantity quantity)
+        {
+            if (!quantity.Resource.IsValid || quantity.Amount <= 0)
+                throw new ArgumentException("初始库存批次无效。", nameof(quantity));
+            EnsureCompatible(quantity.Resource);
+            if (FreeCapacity < quantity.Amount)
+                throw new InvalidOperationException(
+                    $"库存 {Id} 无法恢复 {quantity.Amount} 单位 {quantity.Resource}；容量不足。 ");
+            _amounts.TryGetValue(quantity.Resource, out int current);
+            _amounts[quantity.Resource] = checked(current + quantity.Amount);
+        }
+
         internal void EnsureCompatible(ResourceId resource)
         {
             if (!resource.IsValid)

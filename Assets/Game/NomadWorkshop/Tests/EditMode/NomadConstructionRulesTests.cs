@@ -219,6 +219,64 @@ namespace Game.NomadWorkshop.Simulation.Tests
             haul.Dispose();
         }
 
+        [Test]
+        public void CheckpointSnapshot_RestoresBlueprintStageMaterialsAndProgressWithoutLeases()
+        {
+            var placements = new ContinuousFacilityPlacementLedger(
+                new DeckBounds(-2000, -2000, 2000, 2000));
+            var ledger = new NomadConstructionBlueprintLedger(placements, new ResourceFlowLedger());
+            var requirements = new[]
+            {
+                new NomadConstructionMaterialRequirement(Material("steel"), 2),
+                new NomadConstructionMaterialRequirement(Material("wood"), 1),
+            };
+            var site = new NomadConstructionSite(
+                "vehicle-01", NomadConstructionSiteKind.VehicleMounted);
+            Assert.That(ledger.TryPlan(
+                Placement("kitchen-restore", 400, 0), site, requirements, 4,
+                out var blueprint, out _, out _), Is.True);
+            var source = new ResourceInventory(
+                "source", ResourceMeasure.Item, 3,
+                new ResourceQuantity(Material("steel"), 2),
+                new ResourceQuantity(Material("wood"), 1));
+            var carrier = new ResourceInventory("hands", ResourceMeasure.Item, 3);
+            Assert.That(blueprint.TryReserveDelivery(
+                "restore-haul", 7, source, carrier, Material("steel"), 2,
+                out var steel, out _), Is.True);
+            steel.PickUp(); steel.Deliver();
+            Assert.That(blueprint.TryReserveDelivery(
+                "restore-haul-wood", 7, source, carrier, Material("wood"), 1,
+                out var wood, out _), Is.True);
+            wood.PickUp(); wood.Deliver();
+            blueprint.RefreshStage();
+            Assert.That(blueprint.Stage, Is.EqualTo(NomadConstructionStage.ReadyToBuild));
+
+            NomadConstructionBlueprintCheckpoint checkpoint =
+                ledger.GetCheckpointSnapshot()[0];
+            var restoredPlacements = new ContinuousFacilityPlacementLedger(
+                new DeckBounds(-2000, -2000, 2000, 2000));
+            var restoredLedger = new NomadConstructionBlueprintLedger(
+                restoredPlacements, new ResourceFlowLedger());
+            Assert.That(restoredLedger.TryRestore(
+                checkpoint.Placement,
+                checkpoint.Site,
+                checkpoint.RequiredMaterials,
+                checkpoint.RequiredWorkUnits,
+                checkpoint.CompletedWorkUnits,
+                checkpoint.Stage,
+                checkpoint.StagedMaterials,
+                checkpoint.InstalledMaterials,
+                out var restored,
+                out var failure,
+                out _), Is.True);
+            Assert.That(failure, Is.EqualTo(NomadConstructionPlanFailure.None));
+            Assert.That(restored.Stage, Is.EqualTo(NomadConstructionStage.ReadyToBuild));
+            Assert.That(restored.GetStagedAmount(Material("steel")), Is.EqualTo(2));
+            Assert.That(restored.GetStagedAmount(Material("wood")), Is.EqualTo(1));
+            Assert.That(restoredPlacements.Count, Is.EqualTo(1));
+            Assert.That(restored.HasPendingLease, Is.False);
+        }
+
         private static ResourceId Material(string value) => new(value, ResourceMeasure.Item);
 
         private static ContinuousFacilityPlacementRequest Placement(

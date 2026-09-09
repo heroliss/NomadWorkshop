@@ -6,8 +6,8 @@
 
 - **产品目标**：在恶劣生存环境中建立有温度的移动小家；从一名玩家化身、只有驾驶位的微型车和拾荒起步，逐步形成建造、研究、制造、共同生活、可控随机故事和车辆成长。
 - **当前正式入口**：`Assets/Game/NomadWorkshop/Scenes/StarterJourneySample.unity`。它是 N1-B 的最小起步切片；`ReferenceVehicleSample.unity` 继续保留已验证的三居民 Foundation 与暖工坊表现，不被替换。
-- **当前状态**：N0 平稳连续旅途、N1-A 微型车纯配置/身份/座位休息规则，以及 N1-B 最小拾荒场景已经落地。N2-A 统一建造纯规则也已落地：蓝图占位、材料暂存、施工阶段、取消/拆除回收和地点生命周期均有纯 C# 契约与定向测试。独立仓库已在 Unity 6000.3.22f1 中完成编译与 EditMode 全量回归（891/891），N2-A 定向回归 9/9，起步入口 PlayMode 输入回归 1/1；StarterJourneySample 的旧运行时输入错误也已改用 Input System。
-- **唯一近期队列**：[Foundation §9](nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。下一项是 N2-B：把这套规则接入正式 Foundation 的蓝图/材料读模型和一个可重建场景样板。
+- **当前状态**：N0 平稳连续旅途、N1-A 微型车纯配置/身份/座位休息规则，以及 N1-B 最小拾荒场景已经落地。N2-A 统一建造纯规则与 N2-B Foundation 接线已经落地：蓝图占位、材料暂存、施工阶段、取消/拆除回收、地点生命周期、只读蓝图投影、带地点与材料批次的检查点恢复均有契约；Foundation 管线还生成了可转为存档 DTO 的野战厨房样板资产。独立仓库已在 Unity 6000.3.22f1 中完成编译；N2-A 定向 EditMode 9/9、蓝图快照恢复 10/10、存档契约 22/22、可重建样板管线 1/1，蓝图 Foundation PlayMode 回读 1/1 均通过；之前起步入口的旧运行时输入错误也已改用 Input System。
+- **唯一近期队列**：[Foundation §9](nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。下一项是 N2-C：把当前直接确认即落地的建造入口改为蓝图规划，并接入材料搬运、施工工作姿态与取消/拆除表现；在此之前不宣称玩家已经拥有完整蓝图 UI。
 - **空间与建造细则**：[世界放置与建造契约](nomad-workshop-world-placement-and-construction.md#51-车内外统一建造与地点生命周期)。它明确车内外共用蓝图/材料/工作量，不引入工作台作为建造前置。
 - **恢复现场**：以实际 Git、Unity 编译/Play 状态和当前测试证据为准。修改场景或 Prefab 前必须通过 Unity Editor/MCP，不能手改 YAML。
 

@@ -4,7 +4,7 @@ NomadWorkshop 是正在开发的废土移动生存游戏。玩家从一辆只能
 
 ## 当前开发入口
 
-当前可运行的最小起步切片是 `Assets/Game/NomadWorkshop/Scenes/StarterJourneySample.unity`：它覆盖玩家身份、微型车、拾荒、基础资源和持续旅途的 N1-B 目标；统一建造的 N2-A 纯规则已在 Simulation 层通过验证，尚未接入正式场景。`ReferenceVehicleSample.unity` 继续保留三居民 Foundation 与暖工坊表现，用作后续扩展参考。
+当前可运行的最小起步切片是 `Assets/Game/NomadWorkshop/Scenes/StarterJourneySample.unity`：它覆盖玩家身份、微型车、拾荒、基础资源和持续旅途的 N1-B 目标。统一建造的 N2-A 纯规则与 N2-B Foundation 读模型、版本化检查点已经通过验证；可重建样板资产位于 `Assets/Game/NomadWorkshop/Foundation/Definitions/NW_Blueprint_FieldKitchenSample.asset`，正式蓝图 UI、居民施工动画和玩家建造入口仍在后续阶段。`ReferenceVehicleSample.unity` 继续保留三居民 Foundation 与暖工坊表现，用作后续扩展参考。
 
 进入开发前阅读 [`docs/ai-project-index.md`](docs/ai-project-index.md) 和当前 Foundation 专题；它们记录当前唯一队列、证据与下一步边界。
 

@@ -1,5 +1,6 @@
 using Game.NomadWorkshop.Foundation;
 using Game.NomadWorkshop.Navigation;
+using Game.NomadWorkshop.Simulation;
 using NUnit.Framework;
 using Unity.AI.Navigation;
 using UnityEditor;
@@ -24,6 +25,19 @@ namespace Game.NomadWorkshop.Editor.Tests
                 NomadFoundationVerticalSlicePipeline.DrinkingCupItemPath));
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<NomadWorldItemDefinition>(
                 NomadFoundationVerticalSlicePipeline.WaterValveKitItemPath));
+            NomadConstructionBlueprintSampleDefinition blueprintSample =
+                AssetDatabase.LoadAssetAtPath<NomadConstructionBlueprintSampleDefinition>(
+                    NomadFoundationVerticalSlicePipeline.BlueprintSamplePath);
+            Assert.IsNotNull(blueprintSample);
+            Assert.That(blueprintSample.BlueprintId, Is.EqualTo("blueprint-kitchen-n2b"));
+            Assert.That(blueprintSample.FacilityDefinition, Is.Not.Null);
+            Assert.That(blueprintSample.FacilityDefinition.Id, Is.EqualTo("field-kitchen"));
+            Assert.That(blueprintSample.Site.Kind, Is.EqualTo(NomadConstructionSiteKind.VehicleMounted));
+            Assert.That(blueprintSample.Site.SiteId, Is.EqualTo("vehicle-01"));
+            Assert.That(blueprintSample.RequiredWorkUnits, Is.EqualTo(12));
+            Assert.That(blueprintSample.RequiredMaterials.Count, Is.EqualTo(1));
+            Assert.That(blueprintSample.RequiredMaterials[0].ResourceId, Is.EqualTo("steel"));
+            Assert.That(blueprintSample.RequiredMaterials[0].Amount, Is.EqualTo(2));
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<SceneAsset>(
                 NomadFoundationVerticalSlicePipeline.ScenePath));
 

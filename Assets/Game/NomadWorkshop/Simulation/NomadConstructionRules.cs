@@ -152,6 +152,57 @@ namespace Game.NomadWorkshop.Simulation
     }
 
     /// <summary>
+    /// 蓝图在业务安全边界上的纯检查点。搬运租约与施工租约不落盘；调用方只能在没有
+    /// 活跃租约的边界捕获，读取后由账本重新建立占地和阶段。
+    /// </summary>
+    public sealed class NomadConstructionBlueprintCheckpoint
+    {
+        internal NomadConstructionBlueprintCheckpoint(
+            ContinuousFacilityPlacementRequest placement,
+            NomadConstructionSite site,
+            IReadOnlyList<NomadConstructionMaterialRequirement> requirements,
+            int requiredWorkUnits,
+            int completedWorkUnits,
+            NomadConstructionStage stage,
+            IReadOnlyList<ResourceQuantity> stagedMaterials,
+            IReadOnlyList<ResourceQuantity> installedMaterials)
+        {
+            Placement = placement;
+            Site = site;
+            RequiredMaterials = CopyRequirements(requirements);
+            RequiredWorkUnits = requiredWorkUnits;
+            CompletedWorkUnits = completedWorkUnits;
+            Stage = stage;
+            StagedMaterials = CopyQuantities(stagedMaterials);
+            InstalledMaterials = CopyQuantities(installedMaterials);
+        }
+
+        public ContinuousFacilityPlacementRequest Placement { get; }
+        public NomadConstructionSite Site { get; }
+        public IReadOnlyList<NomadConstructionMaterialRequirement> RequiredMaterials { get; }
+        public int RequiredWorkUnits { get; }
+        public int CompletedWorkUnits { get; }
+        public NomadConstructionStage Stage { get; }
+        public IReadOnlyList<ResourceQuantity> StagedMaterials { get; }
+        public IReadOnlyList<ResourceQuantity> InstalledMaterials { get; }
+
+        private static NomadConstructionMaterialRequirement[] CopyRequirements(
+            IReadOnlyList<NomadConstructionMaterialRequirement> source)
+        {
+            var result = new NomadConstructionMaterialRequirement[source?.Count ?? 0];
+            for (int i = 0; i < result.Length; i++) result[i] = source[i];
+            return result;
+        }
+
+        private static ResourceQuantity[] CopyQuantities(IReadOnlyList<ResourceQuantity> source)
+        {
+            var result = new ResourceQuantity[source?.Count ?? 0];
+            for (int i = 0; i < result.Length; i++) result[i] = source[i];
+            return result;
+        }
+    }
+
+    /// <summary>
     /// 规划后的蓝图。材料先进入独立 ConstructionStaging 库存，施工完成前不会变成可用设施。
     /// </summary>
     public sealed class NomadConstructionBlueprint
@@ -195,6 +246,30 @@ namespace Game.NomadWorkshop.Simulation
             RefreshStage();
         }
 
+        internal NomadConstructionBlueprint(
+            ContinuousFacilityPlacementRequest placement,
+            NomadConstructionSite site,
+            IReadOnlyList<NomadConstructionMaterialRequirement> requirements,
+            int requiredWorkUnits,
+            ResourceFlowLedger flow,
+            int completedWorkUnits,
+            NomadConstructionStage stage,
+            IReadOnlyList<ResourceQuantity> stagedMaterials,
+            IReadOnlyList<ResourceQuantity> installedMaterials)
+            : this(placement, site, requirements, requiredWorkUnits, flow)
+        {
+            if (completedWorkUnits < 0 || completedWorkUnits > requiredWorkUnits)
+                throw new ArgumentOutOfRangeException(nameof(completedWorkUnits));
+            if (stage is NomadConstructionStage.Building or NomadConstructionStage.Commissioning)
+                throw new ArgumentException("不能恢复仍持有施工租约的蓝图。", nameof(stage));
+
+            AddInitialContents(_staging, stagedMaterials);
+            AddInitialContents(_installed, installedMaterials);
+            CompletedWorkUnits = completedWorkUnits;
+            Stage = stage;
+            ValidateRestoredState();
+        }
+
         public ContinuousFacilityPlacementRequest Placement { get; }
         public NomadConstructionSite Site { get; }
         public IReadOnlyList<NomadConstructionMaterialRequirement> RequiredMaterials { get; }
@@ -204,6 +279,23 @@ namespace Game.NomadWorkshop.Simulation
         public int RequiredWorkUnits { get; }
         public int CompletedWorkUnits { get; private set; }
         public NomadConstructionStage Stage { get; private set; }
+
+        public bool HasPendingLease => _buildLease != null || HasPendingDelivery;
+
+        public NomadConstructionBlueprintCheckpoint CaptureCheckpoint()
+        {
+            if (HasPendingLease)
+                throw new InvalidOperationException("蓝图仍持有搬运或施工租约，不能捕获检查点。");
+            return new NomadConstructionBlueprintCheckpoint(
+                Placement,
+                Site,
+                RequiredMaterials,
+                RequiredWorkUnits,
+                CompletedWorkUnits,
+                Stage,
+                _staging.GetContentsSnapshot(),
+                _installed.GetContentsSnapshot());
+        }
 
         public bool HasAllRequiredMaterials
         {
@@ -350,7 +442,43 @@ namespace Game.NomadWorkshop.Simulation
             => new(
                 Placement.InstanceId,
                 Site,
-                (Stage == NomadConstructionStage.Demolished ? _installed : _staging).TakeAll());
+            (Stage == NomadConstructionStage.Demolished ? _installed : _staging).TakeAll());
+
+        private void ValidateRestoredState()
+        {
+            if (Stage == NomadConstructionStage.Complete)
+            {
+                if (CompletedWorkUnits != RequiredWorkUnits || _staging.TotalAmount != 0 ||
+                    !HasAllRequiredMaterials)
+                    throw new ArgumentException("已完成蓝图的材料或工作量不完整。");
+                return;
+            }
+
+            if (Stage is NomadConstructionStage.Planned or NomadConstructionStage.AwaitingMaterials or
+                NomadConstructionStage.ReadyToBuild)
+            {
+                if (_installed.TotalAmount != 0 || CompletedWorkUnits != 0)
+                    throw new ArgumentException("未完成蓝图不能拥有已安装材料或已提交工作量。");
+                RefreshStage();
+                if (Stage == NomadConstructionStage.Planned)
+                    Stage = NomadConstructionStage.AwaitingMaterials;
+                return;
+            }
+
+            throw new ArgumentException($"不支持恢复蓝图阶段 {Stage}。", nameof(Stage));
+        }
+
+        private static void AddInitialContents(
+            ResourceInventory inventory,
+            IReadOnlyList<ResourceQuantity> quantities)
+        {
+            if (quantities == null) return;
+            for (int i = 0; i < quantities.Count; i++)
+            {
+                ResourceQuantity quantity = quantities[i];
+                inventory.AddInitial(quantity);
+            }
+        }
 
         private static NomadConstructionMaterialRequirement[] CopyRequirements(
             IReadOnlyList<NomadConstructionMaterialRequirement> requirements)
@@ -379,6 +507,18 @@ namespace Game.NomadWorkshop.Simulation
         }
 
         public int Count => _blueprints.Count;
+
+        public IReadOnlyList<NomadConstructionBlueprintCheckpoint> GetCheckpointSnapshot()
+        {
+            var result = new List<NomadConstructionBlueprintCheckpoint>(_blueprints.Count);
+            foreach (NomadConstructionBlueprint blueprint in _blueprints.Values)
+                result.Add(blueprint.CaptureCheckpoint());
+            result.Sort((left, right) => string.Compare(
+                left.Placement.InstanceId,
+                right.Placement.InstanceId,
+                StringComparison.Ordinal));
+            return result.AsReadOnly();
+        }
 
         public bool TryPlan(
             in ContinuousFacilityPlacementRequest placement,
@@ -450,6 +590,64 @@ namespace Game.NomadWorkshop.Simulation
 
         public bool TryGet(string instanceId, out NomadConstructionBlueprint blueprint)
             => _blueprints.TryGetValue(instanceId ?? string.Empty, out blueprint);
+
+        /// <summary>
+        /// 从已校验的业务检查点重建蓝图。它不恢复任何运行期租约；材料批次直接进入
+        /// 蓝图自己的暂存/已安装库存，随后由 Foundation 重新发布读模型。
+        /// </summary>
+        public bool TryRestore(
+            in ContinuousFacilityPlacementRequest placement,
+            in NomadConstructionSite site,
+            IReadOnlyList<NomadConstructionMaterialRequirement> requirements,
+            int requiredWorkUnits,
+            int completedWorkUnits,
+            NomadConstructionStage stage,
+            IReadOnlyList<ResourceQuantity> stagedMaterials,
+            IReadOnlyList<ResourceQuantity> installedMaterials,
+            out NomadConstructionBlueprint blueprint,
+            out NomadConstructionPlanFailure failure,
+            out ContinuousPlacementFailure placementFailure)
+        {
+            blueprint = null;
+            placementFailure = ContinuousPlacementFailure.None;
+            if (_blueprints.ContainsKey(placement.InstanceId))
+            {
+                failure = NomadConstructionPlanFailure.DuplicateInstanceId;
+                return false;
+            }
+            try
+            {
+                blueprint = new NomadConstructionBlueprint(
+                    placement,
+                    site,
+                    requirements,
+                    requiredWorkUnits,
+                    _flow,
+                    completedWorkUnits,
+                    stage,
+                    stagedMaterials,
+                    installedMaterials);
+                if (!_placements.TryPlace(placement, out _, out placementFailure))
+                {
+                    blueprint = null;
+                    failure = NomadConstructionPlanFailure.PlacementRejected;
+                    return false;
+                }
+                _blueprints.Add(placement.InstanceId, blueprint);
+                failure = NomadConstructionPlanFailure.None;
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                failure = NomadConstructionPlanFailure.InvalidRequest;
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                failure = NomadConstructionPlanFailure.InvalidRequest;
+                return false;
+            }
+        }
 
         public bool TryCancel(
             string instanceId,

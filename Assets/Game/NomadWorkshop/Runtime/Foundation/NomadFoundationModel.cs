@@ -82,6 +82,8 @@ namespace Game.NomadWorkshop.Foundation
         public RP<int> FacilityConditionRevision { get; private set; } = new(0);
         [field: SerializeField, Tooltip("已落位世界物品投影的版本；区域账本变化后递增。")]
         public RP<int> WorldItemPlacementRevision { get; private set; } = new(0);
+        [field: SerializeField, Tooltip("蓝图阶段与施工材料投影的版本；蓝图事务变化后递增。")]
+        public RP<int> ConstructionBlueprintRevision { get; private set; } = new(0);
 
         [field: SerializeField] public RP<FoundationWaterCanLocation> WaterCanLocation { get; private set; } =
             new(FoundationWaterCanLocation.VehicleWaterTank);
@@ -138,6 +140,7 @@ namespace Game.NomadWorkshop.Foundation
         [SerializeField] private List<FoundationFacilityInventoryState> facilityInventories = new();
         [SerializeField] private List<FoundationFacilityConditionState> facilityConditions = new();
         [SerializeField] private List<FoundationItemPlacementState> worldItemPlacements = new();
+        [SerializeField] private List<FoundationConstructionBlueprintState> constructionBlueprints = new();
 
         internal IReadOnlyList<FoundationFacilityState> Facilities => facilities;
 
@@ -259,6 +262,36 @@ namespace Game.NomadWorkshop.Foundation
 
         internal FoundationFacilityConditionState[] GetFacilityConditionSnapshot() =>
             facilityConditions.ToArray();
+
+        internal IReadOnlyList<FoundationConstructionBlueprintState> ConstructionBlueprints =>
+            constructionBlueprints;
+
+        internal void ReplaceConstructionBlueprints(
+            IReadOnlyList<FoundationConstructionBlueprintState> source)
+        {
+            int sourceCount = source?.Count ?? 0;
+            if (constructionBlueprints.Count == sourceCount)
+            {
+                var unchanged = true;
+                for (var i = 0; i < sourceCount; i++)
+                {
+                    if (constructionBlueprints[i].Equals(source[i])) continue;
+                    unchanged = false;
+                    break;
+                }
+                if (unchanged) return;
+            }
+
+            constructionBlueprints.Clear();
+            if (source != null)
+            {
+                for (var i = 0; i < source.Count; i++) constructionBlueprints.Add(source[i]);
+            }
+            ConstructionBlueprintRevision.Value++;
+        }
+
+        internal FoundationConstructionBlueprintState[] GetConstructionBlueprintSnapshot() =>
+            constructionBlueprints.ToArray();
 
         internal void ReplaceWorldItemPlacements(
             IReadOnlyList<FoundationItemPlacementState> source)

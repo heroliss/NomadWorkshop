@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Generic;
 using Game.Framework.Command;
 using Game.NomadWorkshop.Simulation;
 using R3;
@@ -56,6 +57,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<int> FacilityInventoryRevision;
         public readonly ReadOnlyReactiveProperty<int> FacilityConditionRevision;
         public readonly ReadOnlyReactiveProperty<int> WorldItemPlacementRevision;
+        public readonly ReadOnlyReactiveProperty<int> ConstructionBlueprintRevision;
         public readonly ReadOnlyReactiveProperty<FoundationWaterCanLocation> WaterCanLocation;
         public readonly ReadOnlyReactiveProperty<string> WaterCanAnchorFacilityInstanceId;
         public readonly ReadOnlyReactiveProperty<FoundationItemPlacementState> WaterCanPlacement;
@@ -74,6 +76,7 @@ namespace Game.NomadWorkshop.Foundation
         public readonly ReadOnlyReactiveProperty<string> WasteBucketCarrierId;
         public readonly ReadOnlyReactiveProperty<string> DepartureFeedback;
         public readonly ReadOnlyReactiveProperty<string> BuildFeedback;
+        public readonly IReadOnlyList<FoundationConstructionBlueprintState> ConstructionBlueprints;
 
         public FoundationReadModel(NomadFoundationModel model)
         {
@@ -83,6 +86,7 @@ namespace Game.NomadWorkshop.Foundation
             WasteBucketCarrierId = model.WasteBucketCarrierId;
             DepartureFeedback = model.DepartureFeedback;
             BuildFeedback = model.BuildFeedback;
+            ConstructionBlueprints = model.ConstructionBlueprints;
             IsReady = model.IsReady;
             JourneyPositionMicrometers = model.JourneyPositionMicrometers;
             StopWaterMilliliters = model.StopWaterMilliliters;
@@ -129,6 +133,7 @@ namespace Game.NomadWorkshop.Foundation
             FacilityInventoryRevision = model.FacilityInventoryRevision;
             FacilityConditionRevision = model.FacilityConditionRevision;
             WorldItemPlacementRevision = model.WorldItemPlacementRevision;
+            ConstructionBlueprintRevision = model.ConstructionBlueprintRevision;
             WaterCanLocation = model.WaterCanLocation;
             WaterCanAnchorFacilityInstanceId = model.WaterCanAnchorFacilityInstanceId;
             WaterCanPlacement = model.WaterCanPlacement;
@@ -203,6 +208,14 @@ namespace Game.NomadWorkshop.Foundation
     {
         public FoundationFacilityState[] Execute(ICommandContext ctx) =>
             ctx.GetModel<NomadFoundationModel>().GetFacilitySnapshot();
+    }
+
+    [Description("读取蓝图施工与材料投影")]
+    public readonly struct GetFoundationConstructionBlueprintsCommand :
+        ICommand<FoundationConstructionBlueprintState[]>
+    {
+        public FoundationConstructionBlueprintState[] Execute(ICommandContext ctx) =>
+            ctx.GetModel<NomadFoundationModel>().GetConstructionBlueprintSnapshot();
     }
 
     [Description("读取设施功能点与可达性快照")]

@@ -34,6 +34,8 @@ namespace Game.NomadWorkshop.Editor
         public const string DrinkingCupItemPath = DefinitionRoot + "/NW_Item_DrinkingCup.asset";
         public const string WaterValveKitItemPath =
             DefinitionRoot + "/NW_Item_WaterValveRepairKit.asset";
+        public const string BlueprintSamplePath =
+            DefinitionRoot + "/NW_Blueprint_FieldKitchenSample.asset";
 
         [MenuItem("Assets/SSFramework/游牧工坊/Foundation/创建或打开最小垂直切片")]
         public static void CreateOrOpen()
@@ -318,7 +320,23 @@ namespace Game.NomadWorkshop.Editor
                 NomadWorldItemPrototypeStyle.Box,
                 new Color(0.86f, 0.29f, 0.06f));
 
+            NomadConstructionBlueprintSampleDefinition blueprintSample =
+                LoadOrCreate<NomadConstructionBlueprintSampleDefinition>(BlueprintSamplePath);
+            blueprintSample.ConfigureForEditor(
+                "blueprint-kitchen-n2b",
+                RequireAsset<NomadFacilityDefinition>(FieldKitchenPath),
+                new Vector2(0f, -2f),
+                0f,
+                NomadConstructionSiteKind.VehicleMounted,
+                "vehicle-01",
+                string.Empty,
+                0L,
+                0L,
+                12,
+                new[] { new NomadConstructionMaterialSample("steel", 2) });
+
             EditorUtility.SetDirty(layout);
+            EditorUtility.SetDirty(blueprintSample);
             AssetDatabase.SaveAssets();
         }
 

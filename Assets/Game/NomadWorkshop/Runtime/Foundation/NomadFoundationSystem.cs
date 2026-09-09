@@ -219,6 +219,8 @@ namespace Game.NomadWorkshop.Foundation
         private bool _exitBuildModeRequested;
 
         private ResourceFlowLedger _resourceFlow;
+        private NomadConstructionBlueprintLedger _constructionBlueprintLedger;
+        private readonly List<FoundationConstructionBlueprintState> _constructionBlueprintProjection = new();
         private ResourceInventory _vehicleWater;
         private ResourceInventory _waterCan;
         private readonly ResidentActionPlanEvaluator _actionPlanEvaluator = new();
@@ -942,6 +944,9 @@ namespace Game.NomadWorkshop.Foundation
             _toiletInventories.Clear();
             _facilityInventoryProjection.Clear();
             _model.ReplaceFacilityInventories(_facilityInventoryProjection);
+            _constructionBlueprintLedger = null;
+            _constructionBlueprintProjection.Clear();
+            _model.ReplaceConstructionBlueprints(_constructionBlueprintProjection);
 
             _deckSupport = deckLayout.CreateSupportRegion();
             _placementLedger = new ContinuousFacilityPlacementLedger(new[] { _deckSupport });
@@ -1039,6 +1044,9 @@ namespace Game.NomadWorkshop.Foundation
             RefreshCommittedFacilityAccess();
 
             _resourceFlow = new ResourceFlowLedger();
+            _constructionBlueprintLedger = new NomadConstructionBlueprintLedger(
+                _placementLedger,
+                _resourceFlow);
             _vehicleWater = new ResourceInventory(
                 "vehicle-water-tank",
                 ResourceMeasure.Milliliter,
