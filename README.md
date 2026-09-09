@@ -13,7 +13,6 @@ NomadWorkshop 是正在开发的废土移动生存游戏。玩家从一辆只能
 - Unity：`6000.3.22f1`。
 - Framework：`Packages/com.liss.ssframework` Git submodule，固定到已验证的 commit。
 - 纯逻辑模拟：`Assets/Game/NomadWorkshop/Simulation/`，不依赖 Unity 或 Framework。
-- Outpost 与 FrameworkTutorial 是独立仓库；通用能力只有在两个真实消费方都形成证据后才回流 Framework。
 
 克隆后执行：
 
@@ -30,8 +29,6 @@ git submodule update --init --recursive
 
 升级 Framework 时在本仓库提交新的子模块 gitlink，并在 `docs/framework-compatibility.md` 记录 SHA/tag 与验证结果。通用安装与升级规则见 [Framework 接入与升级说明](https://github.com/heroliss/SSFramework/blob/main/docs/consuming-framework.md)。场景与 Prefab 只通过 Unity Editor/MCP 修改；纯模拟改动则运行对应的纯 C# 测试。
 
-## 相关仓库
+## 直接依赖
 
-- [SSFramework](https://github.com/heroliss/SSFramework)：公共框架包。
-- [Outpost](https://github.com/heroliss/Outpost)：框架教程游戏。
-- [FrameworkTutorial](https://github.com/heroliss/FrameworkTutorial)：框架章节教程，计划更名为 `SSFrameworkTutorial`。
+- [SSFramework](https://github.com/heroliss/SSFramework)：本项目消费的公共框架包。
