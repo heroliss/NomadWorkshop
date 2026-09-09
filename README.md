@@ -28,7 +28,7 @@ git submodule update --init --recursive
 - `feature/*`：短期功能分支。
 - `v0.x.y` 或带里程碑后缀的标签：阶段发布。
 
-升级 Framework 时在本仓库提交新的子模块 gitlink，并在 `docs/framework-compatibility.md` 记录 SHA/tag 与验证结果。跨仓库同步规则见 [SSFramework 仓库集成说明](https://github.com/heroliss/SSFramework/blob/main/docs/repository-integration.md)。场景与 Prefab 只通过 Unity Editor/MCP 修改；纯模拟改动则运行对应的纯 C# 测试。
+升级 Framework 时在本仓库提交新的子模块 gitlink，并在 `docs/framework-compatibility.md` 记录 SHA/tag 与验证结果。通用安装与升级规则见 [Framework 接入与升级说明](https://github.com/heroliss/SSFramework/blob/main/docs/consuming-framework.md)。场景与 Prefab 只通过 Unity Editor/MCP 修改；纯模拟改动则运行对应的纯 C# 测试。
 
 ## 相关仓库
 
