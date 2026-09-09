@@ -1,6 +1,6 @@
 # NomadWorkshop 协作入口
 
-本仓库只维护 NomadWorkshop 正式游戏。Framework 源码来自 `Packages/com.liss.ssframework/` 子仓库；不要把 Outpost 或 FrameworkTutorial 作为运行时依赖。
+本仓库只维护 NomadWorkshop 正式游戏。Framework 源码来自 `Packages/com.liss.ssframework/` 子仓库；不要把其他游戏或教程工程作为运行时依赖。
 
 - 游戏代码与资源：`Assets/Game/NomadWorkshop/`
 - 纯模拟：`Assets/Game/NomadWorkshop/Simulation/`

@@ -220,6 +220,16 @@ namespace Game.NomadWorkshop.Simulation
             return inventory.FreeCapacity - GetReservedIncoming(inventory);
         }
 
+        /// <summary>库存仍有进出资源或容量预留时，不得拆除其所有者或提取全部内容。</summary>
+        public bool HasReservations(ResourceInventory inventory)
+        {
+            if (inventory == null) throw new ArgumentNullException(nameof(inventory));
+            if (GetReservedIncoming(inventory) > 0) return true;
+            foreach (KeyValuePair<InventoryResourceKey, int> entry in _reservedOutgoing)
+                if (ReferenceEquals(entry.Key.Inventory, inventory) && entry.Value > 0) return true;
+            return false;
+        }
+
         /// <summary>
         /// 原子预留来源数量、携带容量、最终目的容量和全部交互位。失败不会留下任何部分预留。
         /// </summary>

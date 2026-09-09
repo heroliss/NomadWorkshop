@@ -1,5 +1,6 @@
 using Game.NomadWorkshop.Simulation;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Game.NomadWorkshop
 {
@@ -38,8 +39,13 @@ namespace Game.NomadWorkshop
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.E)) TryCollectScrap();
-            if (Input.GetKeyDown(KeyCode.R)) State.SetSeatRestIntent(!State.SeatRestIntent);
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                if (keyboard.eKey.wasPressedThisFrame) TryCollectScrap();
+                if (keyboard.rKey.wasPressedThisFrame)
+                    State.SetSeatRestIntent(!State.SeatRestIntent);
+            }
             State.Advance(Time.deltaTime);
             UpdateScrapVisuals();
         }

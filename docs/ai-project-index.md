@@ -6,8 +6,8 @@
 
 - **产品目标**：在恶劣生存环境中建立有温度的移动小家；从一名玩家化身、只有驾驶位的微型车和拾荒起步，逐步形成建造、研究、制造、共同生活、可控随机故事和车辆成长。
 - **当前正式入口**：`Assets/Game/NomadWorkshop/Scenes/StarterJourneySample.unity`。它是 N1-B 的最小起步切片；`ReferenceVehicleSample.unity` 继续保留已验证的三居民 Foundation 与暖工坊表现，不被替换。
-- **当前状态**：N0 平稳连续旅途、N1-A 微型车纯配置/身份/座位休息规则，以及 N1-B 最小拾荒场景已经落地。独立仓库已在 Unity 6000.3.22f1 中完成编译与 EditMode 全量回归（882/882），N1-B 规则定向回归 4/4，StarterJourneySample 运行时冒烟和画面取证通过。
-- **唯一近期队列**：[Foundation §9](nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。下一项是 N2：把车内外统一建造先收敛为一个可回收材料、施工占位和地点生命周期的纯规则切片。
+- **当前状态**：N0 平稳连续旅途、N1-A 微型车纯配置/身份/座位休息规则，以及 N1-B 最小拾荒场景已经落地。N2-A 统一建造纯规则也已落地：蓝图占位、材料暂存、施工阶段、取消/拆除回收和地点生命周期均有纯 C# 契约与定向测试。独立仓库已在 Unity 6000.3.22f1 中完成编译与 EditMode 全量回归（891/891），N2-A 定向回归 9/9，起步入口 PlayMode 输入回归 1/1；StarterJourneySample 的旧运行时输入错误也已改用 Input System。
+- **唯一近期队列**：[Foundation §9](nomad-workshop-foundation-vertical-slice.md#9-近期队列美术样板与可扩建建造)。下一项是 N2-B：把这套规则接入正式 Foundation 的蓝图/材料读模型和一个可重建场景样板。
 - **空间与建造细则**：[世界放置与建造契约](nomad-workshop-world-placement-and-construction.md#51-车内外统一建造与地点生命周期)。它明确车内外共用蓝图/材料/工作量，不引入工作台作为建造前置。
 - **恢复现场**：以实际 Git、Unity 编译/Play 状态和当前测试证据为准。修改场景或 Prefab 前必须通过 Unity Editor/MCP，不能手改 YAML。
 
@@ -21,7 +21,7 @@
 | 旅途、驾驶和兴趣点 | [驾驶接线](nomad-workshop-driving-integration.md) | [导航与交互](nomad-workshop-navigation-interaction-design.md)、[停靠资源所有权](nomad-workshop-stop-resource-ownership.md) |
 | 居民、生活与接力方向 | [三居民接线](nomad-workshop-three-residents.md) | [生活仿真](nomad-workshop-domestic-life-simulation.md)、[人物交互绑定](nomad-workshop-model-interaction-bindings.md) |
 | 当前美术和替换资产 | [首版美术](nomad-workshop-art-first-pass.md) | [参考结构造型](nomad-workshop-reference-form-study.md)、[人物制作](nomad-workshop-character-authoring.md) |
-| 工具与验证 | 根目录 `AGENTS.md`、`.agents/skills/` | `Tools/UnityTestEvidence.psm1`、[Framework 兼容记录](framework-compatibility.md) |
+| 工具与验证 | 根目录 `AGENTS.md`、`Packages/com.liss.ssframework/docs/unity-mcp-tips.md` | `Tools/UnityTestEvidence.psm1`、[Framework 兼容记录](framework-compatibility.md) |
 
 ## 协作边界
 

@@ -1,6 +1,6 @@
 # 《游牧工坊》世界物品放置与蓝图施工设计
 
-> 状态：**Foundation 实施契约 v0.7**，更新于 2026-09-08。Phase A 的水罐空间真值与 Phase B 的“杯子 + 台面 + 原子拿放”已经进入代码、存档和运行表现；本轮补充车内外统一建造、研究场地、3D 打印设施与节点 / 路边设施的生命周期边界。当前保留通用手部锚点，但尚未把灰盒居民误写成已完成 Humanoid 动画或 IK。本文固定“物品在哪里、空间如何被占用、蓝图怎样变成设施”的第一版边界；它不宣称参数已经试玩定型。导航与精确停靠见[《游牧工坊》连续建造、导航与设施交互设计](nomad-workshop-navigation-interaction-design.md)，生活物品和污染见[狭小空间生活仿真设计](nomad-workshop-domestic-life-simulation.md)。
+> 状态：**Foundation 实施契约 v0.8**，更新于 2026-09-09。Phase A 的水罐空间真值、Phase B 的“杯子 + 台面 + 原子拿放”和 N2-A 的统一建造纯规则已经进入代码与测试；本轮仍不宣称正式蓝图 UI、居民施工动画或 IK 已完成。本文固定“物品在哪里、空间如何被占用、蓝图怎样变成设施”的第一版边界；它不宣称参数已经试玩定型。导航与精确停靠见[《游牧工坊》连续建造、导航与设施交互设计](nomad-workshop-navigation-interaction-design.md)，生活物品和污染见[狭小空间生活仿真设计](nomad-workshop-domestic-life-simulation.md)。
 
 2026-09-06 扩展方向：小块甲板、墙/门窗/顶棚、支撑关系与局部多层施工按[可扩建甲板方案](nomad-workshop-expandable-decks-design.md)逐步落地。本文已实现的物品区域/租约继续复用；结构施工需要补可达施工位与材料事务，不能把下文计划中的蓝图阶段误认为当前已交付。
 
@@ -9,6 +9,8 @@
 Phase A 已完成第一轮闭环：无 Unity 依赖的 `PlacementRegionLedger` 负责有向矩形包含、跨区域重叠、稳定选位以及预留/提交/取消；设施定义可声明局部放置区域，并把水罐停放区作为建造功能净空参与预演。唯一水罐在车辆水箱、居民携带和饮水站之间转移时，会保存稳定区域 id、精确局部姿态和派生世界姿态；检查点按同一真值恢复，View 不再根据设施尺寸猜测偏移。
 
 Phase B 已完成第一条空间与行动闭环：`NomadWorldItemDefinition` 用 ScriptableObject 声明稳定定义 id、类别、毫米占地、安全边距、任意/离散朝向与可替换灰盒样式；野战厨房声明 `countertop-center` 台面区域，第一座厨房只生成一只 `cup-01`，不会让每座厨房凭空复制杯子。杯子与水罐共用同一账本和 Model 修订投影，开发面板可观察 owner/region/local pose；版本 4 检查点用可选 `WorldItems` 集合保存普通落位物品，旧 v4 存档可从第一座稳定台面补出这个开发期初始样本。
+
+N2-A 已完成第一条统一建造纯规则闭环：`NomadConstructionBlueprintLedger` 复用连续占地账本立即占用最终建筑占地；材料只能经 `ResourceFlowLedger` 搬入蓝图的 `ConstructionStaging` 库存，齐料后才能进入施工，工作量完成后还要经过独立 Commissioning 才成为 Complete。取消或成品拆除会从暂存库存取出真实材料批次形成 `NomadConstructionRecovery`，不会传送回来源库存；永久节点、车载设施和途中临时地点的保留判定也以纯路线进度规则锁定。它目前不接正式 Foundation System、场景资产或居民施工动画，下一步是 N2-B 的读模型与可重建场景接线。
 
 `PlacementRegionLedger` 的移动租约会在行动开始时同时锁住精确来源恢复位和目标姿态：拿起后来源不再生成世界物品投影，但仍不可被抢占；成功放下才原子提交目标，取消、死亡、施工改道或半途检查点则精确恢复来源。居民 Harness 已真实执行“走近来源 → 拿起 → 手持移动 → 放到目标”，View 只消费一个稳定的右手携带锚点。它验证了事务和表现接缝，不代表居民已经产生正式喝水/整理动机，也不代表手部 IK 已经交付。
 

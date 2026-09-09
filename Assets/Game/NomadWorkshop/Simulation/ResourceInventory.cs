@@ -168,6 +168,19 @@ namespace Game.NomadWorkshop.Simulation
             return result;
         }
 
+        /// <summary>
+        /// 原子移出整个库存，用于蓝图取消或设施拆除产生可回收材料堆。
+        /// 调用方必须先把返回的批次交给新的库存或世界物品所有者，不能把它当作资源销毁。
+        /// </summary>
+        internal ResourceQuantity[] TakeAll()
+        {
+            IReadOnlyList<ResourceQuantity> snapshot = GetContentsSnapshot();
+            var result = new ResourceQuantity[snapshot.Count];
+            for (int i = 0; i < snapshot.Count; i++) result[i] = snapshot[i];
+            _amounts.Clear();
+            return result;
+        }
+
         internal void Remove(ResourceId resource, int amount)
         {
             int current = GetAmount(resource);
